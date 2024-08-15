@@ -1,0 +1,138 @@
+{
+    "pbuf_SOLIN": {
+        "long_name": "Solar insolation",
+        "units": "W/m2"
+    },
+    "pbuf_COSZRS": {
+        "long_name": "Cosine of solar zenith angle",
+        "units": ""
+    },
+    "pbuf_LHFLX": {
+        "long_name": "Surface latent heat flux",
+        "units": "W/m2"
+    },
+    "pbuf_SHFLX": {
+        "long_name": "Surface sensible heat flux",
+        "units": "W/m2"
+    },
+    "pbuf_TAUX": {
+        "long_name": "Zonal surface stress",
+        "units": "N/m2"
+    },
+    "pbuf_TAUY": {
+        "long_name": "Meridional surface stress",
+        "units": "N/m2"
+    },
+    "pbuf_ozone": {
+        "long_name": "Ozone volume mixing ratio",
+        "units": "mol/mol"
+    },
+    "pbuf_N2O": {
+        "long_name": "N2O volume mixing ratio",
+        "units": "mol/mol"
+    },
+    "pbuf_CH4": {
+        "long_name": "CH4 volume mixing ratio",
+        "units": "mol/mol"
+    },
+    "state_ps": {
+        "long_name": "Surface pressure",
+        "units": "Pa"
+    },
+    "state_q0001": {
+        "long_name": "Specific humidity",
+        "units": "kg/kg"
+    },
+    "state_q0002": {
+        "long_name": "Cloud liquid mixing ratio",
+        "units": "kg/kg"
+    },
+    "state_q0003": {
+        "long_name": "Cloud ice mixing ratio",
+        "units": "kg/kg"
+    },
+    "state_t": {
+        "long_name": "Air temperature",
+        "units": "K"
+    },
+    "state_u": {
+        "long_name": "Zonal wind speed",
+        "units": "m/s"
+    },
+    "state_v": {
+        "long_name": "Meridional wind speed",
+        "units": "m/s"
+    },
+    "state_pmid": {
+        "long_name": "Mid-level pressure",
+        "units": "Pa"
+    },
+    "cam_in_ASDIR": {
+        "long_name": "Albedo for direct shortwave radiation",
+        "units": ""
+    },
+    "cam_in_ASDIF": {
+        "long_name": "Albedo for diffuse shortwave radiation",
+        "units": ""
+    },
+    "cam_in_ALDIR": {
+        "long_name": "Albedo for direct longwave radiation",
+        "units": ""
+    },
+    "cam_in_ALDIF": {
+        "long_name": "Albedo for diffuse longwave radiation",
+        "units": ""
+    },
+    "cam_in_LWUP": {
+        "long_name": "Upward longwave flux",
+        "units": "W/m2"
+    },
+    "cam_in_SNOWHLAND": {
+        "long_name": "Snow depth over land (liquid water equivalent)",
+        "units": "m"
+    },
+    "cam_in_SNOWHICE": {
+        "long_name": "Snow depth over ice",
+        "units": "m"
+    },
+    "cam_in_LANDFRAC": {
+        "long_name": "Land areal fraction",
+        "units": ""
+    },
+    "cam_in_ICEFRAC": {
+        "long_name": "Sea-ice areal fraction",
+        "units": ""
+    },
+    "cam_out_NETSW": {
+        "long_name": "Net shortwave flux at surface",
+        "units": "W/m2"
+    },
+    "cam_out_FLWDS": {
+        "long_name": "Downward longwave flux at surface",
+        "units": "W/m2"
+    },
+    "cam_out_PRECSC": {
+        "long_name": "Snow rate (liquid water equivalent)",
+        "units": "m/s"
+    },
+    "cam_out_PRECC": {
+        "long_name": "Rain rate",
+        "units": "m/s"
+    },
+    "cam_out_SOLS": {
+        "long_name": "Downward visible direct solar flux to surface",
+        "units": "W/m2"
+    },
+    "cam_out_SOLL": {
+        "long_name": "Downward near-infrared direct solar flux to surface",
+        "units": "W/m2"
+    },
+    "cam_out_SOLSD": {
+        "long_name": "Downward visible diffuse solar flux to surface",
+        "units": "W/m2"
+    },
+    "cam_out_SOLLD": {
+        "long_name": "Downward near-infrared diffuse solar flux to surface",
+        "units": "W/m2"
+    }
+}
