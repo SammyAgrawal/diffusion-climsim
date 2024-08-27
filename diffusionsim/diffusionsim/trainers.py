@@ -13,8 +13,6 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
 import torch.distributed as dist
-
-from .climsim_training_utils import fetch_config, TrainingConfig
 import xarray as xr
 from dataclasses import dataclass, asdict, field
 
@@ -250,3 +248,77 @@ class VAETrainer(AbstractTrainer):
         if(epoch % 2 == 0):
             self._run_eval_epoch(epoch)
         print(f"Eval Loss on epoch {epoch}: [mse : {self.eval_losses['mse'][-1]}, kl {self.eval_losses['kl'][-1]}]")
+
+
+
+class DiffusionTrainer(AbstractTrainer):
+    def __init__(self, model, datasets, loss_fn, tconfig, mconfig, exp_id, rank=0):
+        super().__init__(model, datasets, loss_fn, tconfig, exp_id, rank)
+        self.model_config = mconfig
+    
+    def _run_batch(self, batch, phase='train'):
+        noisy_images, timesteps, noises = batch
+        noise_pred = self.model(noisy_images, timesteps.flatten()).sample
+        loss = self.loss_fn(noise_pred, noises)
+        if(phase == 'train'):
+            self.optimizer.zero_grad()
+            loss.backward()
+            if(self.training_config.clip_gradients):
+                total_grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.optimizer.step()
+    
+        return(loss)
+
+    def _run_epoch(self, epoch, phase='train'):
+        self.model.train(phase=='train')
+        total_loss = 0
+        with torch.set_grad_enabled(phase=='train'):
+            if(self.distributed):
+                dataloader.sampler.set_epoch(epoch)
+            for step, clean_batch in enumerate(self.dataloaders['train']):
+                batch = self.datasets['train'].noise_batch(clean_batch)
+                loss = self._run_batch(batch, phase)
+                total_loss += loss.item()
+            
+        return(total_loss / len(self.dataloaders['train']))
+    
+    def _log_epoch_info(self, epoch_num, loss):
+        self.losses['train'].append(loss)
+        if(epoch_num % self.training_config.epoch_logging_interval == 0):
+            print(f"epoch {epoch_num}: [{loss}]")
+        if(loss < self.best_loss and self.training_config.save_best_epoch):
+            self.best_loss = loss
+            self._save_checkpoint(epoch_num, cid='best')
+        
+        
+    def train(self, num_epochs=0, log=True, trial=''):
+        self.setup_training(num_epochs)
+        print(f"Training for {self.training_config.num_epochs} epochs")
+        for epoch in range(self.training_config.num_epochs):
+            loss = self._run_epoch(epoch)
+            self._log_epoch_info(epoch, loss)
+        self.finish_training(log, trial)
+    
+    def setup_training(self, num_epochs):
+        super().setup_training(num_epochs)
+        if(num_epochs): # passed in number of training epochs is non zero
+            self.training_config.num_epochs = num_epochs
+        for phase in self.phases:
+            self.losses[phase] = []
+        self.best_loss = 10
+
+    def finish_training(self, log, trial):
+        print("Finished training")
+        if(log):
+            log_dict = {
+                "training_config" : asdict(self.training_config), 
+                "model_config" : asdict(self.model_config)
+            }
+            for phase in self.phases:
+                log_dict[f'{phase}_loss'] = self.losses[phase]
+            #if(self.training_config.log_gradients):
+            #    log_dict['gradients'] = self.gradients
+
+            with open(os.path.join(self.dirs['log_dir'], f"trial_{trial}_log.json"), 'w') as f:
+                json.dump(log_dict, f)
+            return(log_dict)

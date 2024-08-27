@@ -29,7 +29,7 @@ class TrainingConfig:
     optimizer: str = 'adam'
     lr_scheduler: str = None
     learning_rate: float = 1e-4
-    beta: int = 0.2
+    beta: float = 0.2
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
     lr_warmup_steps = 500
@@ -78,6 +78,7 @@ class SchedulerParams:
 @dataclass
 class ModelConfig:
     model_type: str = "diffusion"
+    data_vars: str = "v1"
     scheduler_type: str = 'ddpm'
     unet: UNetParams = field(default_factory=lambda: UNetParams())
     scheduler: SchedulerParams = field(default_factory=lambda:SchedulerParams())
@@ -94,10 +95,30 @@ class ModelConfig:
 
 
 
-def fetch_config(fpath):
-    with open(fpath, 'r') as f:
-        config_dict = json.load(f)
-    return(TrainingConfig(**config_dict))
+def load_config(fname, expid, base_dir="experiments/"):
+    if 'json' not in fname:
+        fname += ".json"
+    with open(os.path.join(base_dir, expid, fname), 'r') as f:
+        cdict = json.load(f)
+    try:
+        tconfig = TrainingConfig(**cdict['training_config'])
+    except:
+        print("mismatch between tconfig and class")
+        tconfig = cdict['training_config']
+    try:
+        mconfig = ModelConfig(**cdict['model_config'])
+    except:
+        print("mismatch between mconfig and class")
+        mconfig = cdict['model_config']
+
+    return(tconfig, mconfig)
+
+def fetch_model_from_ckpt(ckpt_fname, log_fname, expid, base_dir="experiments/"):
+    tconfig, mconfig = load_config(log_fname, expid, base_dir)
+    model = load_model(mconfig)
+    cpath = os.path.join(base_dir, expid, ckpt_fname)
+    model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu')))
+    return(model)
 
 
 os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
@@ -130,41 +151,3 @@ def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
     Y = Y_norm / output_scale
     return(X,Y)
 
-def process_climsim_old(ds_input, ds_output, data_vars='v1', downsample=True, chunks=True):
-    if(type(data_vars) == str):
-        input_vars, output_vars = load_vars(data_vars)
-    else:
-        input_vars, output_vars = data_vars # (assume tuple)
-    
-    for var in output_vars:
-        if('ptend' in var and var not in ds_output.data_vars): # each timestep is 20 minutes which corresponds to 1200 seconds
-            v = var.replace("ptend", "state")
-            ds_output[var] = (ds_output[v] - ds_input[v]) / 1200
-    
-    if downsample: # might as well do first
-        N_samples = len(ds_input.sample)
-        ds_input = ds_input.isel(sample = np.arange(36,N_samples,72)) #  every 1 day
-        ds_output = ds_output.isel(sample = np.arange(36,N_samples,72))
-
-    # reformat, add time dimension
-    time = pd.DataFrame({"ymd":ds_input.ymd, "tod":ds_input.tod})
-    ds_input = ds_input[input_vars]
-    ds_output = ds_output[output_vars]
-    f = lambda ymd, tod : cftime.DatetimeNoLeap(ymd//10000, ymd%10000//100, ymd%10000%100, tod // 3600, tod%3600 // 60)
-    time = list(time.apply(lambda x: f(x.ymd, x.tod), axis=1))
-    print(f"Computed time {len(time)}")
-    # Load spatial latlon info
-    mapper = fs.get_mapper("gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.grid-info.zarr")
-    ds_grid = xr.open_dataset(mapper, engine='zarr')
-    lat = ds_grid.lat.values.round(2) 
-    lon = ds_grid.lon.values.round(2)  
-    lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
-    def add_timelatlon(ds):
-        ds['sample'] = time
-        ds = ds.rename({'sample':'time'})
-        ds = ds.assign_coords({'ncol' : ds.ncol})
-        ds['lat'] = (('ncol'),lat.T)
-        ds['lon'] = (('ncol'),lon.T)
-        ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
-        return(ds)
-    return(add_timelatlon(ds_input), add_timelatlon(ds_output))

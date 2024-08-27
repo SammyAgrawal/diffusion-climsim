@@ -1,0 +1,1590 @@
+{"event": "run start", "time": 1724724336.521684, "pid": 1541, "data_params": "{'batch_size': 1, 'shuffle': False, 'num_workers': 8, 'multiprocessing_context': 'forkserver', 'prefetch_factor': 6, 'persistent_workers': True}", "locals": {"num_epochs": 3, "num_batches": 100, "batch_size": 64, "shuffle": false, "num_workers": 8, "prefetch_factor": 6, "persistent_workers": true, "pin_memory": null, "train_step_time": 0.6, "dask_threads": null, "data_params": {"batch_size": 1, "shuffle": false, "num_workers": 8, "multiprocessing_context": "forkserver", "prefetch_factor": 6, "persistent_workers": true}}}
+{"event": "setup start", "time": 1724724336.52173, "pid": 1541, "data_params": "{'batch_size': 1, 'shuffle': False, 'num_workers': 8, 'multiprocessing_context': 'forkserver', 'prefetch_factor': 6, 'persistent_workers': True}"}
+{"event": "get-batch start", "time": 1724724366.038683, "pid": 1630, "batch_idx": 4}
+{"event": "get-batch end", "time": 1724724370.3847332, "pid": 1630, "batch_idx": 4, "duration": 4.346044540405273}
+{"event": "get-batch start", "time": 1724724370.3870006, "pid": 1630, "batch_idx": 12}
+{"event": "get-batch end", "time": 1724724376.346142, "pid": 1630, "batch_idx": 12, "duration": 5.959137916564941}
+{"event": "get-batch start", "time": 1724724376.3671458, "pid": 1630, "batch_idx": 20}
+{"event": "get-batch end", "time": 1724724379.6831915, "pid": 1630, "batch_idx": 20, "duration": 3.31604266166687}
+{"event": "get-batch start", "time": 1724724379.696154, "pid": 1630, "batch_idx": 28}
+{"event": "get-batch end", "time": 1724724383.3826683, "pid": 1630, "batch_idx": 28, "duration": 3.6865100860595703}
+{"event": "get-batch start", "time": 1724724383.397246, "pid": 1630, "batch_idx": 36}
+{"event": "get-batch end", "time": 1724724386.630975, "pid": 1630, "batch_idx": 36, "duration": 3.23372483253479}
+{"event": "get-batch start", "time": 1724724386.6802142, "pid": 1630, "batch_idx": 44}
+{"event": "get-batch end", "time": 1724724389.913912, "pid": 1630, "batch_idx": 44, "duration": 3.233693838119507}
+{"event": "get-batch start", "time": 1724724392.7500434, "pid": 1630, "batch_idx": 4}
+{"event": "get-batch end", "time": 1724724395.9251318, "pid": 1630, "batch_idx": 4, "duration": 3.1750853061676025}
+{"event": "get-batch start", "time": 1724724395.9258687, "pid": 1630, "batch_idx": 12}
+{"event": "get-batch end", "time": 1724724399.3701487, "pid": 1630, "batch_idx": 12, "duration": 3.444276809692383}
+{"event": "get-batch start", "time": 1724724399.3831613, "pid": 1630, "batch_idx": 20}
+{"event": "get-batch end", "time": 1724724402.7307267, "pid": 1630, "batch_idx": 20, "duration": 3.347561836242676}
+{"event": "get-batch start", "time": 1724724402.7542696, "pid": 1630, "batch_idx": 28}
+{"event": "get-batch end", "time": 1724724406.357359, "pid": 1630, "batch_idx": 28, "duration": 3.603086233139038}
+{"event": "get-batch start", "time": 1724724406.3582354, "pid": 1630, "batch_idx": 36}
+{"event": "get-batch end", "time": 1724724409.5815544, "pid": 1630, "batch_idx": 36, "duration": 3.2233152389526367}
+{"event": "get-batch start", "time": 1724724409.5961561, "pid": 1630, "batch_idx": 44}
+{"event": "get-batch end", "time": 1724724412.9149754, "pid": 1630, "batch_idx": 44, "duration": 3.318815231323242}
+{"event": "get-batch start", "time": 1724724412.9334676, "pid": 1630, "batch_idx": 52}
+{"event": "get-batch end", "time": 1724724416.7345428, "pid": 1630, "batch_idx": 52, "duration": 3.801071882247925}
+{"event": "get-batch start", "time": 1724724416.7471423, "pid": 1630, "batch_idx": 60}
+{"event": "get-batch end", "time": 1724724419.8752985, "pid": 1630, "batch_idx": 60, "duration": 3.1281533241271973}
+{"event": "get-batch start", "time": 1724724419.8756096, "pid": 1630, "batch_idx": 68}
+{"event": "get-batch end", "time": 1724724423.408523, "pid": 1630, "batch_idx": 68, "duration": 3.532910108566284}
+{"event": "get-batch start", "time": 1724724423.4212112, "pid": 1630, "batch_idx": 76}
+{"event": "get-batch end", "time": 1724724427.2927582, "pid": 1630, "batch_idx": 76, "duration": 3.8715438842773438}
+{"event": "get-batch start", "time": 1724724427.2939343, "pid": 1630, "batch_idx": 84}
+{"event": "get-batch end", "time": 1724724431.168097, "pid": 1630, "batch_idx": 84, "duration": 3.874159336090088}
+{"event": "get-batch start", "time": 1724724431.181152, "pid": 1630, "batch_idx": 92}
+{"event": "get-batch end", "time": 1724724434.4834254, "pid": 1630, "batch_idx": 92, "duration": 3.3022701740264893}
+{"event": "get-batch start", "time": 1724724434.4837396, "pid": 1630, "batch_idx": 100}
+{"event": "get-batch end", "time": 1724724437.3483374, "pid": 1630, "batch_idx": 100, "duration": 2.864593982696533}
+{"event": "get-batch start", "time": 1724724437.357398, "pid": 1630, "batch_idx": 108}
+{"event": "get-batch end", "time": 1724724440.8243856, "pid": 1630, "batch_idx": 108, "duration": 3.466984272003174}
+{"event": "get-batch start", "time": 1724724440.8371716, "pid": 1630, "batch_idx": 116}
+{"event": "get-batch end", "time": 1724724444.142802, "pid": 1630, "batch_idx": 116, "duration": 3.30562686920166}
+{"event": "get-batch start", "time": 1724724444.15718, "pid": 1630, "batch_idx": 124}
+{"event": "get-batch end", "time": 1724724447.3004727, "pid": 1630, "batch_idx": 124, "duration": 3.1432900428771973}
+{"event": "get-batch start", "time": 1724724447.63611, "pid": 1630, "batch_idx": 132}
+{"event": "get-batch end", "time": 1724724451.0541644, "pid": 1630, "batch_idx": 132, "duration": 3.4180502891540527}
+{"event": "get-batch start", "time": 1724724452.524628, "pid": 1630, "batch_idx": 140}
+{"event": "get-batch end", "time": 1724724455.5489068, "pid": 1630, "batch_idx": 140, "duration": 3.0242760181427}
+{"event": "get-batch start", "time": 1724724465.8731213, "pid": 1630, "batch_idx": 4}
+{"event": "get-batch end", "time": 1724724469.3554585, "pid": 1630, "batch_idx": 4, "duration": 3.4823336601257324}
+{"event": "get-batch start", "time": 1724724469.3557618, "pid": 1630, "batch_idx": 12}
+{"event": "get-batch end", "time": 1724724472.350968, "pid": 1630, "batch_idx": 12, "duration": 2.995201587677002}
+{"event": "get-batch start", "time": 1724724472.3512945, "pid": 1630, "batch_idx": 20}
+{"event": "get-batch end", "time": 1724724476.0472195, "pid": 1630, "batch_idx": 20, "duration": 3.6959216594696045}
+{"event": "get-batch start", "time": 1724724476.076181, "pid": 1630, "batch_idx": 28}
+{"event": "get-batch end", "time": 1724724479.3054314, "pid": 1630, "batch_idx": 28, "duration": 3.2292466163635254}
+{"event": "get-batch start", "time": 1724724479.3211377, "pid": 1630, "batch_idx": 36}
+{"event": "get-batch end", "time": 1724724482.6733108, "pid": 1630, "batch_idx": 36, "duration": 3.35217022895813}
+{"event": "get-batch start", "time": 1724724482.673624, "pid": 1630, "batch_idx": 44}
+{"event": "get-batch end", "time": 1724724486.1429455, "pid": 1630, "batch_idx": 44, "duration": 3.469317674636841}
+{"event": "get-batch start", "time": 1724724486.1561549, "pid": 1630, "batch_idx": 52}
+{"event": "get-batch end", "time": 1724724489.286608, "pid": 1630, "batch_idx": 52, "duration": 3.1304500102996826}
+{"event": "get-batch start", "time": 1724724489.2929645, "pid": 1630, "batch_idx": 60}
+{"event": "get-batch end", "time": 1724724492.7335672, "pid": 1630, "batch_idx": 60, "duration": 3.440599203109741}
+{"event": "get-batch start", "time": 1724724492.746145, "pid": 1630, "batch_idx": 68}
+{"event": "get-batch end", "time": 1724724495.760492, "pid": 1630, "batch_idx": 68, "duration": 3.0143442153930664}
+{"event": "get-batch start", "time": 1724724495.7839754, "pid": 1630, "batch_idx": 76}
+{"event": "get-batch end", "time": 1724724499.0289657, "pid": 1630, "batch_idx": 76, "duration": 3.2449865341186523}
+{"event": "get-batch start", "time": 1724724499.049412, "pid": 1630, "batch_idx": 84}
+{"event": "get-batch end", "time": 1724724502.3187628, "pid": 1630, "batch_idx": 84, "duration": 3.269347906112671}
+{"event": "get-batch start", "time": 1724724502.3197062, "pid": 1630, "batch_idx": 92}
+{"event": "get-batch end", "time": 1724724505.641869, "pid": 1630, "batch_idx": 92, "duration": 3.322158098220825}
+{"event": "get-batch start", "time": 1724724505.670426, "pid": 1630, "batch_idx": 100}
+{"event": "get-batch end", "time": 1724724508.9546087, "pid": 1630, "batch_idx": 100, "duration": 3.284179449081421}
+{"event": "get-batch start", "time": 1724724508.9701643, "pid": 1630, "batch_idx": 108}
+{"event": "get-batch end", "time": 1724724512.659344, "pid": 1630, "batch_idx": 108, "duration": 3.689176321029663}
+{"event": "get-batch start", "time": 1724724512.660166, "pid": 1630, "batch_idx": 116}
+{"event": "get-batch end", "time": 1724724515.7249203, "pid": 1630, "batch_idx": 116, "duration": 3.0647506713867188}
+{"event": "get-batch start", "time": 1724724515.738137, "pid": 1630, "batch_idx": 124}
+{"event": "get-batch end", "time": 1724724519.3476353, "pid": 1630, "batch_idx": 124, "duration": 3.60949444770813}
+{"event": "get-batch start", "time": 1724724520.5005276, "pid": 1630, "batch_idx": 132}
+{"event": "get-batch end", "time": 1724724523.8212209, "pid": 1630, "batch_idx": 132, "duration": 3.3206896781921387}
+{"event": "get-batch start", "time": 1724724525.3492167, "pid": 1630, "batch_idx": 140}
+{"event": "get-batch end", "time": 1724724528.1704552, "pid": 1630, "batch_idx": 140, "duration": 2.821234941482544}
+{"event": "get-batch start", "time": 1724724538.6257217, "pid": 1630, "batch_idx": 4}
+{"event": "get-batch end", "time": 1724724541.682579, "pid": 1630, "batch_idx": 4, "duration": 3.056852102279663}
+{"event": "get-batch start", "time": 1724724541.6951702, "pid": 1630, "batch_idx": 12}
+{"event": "get-batch end", "time": 1724724544.8100505, "pid": 1630, "batch_idx": 12, "duration": 3.1148765087127686}
+{"event": "get-batch start", "time": 1724724544.8412335, "pid": 1630, "batch_idx": 20}
+{"event": "get-batch end", "time": 1724724548.196461, "pid": 1630, "batch_idx": 20, "duration": 3.355224847793579}
+{"event": "get-batch start", "time": 1724724548.2091122, "pid": 1630, "batch_idx": 28}
+{"event": "get-batch end", "time": 1724724551.514274, "pid": 1630, "batch_idx": 28, "duration": 3.3051583766937256}
+{"event": "get-batch start", "time": 1724724551.5150983, "pid": 1630, "batch_idx": 36}
+{"event": "get-batch end", "time": 1724724554.9081597, "pid": 1630, "batch_idx": 36, "duration": 3.3930578231811523}
+{"event": "get-batch start", "time": 1724724554.9191506, "pid": 1630, "batch_idx": 44}
+{"event": "get-batch end", "time": 1724724558.1390307, "pid": 1630, "batch_idx": 44, "duration": 3.219876527786255}
+{"event": "get-batch start", "time": 1724724558.1521387, "pid": 1630, "batch_idx": 52}
+{"event": "get-batch end", "time": 1724724560.8783653, "pid": 1630, "batch_idx": 52, "duration": 2.726222276687622}
+{"event": "get-batch start", "time": 1724724560.8887043, "pid": 1630, "batch_idx": 60}
+{"event": "get-batch end", "time": 1724724564.8544528, "pid": 1630, "batch_idx": 60, "duration": 3.9657442569732666}
+{"event": "get-batch start", "time": 1724724564.8671672, "pid": 1630, "batch_idx": 68}
+{"event": "get-batch end", "time": 1724724568.4037492, "pid": 1630, "batch_idx": 68, "duration": 3.53657865524292}
+{"event": "get-batch start", "time": 1724724568.4181786, "pid": 1630, "batch_idx": 76}
+{"event": "get-batch end", "time": 1724724571.6249588, "pid": 1630, "batch_idx": 76, "duration": 3.2067747116088867}
+{"event": "get-batch start", "time": 1724724571.6253216, "pid": 1630, "batch_idx": 84}
+{"event": "get-batch end", "time": 1724724575.0558856, "pid": 1630, "batch_idx": 84, "duration": 3.4305436611175537}
+{"event": "get-batch start", "time": 1724724575.079377, "pid": 1630, "batch_idx": 92}
+{"event": "get-batch end", "time": 1724724578.3460648, "pid": 1630, "batch_idx": 92, "duration": 3.266683578491211}
+{"event": "get-batch start", "time": 1724724578.363278, "pid": 1630, "batch_idx": 100}
+{"event": "get-batch end", "time": 1724724581.9382699, "pid": 1630, "batch_idx": 100, "duration": 3.5749878883361816}
+{"event": "get-batch start", "time": 1724724581.9508579, "pid": 1630, "batch_idx": 108}
+{"event": "get-batch end", "time": 1724724585.005911, "pid": 1630, "batch_idx": 108, "duration": 3.055048704147339}
+{"event": "get-batch start", "time": 1724724585.019153, "pid": 1630, "batch_idx": 116}
+{"event": "get-batch end", "time": 1724724588.2034068, "pid": 1630, "batch_idx": 116, "duration": 3.184250831604004}
+{"event": "get-batch start", "time": 1724724588.694541, "pid": 1630, "batch_idx": 124}
+{"event": "get-batch end", "time": 1724724591.739432, "pid": 1630, "batch_idx": 124, "duration": 3.0448861122131348}
+{"event": "get-batch start", "time": 1724724593.6707046, "pid": 1630, "batch_idx": 132}
+{"event": "get-batch end", "time": 1724724596.7319746, "pid": 1630, "batch_idx": 132, "duration": 3.061267137527466}
+{"event": "get-batch start", "time": 1724724598.543757, "pid": 1630, "batch_idx": 140}
+{"event": "get-batch end", "time": 1724724601.6308463, "pid": 1630, "batch_idx": 140, "duration": 3.0870871543884277}
+{"event": "get-batch start", "time": 1724724366.0942118, "pid": 1685, "batch_idx": 7}
+{"event": "get-batch end", "time": 1724724371.3716712, "pid": 1685, "batch_idx": 7, "duration": 5.27745509147644}
+{"event": "get-batch start", "time": 1724724371.3743248, "pid": 1685, "batch_idx": 15}
+{"event": "get-batch end", "time": 1724724376.514463, "pid": 1685, "batch_idx": 15, "duration": 5.140134334564209}
+{"event": "get-batch start", "time": 1724724376.5322104, "pid": 1685, "batch_idx": 23}
+{"event": "get-batch end", "time": 1724724382.4601645, "pid": 1685, "batch_idx": 23, "duration": 5.927951335906982}
+{"event": "get-batch start", "time": 1724724382.4751678, "pid": 1685, "batch_idx": 31}
+{"event": "get-batch end", "time": 1724724385.9139235, "pid": 1685, "batch_idx": 31, "duration": 3.4387524127960205}
+{"event": "get-batch start", "time": 1724724385.9277894, "pid": 1685, "batch_idx": 39}
+{"event": "get-batch end", "time": 1724724389.638426, "pid": 1685, "batch_idx": 39, "duration": 3.710632562637329}
+{"event": "get-batch start", "time": 1724724389.6511457, "pid": 1685, "batch_idx": 47}
+{"event": "get-batch end", "time": 1724724392.7319121, "pid": 1685, "batch_idx": 47, "duration": 3.0807642936706543}
+{"event": "get-batch start", "time": 1724724392.7492058, "pid": 1685, "batch_idx": 7}
+{"event": "get-batch end", "time": 1724724396.058189, "pid": 1685, "batch_idx": 7, "duration": 3.3089802265167236}
+{"event": "get-batch start", "time": 1724724396.0584962, "pid": 1685, "batch_idx": 15}
+{"event": "get-batch end", "time": 1724724399.424598, "pid": 1685, "batch_idx": 15, "duration": 3.3660988807678223}
+{"event": "get-batch start", "time": 1724724399.4249222, "pid": 1685, "batch_idx": 23}
+{"event": "get-batch end", "time": 1724724405.8896732, "pid": 1685, "batch_idx": 23, "duration": 6.464747428894043}
+{"event": "get-batch start", "time": 1724724405.9071674, "pid": 1685, "batch_idx": 31}
+{"event": "get-batch end", "time": 1724724409.023912, "pid": 1685, "batch_idx": 31, "duration": 3.116741180419922}
+{"event": "get-batch start", "time": 1724724409.0371428, "pid": 1685, "batch_idx": 39}
+{"event": "get-batch end", "time": 1724724412.6157238, "pid": 1685, "batch_idx": 39, "duration": 3.5785775184631348}
+{"event": "get-batch start", "time": 1724724412.6341574, "pid": 1685, "batch_idx": 47}
+{"event": "get-batch end", "time": 1724724419.0549457, "pid": 1685, "batch_idx": 47, "duration": 6.4207844734191895}
+{"event": "get-batch start", "time": 1724724419.0721676, "pid": 1685, "batch_idx": 55}
+{"event": "get-batch end", "time": 1724724422.8656802, "pid": 1685, "batch_idx": 55, "duration": 3.7935097217559814}
+{"event": "get-batch start", "time": 1724724422.8831606, "pid": 1685, "batch_idx": 63}
+{"event": "get-batch end", "time": 1724724425.8502052, "pid": 1685, "batch_idx": 63, "duration": 2.9670417308807373}
+{"event": "get-batch start", "time": 1724724425.8672216, "pid": 1685, "batch_idx": 71}
+{"event": "get-batch end", "time": 1724724429.68625, "pid": 1685, "batch_idx": 71, "duration": 3.8190248012542725}
+{"event": "get-batch start", "time": 1724724429.7047503, "pid": 1685, "batch_idx": 79}
+{"event": "get-batch end", "time": 1724724433.1717134, "pid": 1685, "batch_idx": 79, "duration": 3.4669597148895264}
+{"event": "get-batch start", "time": 1724724433.1811585, "pid": 1685, "batch_idx": 87}
+{"event": "get-batch end", "time": 1724724436.5813258, "pid": 1685, "batch_idx": 87, "duration": 3.4001641273498535}
+{"event": "get-batch start", "time": 1724724436.5939655, "pid": 1685, "batch_idx": 95}
+{"event": "get-batch end", "time": 1724724440.3033955, "pid": 1685, "batch_idx": 95, "duration": 3.7094273567199707}
+{"event": "get-batch start", "time": 1724724440.3161488, "pid": 1685, "batch_idx": 103}
+{"event": "get-batch end", "time": 1724724443.5854573, "pid": 1685, "batch_idx": 103, "duration": 3.269305944442749}
+{"event": "get-batch start", "time": 1724724443.5909655, "pid": 1685, "batch_idx": 111}
+{"event": "get-batch end", "time": 1724724447.3647854, "pid": 1685, "batch_idx": 111, "duration": 3.7738165855407715}
+{"event": "get-batch start", "time": 1724724447.365591, "pid": 1685, "batch_idx": 119}
+{"event": "get-batch end", "time": 1724724450.5872846, "pid": 1685, "batch_idx": 119, "duration": 3.221688985824585}
+{"event": "get-batch start", "time": 1724724450.6011837, "pid": 1685, "batch_idx": 127}
+{"event": "get-batch end", "time": 1724724453.402529, "pid": 1685, "batch_idx": 127, "duration": 2.801342487335205}
+{"event": "get-batch start", "time": 1724724453.4151857, "pid": 1685, "batch_idx": 135}
+{"event": "get-batch end", "time": 1724724456.1290069, "pid": 1685, "batch_idx": 135, "duration": 2.7138173580169678}
+{"event": "get-batch start", "time": 1724724456.1293454, "pid": 1685, "batch_idx": 143}
+{"event": "get-batch end", "time": 1724724458.894319, "pid": 1685, "batch_idx": 143, "duration": 2.764969825744629}
+{"event": "get-batch start", "time": 1724724465.872619, "pid": 1685, "batch_idx": 7}
+{"event": "get-batch end", "time": 1724724469.6304889, "pid": 1685, "batch_idx": 7, "duration": 3.757866382598877}
+{"event": "get-batch start", "time": 1724724469.6313956, "pid": 1685, "batch_idx": 15}
+{"event": "get-batch end", "time": 1724724473.345149, "pid": 1685, "batch_idx": 15, "duration": 3.7137503623962402}
+{"event": "get-batch start", "time": 1724724473.3460808, "pid": 1685, "batch_idx": 23}
+{"event": "get-batch end", "time": 1724724479.0986648, "pid": 1685, "batch_idx": 23, "duration": 5.752580642700195}
+{"event": "get-batch start", "time": 1724724479.1111643, "pid": 1685, "batch_idx": 31}
+{"event": "get-batch end", "time": 1724724482.7677221, "pid": 1685, "batch_idx": 31, "duration": 3.6565542221069336}
+{"event": "get-batch start", "time": 1724724482.786161, "pid": 1685, "batch_idx": 39}
+{"event": "get-batch end", "time": 1724724486.164515, "pid": 1685, "batch_idx": 39, "duration": 3.3783507347106934}
+{"event": "get-batch start", "time": 1724724486.1831684, "pid": 1685, "batch_idx": 47}
+{"event": "get-batch end", "time": 1724724492.4406526, "pid": 1685, "batch_idx": 47, "duration": 6.257481575012207}
+{"event": "get-batch start", "time": 1724724492.454152, "pid": 1685, "batch_idx": 55}
+{"event": "get-batch end", "time": 1724724496.1778657, "pid": 1685, "batch_idx": 55, "duration": 3.723710060119629}
+{"event": "get-batch start", "time": 1724724496.1912274, "pid": 1685, "batch_idx": 63}
+{"event": "get-batch end", "time": 1724724499.3929799, "pid": 1685, "batch_idx": 63, "duration": 3.201749563217163}
+{"event": "get-batch start", "time": 1724724499.4051194, "pid": 1685, "batch_idx": 71}
+{"event": "get-batch end", "time": 1724724503.5083256, "pid": 1685, "batch_idx": 71, "duration": 4.103203296661377}
+{"event": "get-batch start", "time": 1724724503.5307307, "pid": 1685, "batch_idx": 79}
+{"event": "get-batch end", "time": 1724724506.7525637, "pid": 1685, "batch_idx": 79, "duration": 3.221830129623413}
+{"event": "get-batch start", "time": 1724724506.771153, "pid": 1685, "batch_idx": 87}
+{"event": "get-batch end", "time": 1724724509.7198105, "pid": 1685, "batch_idx": 87, "duration": 2.9486541748046875}
+{"event": "get-batch start", "time": 1724724509.738086, "pid": 1685, "batch_idx": 95}
+{"event": "get-batch end", "time": 1724724512.82988, "pid": 1685, "batch_idx": 95, "duration": 3.0917904376983643}
+{"event": "get-batch start", "time": 1724724512.8302968, "pid": 1685, "batch_idx": 103}
+{"event": "get-batch end", "time": 1724724516.531087, "pid": 1685, "batch_idx": 103, "duration": 3.700787305831909}
+{"event": "get-batch start", "time": 1724724516.5314262, "pid": 1685, "batch_idx": 111}
+{"event": "get-batch end", "time": 1724724519.6177642, "pid": 1685, "batch_idx": 111, "duration": 3.0863349437713623}
+{"event": "get-batch start", "time": 1724724519.618605, "pid": 1685, "batch_idx": 119}
+{"event": "get-batch end", "time": 1724724522.8438668, "pid": 1685, "batch_idx": 119, "duration": 3.2252583503723145}
+{"event": "get-batch start", "time": 1724724522.8571506, "pid": 1685, "batch_idx": 127}
+{"event": "get-batch end", "time": 1724724525.651242, "pid": 1685, "batch_idx": 127, "duration": 2.794088125228882}
+{"event": "get-batch start", "time": 1724724525.6521099, "pid": 1685, "batch_idx": 135}
+{"event": "get-batch end", "time": 1724724528.519539, "pid": 1685, "batch_idx": 135, "duration": 2.867427110671997}
+{"event": "get-batch start", "time": 1724724528.5201933, "pid": 1685, "batch_idx": 143}
+{"event": "get-batch end", "time": 1724724531.585096, "pid": 1685, "batch_idx": 143, "duration": 3.0648996829986572}
+{"event": "get-batch start", "time": 1724724538.6260517, "pid": 1685, "batch_idx": 7}
+{"event": "get-batch end", "time": 1724724541.7846944, "pid": 1685, "batch_idx": 7, "duration": 3.1586389541625977}
+{"event": "get-batch start", "time": 1724724541.8045135, "pid": 1685, "batch_idx": 15}
+{"event": "get-batch end", "time": 1724724546.0123656, "pid": 1685, "batch_idx": 15, "duration": 4.207849025726318}
+{"event": "get-batch start", "time": 1724724546.0271482, "pid": 1685, "batch_idx": 23}
+{"event": "get-batch end", "time": 1724724551.3305407, "pid": 1685, "batch_idx": 23, "duration": 5.303388595581055}
+{"event": "get-batch start", "time": 1724724551.3464916, "pid": 1685, "batch_idx": 31}
+{"event": "get-batch end", "time": 1724724554.994567, "pid": 1685, "batch_idx": 31, "duration": 3.6480724811553955}
+{"event": "get-batch start", "time": 1724724555.0135868, "pid": 1685, "batch_idx": 39}
+{"event": "get-batch end", "time": 1724724558.709325, "pid": 1685, "batch_idx": 39, "duration": 3.695735216140747}
+{"event": "get-batch start", "time": 1724724558.72725, "pid": 1685, "batch_idx": 47}
+{"event": "get-batch end", "time": 1724724565.1972642, "pid": 1685, "batch_idx": 47, "duration": 6.47001051902771}
+{"event": "get-batch start", "time": 1724724565.2153587, "pid": 1685, "batch_idx": 55}
+{"event": "get-batch end", "time": 1724724568.8174703, "pid": 1685, "batch_idx": 55, "duration": 3.6021080017089844}
+{"event": "get-batch start", "time": 1724724568.8369958, "pid": 1685, "batch_idx": 63}
+{"event": "get-batch end", "time": 1724724572.5016618, "pid": 1685, "batch_idx": 63, "duration": 3.6646623611450195}
+{"event": "get-batch start", "time": 1724724572.5211155, "pid": 1685, "batch_idx": 71}
+{"event": "get-batch end", "time": 1724724575.7017188, "pid": 1685, "batch_idx": 71, "duration": 3.1805996894836426}
+{"event": "get-batch start", "time": 1724724575.7161999, "pid": 1685, "batch_idx": 79}
+{"event": "get-batch end", "time": 1724724579.1986895, "pid": 1685, "batch_idx": 79, "duration": 3.4824862480163574}
+{"event": "get-batch start", "time": 1724724579.2114787, "pid": 1685, "batch_idx": 87}
+{"event": "get-batch end", "time": 1724724582.3914683, "pid": 1685, "batch_idx": 87, "duration": 3.1799867153167725}
+{"event": "get-batch start", "time": 1724724582.4106302, "pid": 1685, "batch_idx": 95}
+{"event": "get-batch end", "time": 1724724585.9794772, "pid": 1685, "batch_idx": 95, "duration": 3.5688436031341553}
+{"event": "get-batch start", "time": 1724724585.9921918, "pid": 1685, "batch_idx": 103}
+{"event": "get-batch end", "time": 1724724589.8314044, "pid": 1685, "batch_idx": 103, "duration": 3.8391945362091064}
+{"event": "get-batch start", "time": 1724724589.83174, "pid": 1685, "batch_idx": 111}
+{"event": "get-batch end", "time": 1724724592.9223008, "pid": 1685, "batch_idx": 111, "duration": 3.090557336807251}
+{"event": "get-batch start", "time": 1724724592.938264, "pid": 1685, "batch_idx": 119}
+{"event": "get-batch end", "time": 1724724597.1930234, "pid": 1685, "batch_idx": 119, "duration": 4.254756927490234}
+{"event": "get-batch start", "time": 1724724597.1936111, "pid": 1685, "batch_idx": 127}
+{"event": "get-batch end", "time": 1724724600.5974398, "pid": 1685, "batch_idx": 127, "duration": 3.4038245677948}
+{"event": "get-batch start", "time": 1724724600.6031668, "pid": 1685, "batch_idx": 135}
+{"event": "get-batch end", "time": 1724724603.5997207, "pid": 1685, "batch_idx": 135, "duration": 2.9965500831604004}
+{"event": "get-batch start", "time": 1724724366.0370858, "pid": 1575, "batch_idx": 1}
+{"event": "get-batch end", "time": 1724724371.433255, "pid": 1575, "batch_idx": 1, "duration": 5.396165132522583}
+{"event": "get-batch start", "time": 1724724371.4431078, "pid": 1575, "batch_idx": 9}
+{"event": "get-batch end", "time": 1724724376.3301506, "pid": 1575, "batch_idx": 9, "duration": 4.8870391845703125}
+{"event": "get-batch start", "time": 1724724376.3447883, "pid": 1575, "batch_idx": 17}
+{"event": "get-batch end", "time": 1724724379.566667, "pid": 1575, "batch_idx": 17, "duration": 3.2218739986419678}
+{"event": "get-batch start", "time": 1724724379.5811615, "pid": 1575, "batch_idx": 25}
+{"event": "get-batch end", "time": 1724724382.840422, "pid": 1575, "batch_idx": 25, "duration": 3.2592568397521973}
+{"event": "get-batch start", "time": 1724724382.8541968, "pid": 1575, "batch_idx": 33}
+{"event": "get-batch end", "time": 1724724386.1565516, "pid": 1575, "batch_idx": 33, "duration": 3.302351236343384}
+{"event": "get-batch start", "time": 1724724386.1672711, "pid": 1575, "batch_idx": 41}
+{"event": "get-batch end", "time": 1724724389.515493, "pid": 1575, "batch_idx": 41, "duration": 3.3482179641723633}
+{"event": "get-batch start", "time": 1724724392.7495427, "pid": 1575, "batch_idx": 1}
+{"event": "get-batch end", "time": 1724724395.9789803, "pid": 1575, "batch_idx": 1, "duration": 3.2294342517852783}
+{"event": "get-batch start", "time": 1724724395.9863033, "pid": 1575, "batch_idx": 9}
+{"event": "get-batch end", "time": 1724724399.6525292, "pid": 1575, "batch_idx": 9, "duration": 3.6662228107452393}
+{"event": "get-batch start", "time": 1724724399.6642377, "pid": 1575, "batch_idx": 17}
+{"event": "get-batch end", "time": 1724724403.1860077, "pid": 1575, "batch_idx": 17, "duration": 3.5217671394348145}
+{"event": "get-batch start", "time": 1724724403.1991363, "pid": 1575, "batch_idx": 25}
+{"event": "get-batch end", "time": 1724724406.6462438, "pid": 1575, "batch_idx": 25, "duration": 3.4471044540405273}
+{"event": "get-batch start", "time": 1724724406.6701522, "pid": 1575, "batch_idx": 33}
+{"event": "get-batch end", "time": 1724724410.0378551, "pid": 1575, "batch_idx": 33, "duration": 3.3676998615264893}
+{"event": "get-batch start", "time": 1724724410.0511465, "pid": 1575, "batch_idx": 41}
+{"event": "get-batch end", "time": 1724724413.6232967, "pid": 1575, "batch_idx": 41, "duration": 3.5721466541290283}
+{"event": "get-batch start", "time": 1724724413.6278753, "pid": 1575, "batch_idx": 49}
+{"event": "get-batch end", "time": 1724724416.9489474, "pid": 1575, "batch_idx": 49, "duration": 3.3210690021514893}
+{"event": "get-batch start", "time": 1724724416.961728, "pid": 1575, "batch_idx": 57}
+{"event": "get-batch end", "time": 1724724420.312815, "pid": 1575, "batch_idx": 57, "duration": 3.351083517074585}
+{"event": "get-batch start", "time": 1724724420.3262527, "pid": 1575, "batch_idx": 65}
+{"event": "get-batch end", "time": 1724724423.444048, "pid": 1575, "batch_idx": 65, "duration": 3.1177914142608643}
+{"event": "get-batch start", "time": 1724724423.4450045, "pid": 1575, "batch_idx": 73}
+{"event": "get-batch end", "time": 1724724426.640295, "pid": 1575, "batch_idx": 73, "duration": 3.1952872276306152}
+{"event": "get-batch start", "time": 1724724426.6531725, "pid": 1575, "batch_idx": 81}
+{"event": "get-batch end", "time": 1724724430.155952, "pid": 1575, "batch_idx": 81, "duration": 3.5027761459350586}
+{"event": "get-batch start", "time": 1724724430.172149, "pid": 1575, "batch_idx": 89}
+{"event": "get-batch end", "time": 1724724433.6730864, "pid": 1575, "batch_idx": 89, "duration": 3.5009331703186035}
+{"event": "get-batch start", "time": 1724724433.6734943, "pid": 1575, "batch_idx": 97}
+{"event": "get-batch end", "time": 1724724437.583985, "pid": 1575, "batch_idx": 97, "duration": 3.9104883670806885}
+{"event": "get-batch start", "time": 1724724437.5850503, "pid": 1575, "batch_idx": 105}
+{"event": "get-batch end", "time": 1724724440.768867, "pid": 1575, "batch_idx": 105, "duration": 3.1838128566741943}
+{"event": "get-batch start", "time": 1724724440.7822576, "pid": 1575, "batch_idx": 113}
+{"event": "get-batch end", "time": 1724724445.2876117, "pid": 1575, "batch_idx": 113, "duration": 4.505351305007935}
+{"event": "get-batch start", "time": 1724724445.3022027, "pid": 1575, "batch_idx": 121}
+{"event": "get-batch end", "time": 1724724448.3507442, "pid": 1575, "batch_idx": 121, "duration": 3.0485377311706543}
+{"event": "get-batch start", "time": 1724724448.3672016, "pid": 1575, "batch_idx": 129}
+{"event": "get-batch end", "time": 1724724451.3752987, "pid": 1575, "batch_idx": 129, "duration": 3.0080935955047607}
+{"event": "get-batch start", "time": 1724724451.3761024, "pid": 1575, "batch_idx": 137}
+{"event": "get-batch end", "time": 1724724454.2915385, "pid": 1575, "batch_idx": 137, "duration": 2.9154326915740967}
+{"event": "get-batch start", "time": 1724724455.5684955, "pid": 1575, "batch_idx": 145}
+{"event": "get-batch end", "time": 1724724458.9288156, "pid": 1575, "batch_idx": 145, "duration": 3.360316038131714}
+{"event": "get-batch start", "time": 1724724465.8720796, "pid": 1575, "batch_idx": 1}
+{"event": "get-batch end", "time": 1724724469.9978704, "pid": 1575, "batch_idx": 1, "duration": 4.125787734985352}
+{"event": "get-batch start", "time": 1724724469.9987962, "pid": 1575, "batch_idx": 9}
+{"event": "get-batch end", "time": 1724724473.1718745, "pid": 1575, "batch_idx": 9, "duration": 3.173074245452881}
+{"event": "get-batch start", "time": 1724724473.185303, "pid": 1575, "batch_idx": 17}
+{"event": "get-batch end", "time": 1724724476.2381895, "pid": 1575, "batch_idx": 17, "duration": 3.0528831481933594}
+{"event": "get-batch start", "time": 1724724476.2384868, "pid": 1575, "batch_idx": 25}
+{"event": "get-batch end", "time": 1724724479.6697228, "pid": 1575, "batch_idx": 25, "duration": 3.431232213973999}
+{"event": "get-batch start", "time": 1724724479.6867, "pid": 1575, "batch_idx": 33}
+{"event": "get-batch end", "time": 1724724482.8910391, "pid": 1575, "batch_idx": 33, "duration": 3.2043352127075195}
+{"event": "get-batch start", "time": 1724724482.9141448, "pid": 1575, "batch_idx": 41}
+{"event": "get-batch end", "time": 1724724486.4350379, "pid": 1575, "batch_idx": 41, "duration": 3.5208890438079834}
+{"event": "get-batch start", "time": 1724724486.4582634, "pid": 1575, "batch_idx": 49}
+{"event": "get-batch end", "time": 1724724489.9139361, "pid": 1575, "batch_idx": 49, "duration": 3.4556684494018555}
+{"event": "get-batch start", "time": 1724724489.9272249, "pid": 1575, "batch_idx": 57}
+{"event": "get-batch end", "time": 1724724493.361082, "pid": 1575, "batch_idx": 57, "duration": 3.433854103088379}
+{"event": "get-batch start", "time": 1724724493.4011648, "pid": 1575, "batch_idx": 65}
+{"event": "get-batch end", "time": 1724724497.1464067, "pid": 1575, "batch_idx": 65, "duration": 3.7452383041381836}
+{"event": "get-batch start", "time": 1724724497.164408, "pid": 1575, "batch_idx": 73}
+{"event": "get-batch end", "time": 1724724501.2539463, "pid": 1575, "batch_idx": 73, "duration": 4.0895349979400635}
+{"event": "get-batch start", "time": 1724724501.2555554, "pid": 1575, "batch_idx": 81}
+{"event": "get-batch end", "time": 1724724504.985439, "pid": 1575, "batch_idx": 81, "duration": 3.7298800945281982}
+{"event": "get-batch start", "time": 1724724504.9981363, "pid": 1575, "batch_idx": 89}
+{"event": "get-batch end", "time": 1724724508.3807817, "pid": 1575, "batch_idx": 89, "duration": 3.3826425075531006}
+{"event": "get-batch start", "time": 1724724508.381616, "pid": 1575, "batch_idx": 97}
+{"event": "get-batch end", "time": 1724724511.7369812, "pid": 1575, "batch_idx": 97, "duration": 3.3553617000579834}
+{"event": "get-batch start", "time": 1724724511.7574553, "pid": 1575, "batch_idx": 105}
+{"event": "get-batch end", "time": 1724724515.1979642, "pid": 1575, "batch_idx": 105, "duration": 3.4405055046081543}
+{"event": "get-batch start", "time": 1724724515.198813, "pid": 1575, "batch_idx": 113}
+{"event": "get-batch end", "time": 1724724518.5474725, "pid": 1575, "batch_idx": 113, "duration": 3.3486557006835938}
+{"event": "get-batch start", "time": 1724724518.584227, "pid": 1575, "batch_idx": 121}
+{"event": "get-batch end", "time": 1724724522.0937335, "pid": 1575, "batch_idx": 121, "duration": 3.50950288772583}
+{"event": "get-batch start", "time": 1724724522.1161573, "pid": 1575, "batch_idx": 129}
+{"event": "get-batch end", "time": 1724724524.9184299, "pid": 1575, "batch_idx": 129, "duration": 2.802269697189331}
+{"event": "get-batch start", "time": 1724724524.9311647, "pid": 1575, "batch_idx": 137}
+{"event": "get-batch end", "time": 1724724528.0542054, "pid": 1575, "batch_idx": 137, "duration": 3.123037815093994}
+{"event": "get-batch start", "time": 1724724528.4093692, "pid": 1575, "batch_idx": 145}
+{"event": "get-batch end", "time": 1724724532.0106845, "pid": 1575, "batch_idx": 145, "duration": 3.6013119220733643}
+{"event": "get-batch start", "time": 1724724538.6248548, "pid": 1575, "batch_idx": 1}
+{"event": "get-batch end", "time": 1724724542.1258333, "pid": 1575, "batch_idx": 1, "duration": 3.500974655151367}
+{"event": "get-batch start", "time": 1724724542.1308274, "pid": 1575, "batch_idx": 9}
+{"event": "get-batch end", "time": 1724724545.7989101, "pid": 1575, "batch_idx": 9, "duration": 3.6680796146392822}
+{"event": "get-batch start", "time": 1724724545.8202274, "pid": 1575, "batch_idx": 17}
+{"event": "get-batch end", "time": 1724724549.159283, "pid": 1575, "batch_idx": 17, "duration": 3.3390517234802246}
+{"event": "get-batch start", "time": 1724724549.177211, "pid": 1575, "batch_idx": 25}
+{"event": "get-batch end", "time": 1724724552.9313552, "pid": 1575, "batch_idx": 25, "duration": 3.754140615463257}
+{"event": "get-batch start", "time": 1724724552.9317245, "pid": 1575, "batch_idx": 33}
+{"event": "get-batch end", "time": 1724724556.3238065, "pid": 1575, "batch_idx": 33, "duration": 3.3920786380767822}
+{"event": "get-batch start", "time": 1724724556.3421872, "pid": 1575, "batch_idx": 41}
+{"event": "get-batch end", "time": 1724724559.9078224, "pid": 1575, "batch_idx": 41, "duration": 3.565631628036499}
+{"event": "get-batch start", "time": 1724724559.908155, "pid": 1575, "batch_idx": 49}
+{"event": "get-batch end", "time": 1724724563.3349648, "pid": 1575, "batch_idx": 49, "duration": 3.4268062114715576}
+{"event": "get-batch start", "time": 1724724563.3531811, "pid": 1575, "batch_idx": 57}
+{"event": "get-batch end", "time": 1724724566.5135252, "pid": 1575, "batch_idx": 57, "duration": 3.160341262817383}
+{"event": "get-batch start", "time": 1724724566.5261424, "pid": 1575, "batch_idx": 65}
+{"event": "get-batch end", "time": 1724724569.9688604, "pid": 1575, "batch_idx": 65, "duration": 3.4427144527435303}
+{"event": "get-batch start", "time": 1724724569.9874315, "pid": 1575, "batch_idx": 73}
+{"event": "get-batch end", "time": 1724724573.3015018, "pid": 1575, "batch_idx": 73, "duration": 3.314066171646118}
+{"event": "get-batch start", "time": 1724724573.3171463, "pid": 1575, "batch_idx": 81}
+{"event": "get-batch end", "time": 1724724576.9131246, "pid": 1575, "batch_idx": 81, "duration": 3.595975637435913}
+{"event": "get-batch start", "time": 1724724576.9139252, "pid": 1575, "batch_idx": 89}
+{"event": "get-batch end", "time": 1724724580.6273923, "pid": 1575, "batch_idx": 89, "duration": 3.71346378326416}
+{"event": "get-batch start", "time": 1724724580.6491504, "pid": 1575, "batch_idx": 97}
+{"event": "get-batch end", "time": 1724724584.1888812, "pid": 1575, "batch_idx": 97, "duration": 3.5397279262542725}
+{"event": "get-batch start", "time": 1724724584.207222, "pid": 1575, "batch_idx": 105}
+{"event": "get-batch end", "time": 1724724588.017902, "pid": 1575, "batch_idx": 105, "duration": 3.8106768131256104}
+{"event": "get-batch start", "time": 1724724588.0351415, "pid": 1575, "batch_idx": 113}
+{"event": "get-batch end", "time": 1724724591.167087, "pid": 1575, "batch_idx": 113, "duration": 3.1319425106048584}
+{"event": "get-batch start", "time": 1724724591.1804771, "pid": 1575, "batch_idx": 121}
+{"event": "get-batch end", "time": 1724724594.5455682, "pid": 1575, "batch_idx": 121, "duration": 3.3650875091552734}
+{"event": "get-batch start", "time": 1724724594.5676093, "pid": 1575, "batch_idx": 129}
+{"event": "get-batch end", "time": 1724724597.6987906, "pid": 1575, "batch_idx": 129, "duration": 3.1311771869659424}
+{"event": "get-batch start", "time": 1724724597.7022123, "pid": 1575, "batch_idx": 137}
+{"event": "get-batch end", "time": 1724724600.9552212, "pid": 1575, "batch_idx": 137, "duration": 3.2530057430267334}
+{"event": "get-batch start", "time": 1724724601.595167, "pid": 1575, "batch_idx": 145}
+{"event": "get-batch end", "time": 1724724604.434442, "pid": 1575, "batch_idx": 145, "duration": 2.8392724990844727}
+{"event": "get-batch start", "time": 1724724366.039376, "pid": 1666, "batch_idx": 6}
+{"event": "get-batch end", "time": 1724724370.8515985, "pid": 1666, "batch_idx": 6, "duration": 4.812217950820923}
+{"event": "get-batch start", "time": 1724724370.8624883, "pid": 1666, "batch_idx": 14}
+{"event": "get-batch end", "time": 1724724376.1377141, "pid": 1666, "batch_idx": 14, "duration": 5.275222301483154}
+{"event": "get-batch start", "time": 1724724376.1386197, "pid": 1666, "batch_idx": 22}
+{"event": "get-batch end", "time": 1724724379.7051828, "pid": 1666, "batch_idx": 22, "duration": 3.5665602684020996}
+{"event": "get-batch start", "time": 1724724379.7181325, "pid": 1666, "batch_idx": 30}
+{"event": "get-batch end", "time": 1724724383.6584218, "pid": 1666, "batch_idx": 30, "duration": 3.94028639793396}
+{"event": "get-batch start", "time": 1724724383.6751473, "pid": 1666, "batch_idx": 38}
+{"event": "get-batch end", "time": 1724724387.9024606, "pid": 1666, "batch_idx": 38, "duration": 4.227310419082642}
+{"event": "get-batch start", "time": 1724724387.9152105, "pid": 1666, "batch_idx": 46}
+{"event": "get-batch end", "time": 1724724391.535249, "pid": 1666, "batch_idx": 46, "duration": 3.6200358867645264}
+{"event": "get-batch start", "time": 1724724392.750935, "pid": 1666, "batch_idx": 6}
+{"event": "get-batch end", "time": 1724724397.6055992, "pid": 1666, "batch_idx": 6, "duration": 4.854660987854004}
+{"event": "get-batch start", "time": 1724724397.6171808, "pid": 1666, "batch_idx": 14}
+{"event": "get-batch end", "time": 1724724400.951982, "pid": 1666, "batch_idx": 14, "duration": 3.3347976207733154}
+{"event": "get-batch start", "time": 1724724400.9651418, "pid": 1666, "batch_idx": 22}
+{"event": "get-batch end", "time": 1724724404.6238973, "pid": 1666, "batch_idx": 22, "duration": 3.65875244140625}
+{"event": "get-batch start", "time": 1724724404.6401403, "pid": 1666, "batch_idx": 30}
+{"event": "get-batch end", "time": 1724724407.849318, "pid": 1666, "batch_idx": 30, "duration": 3.2091736793518066}
+{"event": "get-batch start", "time": 1724724407.8631537, "pid": 1666, "batch_idx": 38}
+{"event": "get-batch end", "time": 1724724410.9873796, "pid": 1666, "batch_idx": 38, "duration": 3.124222755432129}
+{"event": "get-batch start", "time": 1724724411.0002384, "pid": 1666, "batch_idx": 46}
+{"event": "get-batch end", "time": 1724724414.0861342, "pid": 1666, "batch_idx": 46, "duration": 3.085892677307129}
+{"event": "get-batch start", "time": 1724724414.0991383, "pid": 1666, "batch_idx": 54}
+{"event": "get-batch end", "time": 1724724417.8483474, "pid": 1666, "batch_idx": 54, "duration": 3.74920654296875}
+{"event": "get-batch start", "time": 1724724417.8486938, "pid": 1666, "batch_idx": 62}
+{"event": "get-batch end", "time": 1724724421.6407528, "pid": 1666, "batch_idx": 62, "duration": 3.792055368423462}
+{"event": "get-batch start", "time": 1724724421.6546576, "pid": 1666, "batch_idx": 70}
+{"event": "get-batch end", "time": 1724724430.1380725, "pid": 1666, "batch_idx": 70, "duration": 8.48341178894043}
+{"event": "get-batch start", "time": 1724724430.1511335, "pid": 1666, "batch_idx": 78}
+{"event": "get-batch end", "time": 1724724434.379849, "pid": 1666, "batch_idx": 78, "duration": 4.22871208190918}
+{"event": "get-batch start", "time": 1724724434.3806891, "pid": 1666, "batch_idx": 86}
+{"event": "get-batch end", "time": 1724724437.760426, "pid": 1666, "batch_idx": 86, "duration": 3.3797340393066406}
+{"event": "get-batch start", "time": 1724724437.7621853, "pid": 1666, "batch_idx": 94}
+{"event": "get-batch end", "time": 1724724444.6855567, "pid": 1666, "batch_idx": 94, "duration": 6.923367500305176}
+{"event": "get-batch start", "time": 1724724444.6941962, "pid": 1666, "batch_idx": 102}
+{"event": "get-batch end", "time": 1724724448.738548, "pid": 1666, "batch_idx": 102, "duration": 4.044347286224365}
+{"event": "get-batch start", "time": 1724724448.7511613, "pid": 1666, "batch_idx": 110}
+{"event": "get-batch end", "time": 1724724452.045158, "pid": 1666, "batch_idx": 110, "duration": 3.2939934730529785}
+{"event": "get-batch start", "time": 1724724452.0472856, "pid": 1666, "batch_idx": 118}
+{"event": "get-batch end", "time": 1724724458.7585943, "pid": 1666, "batch_idx": 118, "duration": 6.71130633354187}
+{"event": "get-batch start", "time": 1724724458.7591915, "pid": 1666, "batch_idx": 126}
+{"event": "get-batch end", "time": 1724724462.025289, "pid": 1666, "batch_idx": 126, "duration": 3.2660956382751465}
+{"event": "get-batch start", "time": 1724724462.0255227, "pid": 1666, "batch_idx": 134}
+{"event": "get-batch end", "time": 1724724463.9339554, "pid": 1666, "batch_idx": 134, "duration": 1.908430814743042}
+{"event": "get-batch start", "time": 1724724463.9341435, "pid": 1666, "batch_idx": 142}
+{"event": "get-batch end", "time": 1724724465.8533342, "pid": 1666, "batch_idx": 142, "duration": 1.9191887378692627}
+{"event": "get-batch start", "time": 1724724465.873597, "pid": 1666, "batch_idx": 6}
+{"event": "get-batch end", "time": 1724724470.2603796, "pid": 1666, "batch_idx": 6, "duration": 4.386778831481934}
+{"event": "get-batch start", "time": 1724724470.2764473, "pid": 1666, "batch_idx": 14}
+{"event": "get-batch end", "time": 1724724473.2118518, "pid": 1666, "batch_idx": 14, "duration": 2.935401439666748}
+{"event": "get-batch start", "time": 1724724473.2157166, "pid": 1666, "batch_idx": 22}
+{"event": "get-batch end", "time": 1724724476.9452822, "pid": 1666, "batch_idx": 22, "duration": 3.729562997817993}
+{"event": "get-batch start", "time": 1724724476.9652011, "pid": 1666, "batch_idx": 30}
+{"event": "get-batch end", "time": 1724724480.4898052, "pid": 1666, "batch_idx": 30, "duration": 3.524601459503174}
+{"event": "get-batch start", "time": 1724724480.5032752, "pid": 1666, "batch_idx": 38}
+{"event": "get-batch end", "time": 1724724483.5986545, "pid": 1666, "batch_idx": 38, "duration": 3.09537672996521}
+{"event": "get-batch start", "time": 1724724483.6132088, "pid": 1666, "batch_idx": 46}
+{"event": "get-batch end", "time": 1724724486.981221, "pid": 1666, "batch_idx": 46, "duration": 3.368008852005005}
+{"event": "get-batch start", "time": 1724724486.9941535, "pid": 1666, "batch_idx": 54}
+{"event": "get-batch end", "time": 1724724490.8191235, "pid": 1666, "batch_idx": 54, "duration": 3.8249669075012207}
+{"event": "get-batch start", "time": 1724724490.840146, "pid": 1666, "batch_idx": 62}
+{"event": "get-batch end", "time": 1724724494.4195604, "pid": 1666, "batch_idx": 62, "duration": 3.5794107913970947}
+{"event": "get-batch start", "time": 1724724494.432138, "pid": 1666, "batch_idx": 70}
+{"event": "get-batch end", "time": 1724724502.2895868, "pid": 1666, "batch_idx": 70, "duration": 7.857444763183594}
+{"event": "get-batch start", "time": 1724724502.2941928, "pid": 1666, "batch_idx": 78}
+{"event": "get-batch end", "time": 1724724505.843221, "pid": 1666, "batch_idx": 78, "duration": 3.549025058746338}
+{"event": "get-batch start", "time": 1724724505.8519762, "pid": 1666, "batch_idx": 86}
+{"event": "get-batch end", "time": 1724724509.2450056, "pid": 1666, "batch_idx": 86, "duration": 3.393026351928711}
+{"event": "get-batch start", "time": 1724724509.2653794, "pid": 1666, "batch_idx": 94}
+{"event": "get-batch end", "time": 1724724519.2039738, "pid": 1666, "batch_idx": 94, "duration": 9.938534021377563}
+{"event": "get-batch start", "time": 1724724519.2053752, "pid": 1666, "batch_idx": 102}
+{"event": "get-batch end", "time": 1724724522.1277187, "pid": 1666, "batch_idx": 102, "duration": 2.9223403930664062}
+{"event": "get-batch start", "time": 1724724522.1280684, "pid": 1666, "batch_idx": 110}
+{"event": "get-batch end", "time": 1724724525.1103878, "pid": 1666, "batch_idx": 110, "duration": 2.982316493988037}
+{"event": "get-batch start", "time": 1724724525.1107557, "pid": 1666, "batch_idx": 118}
+{"event": "get-batch end", "time": 1724724532.1911004, "pid": 1666, "batch_idx": 118, "duration": 7.080343008041382}
+{"event": "get-batch start", "time": 1724724532.1916711, "pid": 1666, "batch_idx": 126}
+{"event": "get-batch end", "time": 1724724534.2838275, "pid": 1666, "batch_idx": 126, "duration": 2.0921542644500732}
+{"event": "get-batch start", "time": 1724724534.284042, "pid": 1666, "batch_idx": 134}
+{"event": "get-batch end", "time": 1724724536.6301637, "pid": 1666, "batch_idx": 134, "duration": 2.3461196422576904}
+{"event": "get-batch start", "time": 1724724536.6307025, "pid": 1666, "batch_idx": 142}
+{"event": "get-batch end", "time": 1724724538.605613, "pid": 1666, "batch_idx": 142, "duration": 1.9749085903167725}
+{"event": "get-batch start", "time": 1724724538.627394, "pid": 1666, "batch_idx": 6}
+{"event": "get-batch end", "time": 1724724542.3308482, "pid": 1666, "batch_idx": 6, "duration": 3.703450918197632}
+{"event": "get-batch start", "time": 1724724542.3318539, "pid": 1666, "batch_idx": 14}
+{"event": "get-batch end", "time": 1724724545.1973586, "pid": 1666, "batch_idx": 14, "duration": 2.865502119064331}
+{"event": "get-batch start", "time": 1724724545.2117944, "pid": 1666, "batch_idx": 22}
+{"event": "get-batch end", "time": 1724724548.380927, "pid": 1666, "batch_idx": 22, "duration": 3.1691296100616455}
+{"event": "get-batch start", "time": 1724724548.3812373, "pid": 1666, "batch_idx": 30}
+{"event": "get-batch end", "time": 1724724551.5395296, "pid": 1666, "batch_idx": 30, "duration": 3.1582894325256348}
+{"event": "get-batch start", "time": 1724724551.5521407, "pid": 1666, "batch_idx": 38}
+{"event": "get-batch end", "time": 1724724554.9634874, "pid": 1666, "batch_idx": 38, "duration": 3.4113433361053467}
+{"event": "get-batch start", "time": 1724724554.982996, "pid": 1666, "batch_idx": 46}
+{"event": "get-batch end", "time": 1724724558.1792185, "pid": 1666, "batch_idx": 46, "duration": 3.1962199211120605}
+{"event": "get-batch start", "time": 1724724558.180183, "pid": 1666, "batch_idx": 54}
+{"event": "get-batch end", "time": 1724724561.6193748, "pid": 1666, "batch_idx": 54, "duration": 3.4391884803771973}
+{"event": "get-batch start", "time": 1724724561.636208, "pid": 1666, "batch_idx": 62}
+{"event": "get-batch end", "time": 1724724564.8585732, "pid": 1666, "batch_idx": 62, "duration": 3.222362518310547}
+{"event": "get-batch start", "time": 1724724564.8671465, "pid": 1666, "batch_idx": 70}
+{"event": "get-batch end", "time": 1724724573.3136134, "pid": 1666, "batch_idx": 70, "duration": 8.446462869644165}
+{"event": "get-batch start", "time": 1724724573.3263535, "pid": 1666, "batch_idx": 78}
+{"event": "get-batch end", "time": 1724724576.7076328, "pid": 1666, "batch_idx": 78, "duration": 3.3812763690948486}
+{"event": "get-batch start", "time": 1724724576.708179, "pid": 1666, "batch_idx": 86}
+{"event": "get-batch end", "time": 1724724580.325739, "pid": 1666, "batch_idx": 86, "duration": 3.6175553798675537}
+{"event": "get-batch start", "time": 1724724580.3495212, "pid": 1666, "batch_idx": 94}
+{"event": "get-batch end", "time": 1724724587.4775643, "pid": 1666, "batch_idx": 94, "duration": 7.128040075302124}
+{"event": "get-batch start", "time": 1724724587.4987075, "pid": 1666, "batch_idx": 102}
+{"event": "get-batch end", "time": 1724724590.5844567, "pid": 1666, "batch_idx": 102, "duration": 3.0857460498809814}
+{"event": "get-batch start", "time": 1724724590.6031468, "pid": 1666, "batch_idx": 110}
+{"event": "get-batch end", "time": 1724724594.404985, "pid": 1666, "batch_idx": 110, "duration": 3.8018338680267334}
+{"event": "get-batch start", "time": 1724724594.4181924, "pid": 1666, "batch_idx": 118}
+{"event": "get-batch end", "time": 1724724601.9623146, "pid": 1666, "batch_idx": 118, "duration": 7.544119834899902}
+{"event": "get-batch start", "time": 1724724601.9630132, "pid": 1666, "batch_idx": 126}
+{"event": "get-batch end", "time": 1724724604.9755247, "pid": 1666, "batch_idx": 126, "duration": 3.0125086307525635}
+{"event": "get-batch start", "time": 1724724366.037387, "pid": 1593, "batch_idx": 2}
+{"event": "get-batch end", "time": 1724724371.1865704, "pid": 1593, "batch_idx": 2, "duration": 5.149179458618164}
+{"event": "get-batch start", "time": 1724724371.1893492, "pid": 1593, "batch_idx": 10}
+{"event": "get-batch end", "time": 1724724376.827844, "pid": 1593, "batch_idx": 10, "duration": 5.638491153717041}
+{"event": "get-batch start", "time": 1724724376.839436, "pid": 1593, "batch_idx": 18}
+{"event": "get-batch end", "time": 1724724380.1955922, "pid": 1593, "batch_idx": 18, "duration": 3.3561530113220215}
+{"event": "get-batch start", "time": 1724724380.2092915, "pid": 1593, "batch_idx": 26}
+{"event": "get-batch end", "time": 1724724383.9492128, "pid": 1593, "batch_idx": 26, "duration": 3.739917516708374}
+{"event": "get-batch start", "time": 1724724383.9631636, "pid": 1593, "batch_idx": 34}
+{"event": "get-batch end", "time": 1724724387.2638676, "pid": 1593, "batch_idx": 34, "duration": 3.3007006645202637}
+{"event": "get-batch start", "time": 1724724387.2689612, "pid": 1593, "batch_idx": 42}
+{"event": "get-batch end", "time": 1724724390.6611753, "pid": 1593, "batch_idx": 42, "duration": 3.3922111988067627}
+{"event": "get-batch start", "time": 1724724392.7489495, "pid": 1593, "batch_idx": 2}
+{"event": "get-batch end", "time": 1724724397.5804012, "pid": 1593, "batch_idx": 2, "duration": 4.831448554992676}
+{"event": "get-batch start", "time": 1724724397.5951464, "pid": 1593, "batch_idx": 10}
+{"event": "get-batch end", "time": 1724724401.657615, "pid": 1593, "batch_idx": 10, "duration": 4.062463998794556}
+{"event": "get-batch start", "time": 1724724401.6841671, "pid": 1593, "batch_idx": 18}
+{"event": "get-batch end", "time": 1724724405.1842453, "pid": 1593, "batch_idx": 18, "duration": 3.5000741481781006}
+{"event": "get-batch start", "time": 1724724405.1971843, "pid": 1593, "batch_idx": 26}
+{"event": "get-batch end", "time": 1724724408.9707806, "pid": 1593, "batch_idx": 26, "duration": 3.773592710494995}
+{"event": "get-batch start", "time": 1724724408.989146, "pid": 1593, "batch_idx": 34}
+{"event": "get-batch end", "time": 1724724412.2208438, "pid": 1593, "batch_idx": 34, "duration": 3.231693983078003}
+{"event": "get-batch start", "time": 1724724412.2341652, "pid": 1593, "batch_idx": 42}
+{"event": "get-batch end", "time": 1724724415.5902915, "pid": 1593, "batch_idx": 42, "duration": 3.3561222553253174}
+{"event": "get-batch start", "time": 1724724415.6031501, "pid": 1593, "batch_idx": 50}
+{"event": "get-batch end", "time": 1724724418.7978914, "pid": 1593, "batch_idx": 50, "duration": 3.194737672805786}
+{"event": "get-batch start", "time": 1724724418.7987123, "pid": 1593, "batch_idx": 58}
+{"event": "get-batch end", "time": 1724724422.0590093, "pid": 1593, "batch_idx": 58, "duration": 3.26029372215271}
+{"event": "get-batch start", "time": 1724724422.0721943, "pid": 1593, "batch_idx": 66}
+{"event": "get-batch end", "time": 1724724425.6080506, "pid": 1593, "batch_idx": 66, "duration": 3.5358526706695557}
+{"event": "get-batch start", "time": 1724724425.6342642, "pid": 1593, "batch_idx": 74}
+{"event": "get-batch end", "time": 1724724429.6188965, "pid": 1593, "batch_idx": 74, "duration": 3.984628200531006}
+{"event": "get-batch start", "time": 1724724429.6196907, "pid": 1593, "batch_idx": 82}
+{"event": "get-batch end", "time": 1724724433.0626886, "pid": 1593, "batch_idx": 82, "duration": 3.4429948329925537}
+{"event": "get-batch start", "time": 1724724433.075138, "pid": 1593, "batch_idx": 90}
+{"event": "get-batch end", "time": 1724724436.220262, "pid": 1593, "batch_idx": 90, "duration": 3.1451213359832764}
+{"event": "get-batch start", "time": 1724724436.2421393, "pid": 1593, "batch_idx": 98}
+{"event": "get-batch end", "time": 1724724440.045077, "pid": 1593, "batch_idx": 98, "duration": 3.802934408187866}
+{"event": "get-batch start", "time": 1724724440.0454037, "pid": 1593, "batch_idx": 106}
+{"event": "get-batch end", "time": 1724724443.4148462, "pid": 1593, "batch_idx": 106, "duration": 3.3694393634796143}
+{"event": "get-batch start", "time": 1724724443.415562, "pid": 1593, "batch_idx": 114}
+{"event": "get-batch end", "time": 1724724446.1383455, "pid": 1593, "batch_idx": 114, "duration": 2.722780466079712}
+{"event": "get-batch start", "time": 1724724446.1511483, "pid": 1593, "batch_idx": 122}
+{"event": "get-batch end", "time": 1724724449.4136927, "pid": 1593, "batch_idx": 122, "duration": 3.262540340423584}
+{"event": "get-batch start", "time": 1724724449.4414299, "pid": 1593, "batch_idx": 130}
+{"event": "get-batch end", "time": 1724724452.3711948, "pid": 1593, "batch_idx": 130, "duration": 2.9297609329223633}
+{"event": "get-batch start", "time": 1724724452.384165, "pid": 1593, "batch_idx": 138}
+{"event": "get-batch end", "time": 1724724455.346631, "pid": 1593, "batch_idx": 138, "duration": 2.962462902069092}
+{"event": "get-batch start", "time": 1724724456.1709907, "pid": 1593, "batch_idx": 146}
+{"event": "get-batch end", "time": 1724724459.1572301, "pid": 1593, "batch_idx": 146, "duration": 2.986236333847046}
+{"event": "get-batch start", "time": 1724724465.8733258, "pid": 1593, "batch_idx": 2}
+{"event": "get-batch end", "time": 1724724468.5399158, "pid": 1593, "batch_idx": 2, "duration": 2.6665849685668945}
+{"event": "get-batch start", "time": 1724724468.5531511, "pid": 1593, "batch_idx": 10}
+{"event": "get-batch end", "time": 1724724471.7494128, "pid": 1593, "batch_idx": 10, "duration": 3.1962573528289795}
+{"event": "get-batch start", "time": 1724724471.7651725, "pid": 1593, "batch_idx": 18}
+{"event": "get-batch end", "time": 1724724475.2437432, "pid": 1593, "batch_idx": 18, "duration": 3.478566884994507}
+{"event": "get-batch start", "time": 1724724475.275233, "pid": 1593, "batch_idx": 26}
+{"event": "get-batch end", "time": 1724724478.6988285, "pid": 1593, "batch_idx": 26, "duration": 3.4235920906066895}
+{"event": "get-batch start", "time": 1724724478.7131484, "pid": 1593, "batch_idx": 34}
+{"event": "get-batch end", "time": 1724724482.0224383, "pid": 1593, "batch_idx": 34, "duration": 3.309285879135132}
+{"event": "get-batch start", "time": 1724724482.0341535, "pid": 1593, "batch_idx": 42}
+{"event": "get-batch end", "time": 1724724484.7823865, "pid": 1593, "batch_idx": 42, "duration": 2.748220920562744}
+{"event": "get-batch start", "time": 1724724484.7981384, "pid": 1593, "batch_idx": 50}
+{"event": "get-batch end", "time": 1724724488.3104274, "pid": 1593, "batch_idx": 50, "duration": 3.5122859477996826}
+{"event": "get-batch start", "time": 1724724488.3281953, "pid": 1593, "batch_idx": 58}
+{"event": "get-batch end", "time": 1724724491.5896485, "pid": 1593, "batch_idx": 58, "duration": 3.2614498138427734}
+{"event": "get-batch start", "time": 1724724491.6021428, "pid": 1593, "batch_idx": 66}
+{"event": "get-batch end", "time": 1724724494.9763937, "pid": 1593, "batch_idx": 66, "duration": 3.3742470741271973}
+{"event": "get-batch start", "time": 1724724495.0146904, "pid": 1593, "batch_idx": 74}
+{"event": "get-batch end", "time": 1724724498.7195616, "pid": 1593, "batch_idx": 74, "duration": 3.7048678398132324}
+{"event": "get-batch start", "time": 1724724498.720434, "pid": 1593, "batch_idx": 82}
+{"event": "get-batch end", "time": 1724724502.0986311, "pid": 1593, "batch_idx": 82, "duration": 3.3781933784484863}
+{"event": "get-batch start", "time": 1724724502.0990858, "pid": 1593, "batch_idx": 90}
+{"event": "get-batch end", "time": 1724724505.3858933, "pid": 1593, "batch_idx": 90, "duration": 3.286804676055908}
+{"event": "get-batch start", "time": 1724724505.402239, "pid": 1593, "batch_idx": 98}
+{"event": "get-batch end", "time": 1724724508.4562018, "pid": 1593, "batch_idx": 98, "duration": 3.05395770072937}
+{"event": "get-batch start", "time": 1724724508.4565303, "pid": 1593, "batch_idx": 106}
+{"event": "get-batch end", "time": 1724724511.868104, "pid": 1593, "batch_idx": 106, "duration": 3.4115703105926514}
+{"event": "get-batch start", "time": 1724724511.8831687, "pid": 1593, "batch_idx": 114}
+{"event": "get-batch end", "time": 1724724515.347058, "pid": 1593, "batch_idx": 114, "duration": 3.463886260986328}
+{"event": "get-batch start", "time": 1724724515.3632305, "pid": 1593, "batch_idx": 122}
+{"event": "get-batch end", "time": 1724724519.0781474, "pid": 1593, "batch_idx": 122, "duration": 3.714913845062256}
+{"event": "get-batch start", "time": 1724724519.291987, "pid": 1593, "batch_idx": 130}
+{"event": "get-batch end", "time": 1724724523.2463813, "pid": 1593, "batch_idx": 130, "duration": 3.954390048980713}
+{"event": "get-batch start", "time": 1724724524.1415129, "pid": 1593, "batch_idx": 138}
+{"event": "get-batch end", "time": 1724724527.0426993, "pid": 1593, "batch_idx": 138, "duration": 2.9011824131011963}
+{"event": "get-batch start", "time": 1724724529.0132542, "pid": 1593, "batch_idx": 146}
+{"event": "get-batch end", "time": 1724724531.8612447, "pid": 1593, "batch_idx": 146, "duration": 2.8479878902435303}
+{"event": "get-batch start", "time": 1724724538.624544, "pid": 1593, "batch_idx": 2}
+{"event": "get-batch end", "time": 1724724542.0288317, "pid": 1593, "batch_idx": 2, "duration": 3.4042835235595703}
+{"event": "get-batch start", "time": 1724724542.0361438, "pid": 1593, "batch_idx": 10}
+{"event": "get-batch end", "time": 1724724545.6243806, "pid": 1593, "batch_idx": 10, "duration": 3.5882325172424316}
+{"event": "get-batch start", "time": 1724724545.6371365, "pid": 1593, "batch_idx": 18}
+{"event": "get-batch end", "time": 1724724549.123142, "pid": 1593, "batch_idx": 18, "duration": 3.4860012531280518}
+{"event": "get-batch start", "time": 1724724549.1292374, "pid": 1593, "batch_idx": 26}
+{"event": "get-batch end", "time": 1724724552.440906, "pid": 1593, "batch_idx": 26, "duration": 3.3116655349731445}
+{"event": "get-batch start", "time": 1724724552.441716, "pid": 1593, "batch_idx": 34}
+{"event": "get-batch end", "time": 1724724555.3187227, "pid": 1593, "batch_idx": 34, "duration": 2.877004384994507}
+{"event": "get-batch start", "time": 1724724555.340271, "pid": 1593, "batch_idx": 42}
+{"event": "get-batch end", "time": 1724724558.751668, "pid": 1593, "batch_idx": 42, "duration": 3.411393642425537}
+{"event": "get-batch start", "time": 1724724558.7641513, "pid": 1593, "batch_idx": 50}
+{"event": "get-batch end", "time": 1724724562.260671, "pid": 1593, "batch_idx": 50, "duration": 3.496515989303589}
+{"event": "get-batch start", "time": 1724724562.2731574, "pid": 1593, "batch_idx": 58}
+{"event": "get-batch end", "time": 1724724565.921845, "pid": 1593, "batch_idx": 58, "duration": 3.648684024810791}
+{"event": "get-batch start", "time": 1724724565.9351788, "pid": 1593, "batch_idx": 66}
+{"event": "get-batch end", "time": 1724724569.1471791, "pid": 1593, "batch_idx": 66, "duration": 3.2119975090026855}
+{"event": "get-batch start", "time": 1724724569.148185, "pid": 1593, "batch_idx": 74}
+{"event": "get-batch end", "time": 1724724572.8679905, "pid": 1593, "batch_idx": 74, "duration": 3.719801425933838}
+{"event": "get-batch start", "time": 1724724572.8834589, "pid": 1593, "batch_idx": 82}
+{"event": "get-batch end", "time": 1724724576.507626, "pid": 1593, "batch_idx": 82, "duration": 3.6241633892059326}
+{"event": "get-batch start", "time": 1724724576.5147493, "pid": 1593, "batch_idx": 90}
+{"event": "get-batch end", "time": 1724724579.7561872, "pid": 1593, "batch_idx": 90, "duration": 3.241434335708618}
+{"event": "get-batch start", "time": 1724724579.7777078, "pid": 1593, "batch_idx": 98}
+{"event": "get-batch end", "time": 1724724582.8881357, "pid": 1593, "batch_idx": 98, "duration": 3.110424518585205}
+{"event": "get-batch start", "time": 1724724582.9011421, "pid": 1593, "batch_idx": 106}
+{"event": "get-batch end", "time": 1724724586.7756293, "pid": 1593, "batch_idx": 106, "duration": 3.8744826316833496}
+{"event": "get-batch start", "time": 1724724586.7941458, "pid": 1593, "batch_idx": 114}
+{"event": "get-batch end", "time": 1724724590.2359753, "pid": 1593, "batch_idx": 114, "duration": 3.4418251514434814}
+{"event": "get-batch start", "time": 1724724590.2491724, "pid": 1593, "batch_idx": 122}
+{"event": "get-batch end", "time": 1724724593.1984668, "pid": 1593, "batch_idx": 122, "duration": 2.949275493621826}
+{"event": "get-batch start", "time": 1724724593.1995454, "pid": 1593, "batch_idx": 130}
+{"event": "get-batch end", "time": 1724724596.2920089, "pid": 1593, "batch_idx": 130, "duration": 3.0924603939056396}
+{"event": "get-batch start", "time": 1724724597.338368, "pid": 1593, "batch_idx": 138}
+{"event": "get-batch end", "time": 1724724600.8690639, "pid": 1593, "batch_idx": 138, "duration": 3.5306921005249023}
+{"event": "get-batch start", "time": 1724724602.1957965, "pid": 1593, "batch_idx": 146}
+{"event": "get-batch end", "time": 1724724605.1842182, "pid": 1593, "batch_idx": 146, "duration": 2.988417863845825}
+{"event": "get-batch start", "time": 1724724366.0383325, "pid": 1611, "batch_idx": 3}
+{"event": "get-batch end", "time": 1724724371.1388814, "pid": 1611, "batch_idx": 3, "duration": 5.100544691085815}
+{"event": "get-batch start", "time": 1724724371.141372, "pid": 1611, "batch_idx": 11}
+{"event": "get-batch end", "time": 1724724376.3961148, "pid": 1611, "batch_idx": 11, "duration": 5.254738807678223}
+{"event": "get-batch start", "time": 1724724376.3964298, "pid": 1611, "batch_idx": 19}
+{"event": "get-batch end", "time": 1724724379.6943572, "pid": 1611, "batch_idx": 19, "duration": 3.2979238033294678}
+{"event": "get-batch start", "time": 1724724379.70818, "pid": 1611, "batch_idx": 27}
+{"event": "get-batch end", "time": 1724724383.1395788, "pid": 1611, "batch_idx": 27, "duration": 3.4313955307006836}
+{"event": "get-batch start", "time": 1724724383.1574996, "pid": 1611, "batch_idx": 35}
+{"event": "get-batch end", "time": 1724724386.5788052, "pid": 1611, "batch_idx": 35, "duration": 3.4213016033172607}
+{"event": "get-batch start", "time": 1724724386.595194, "pid": 1611, "batch_idx": 43}
+{"event": "get-batch end", "time": 1724724389.7266457, "pid": 1611, "batch_idx": 43, "duration": 3.1314477920532227}
+{"event": "get-batch start", "time": 1724724392.7505095, "pid": 1611, "batch_idx": 3}
+{"event": "get-batch end", "time": 1724724396.0984836, "pid": 1611, "batch_idx": 3, "duration": 3.347970724105835}
+{"event": "get-batch start", "time": 1724724396.1031556, "pid": 1611, "batch_idx": 11}
+{"event": "get-batch end", "time": 1724724399.2356188, "pid": 1611, "batch_idx": 11, "duration": 3.1324596405029297}
+{"event": "get-batch start", "time": 1724724399.2481475, "pid": 1611, "batch_idx": 19}
+{"event": "get-batch end", "time": 1724724402.7187972, "pid": 1611, "batch_idx": 19, "duration": 3.470646858215332}
+{"event": "get-batch start", "time": 1724724402.719146, "pid": 1611, "batch_idx": 27}
+{"event": "get-batch end", "time": 1724724406.4923959, "pid": 1611, "batch_idx": 27, "duration": 3.7732462882995605}
+{"event": "get-batch start", "time": 1724724406.4927495, "pid": 1611, "batch_idx": 35}
+{"event": "get-batch end", "time": 1724724410.2137609, "pid": 1611, "batch_idx": 35, "duration": 3.721008062362671}
+{"event": "get-batch start", "time": 1724724410.2282808, "pid": 1611, "batch_idx": 43}
+{"event": "get-batch end", "time": 1724724413.4753041, "pid": 1611, "batch_idx": 43, "duration": 3.2470195293426514}
+{"event": "get-batch start", "time": 1724724413.489168, "pid": 1611, "batch_idx": 51}
+{"event": "get-batch end", "time": 1724724416.6912966, "pid": 1611, "batch_idx": 51, "duration": 3.202125310897827}
+{"event": "get-batch start", "time": 1724724416.7072139, "pid": 1611, "batch_idx": 59}
+{"event": "get-batch end", "time": 1724724419.8414252, "pid": 1611, "batch_idx": 59, "duration": 3.134207248687744}
+{"event": "get-batch start", "time": 1724724419.850237, "pid": 1611, "batch_idx": 67}
+{"event": "get-batch end", "time": 1724724422.9778872, "pid": 1611, "batch_idx": 67, "duration": 3.127645969390869}
+{"event": "get-batch start", "time": 1724724422.9931586, "pid": 1611, "batch_idx": 75}
+{"event": "get-batch end", "time": 1724724426.6582575, "pid": 1611, "batch_idx": 75, "duration": 3.6650946140289307}
+{"event": "get-batch start", "time": 1724724426.659078, "pid": 1611, "batch_idx": 83}
+{"event": "get-batch end", "time": 1724724429.5978281, "pid": 1611, "batch_idx": 83, "duration": 2.938746690750122}
+{"event": "get-batch start", "time": 1724724429.6111462, "pid": 1611, "batch_idx": 91}
+{"event": "get-batch end", "time": 1724724433.57893, "pid": 1611, "batch_idx": 91, "duration": 3.9677796363830566}
+{"event": "get-batch start", "time": 1724724433.602679, "pid": 1611, "batch_idx": 99}
+{"event": "get-batch end", "time": 1724724437.0791347, "pid": 1611, "batch_idx": 99, "duration": 3.476451873779297}
+{"event": "get-batch start", "time": 1724724437.0799148, "pid": 1611, "batch_idx": 107}
+{"event": "get-batch end", "time": 1724724440.2245085, "pid": 1611, "batch_idx": 107, "duration": 3.1445906162261963}
+{"event": "get-batch start", "time": 1724724440.2305174, "pid": 1611, "batch_idx": 115}
+{"event": "get-batch end", "time": 1724724443.521334, "pid": 1611, "batch_idx": 115, "duration": 3.2908127307891846}
+{"event": "get-batch start", "time": 1724724443.5371642, "pid": 1611, "batch_idx": 123}
+{"event": "get-batch end", "time": 1724724447.3205101, "pid": 1611, "batch_idx": 123, "duration": 3.7833425998687744}
+{"event": "get-batch start", "time": 1724724447.3214514, "pid": 1611, "batch_idx": 131}
+{"event": "get-batch end", "time": 1724724450.3901658, "pid": 1611, "batch_idx": 131, "duration": 3.0687096118927}
+{"event": "get-batch start", "time": 1724724451.9205797, "pid": 1611, "batch_idx": 139}
+{"event": "get-batch end", "time": 1724724454.8255825, "pid": 1611, "batch_idx": 139, "duration": 2.904999256134033}
+{"event": "get-batch start", "time": 1724724456.778614, "pid": 1611, "batch_idx": 147}
+{"event": "get-batch end", "time": 1724724459.6645179, "pid": 1611, "batch_idx": 147, "duration": 2.8859012126922607}
+{"event": "get-batch start", "time": 1724724465.8729017, "pid": 1611, "batch_idx": 3}
+{"event": "get-batch end", "time": 1724724469.7489665, "pid": 1611, "batch_idx": 3, "duration": 3.8760604858398438}
+{"event": "get-batch start", "time": 1724724469.7621348, "pid": 1611, "batch_idx": 11}
+{"event": "get-batch end", "time": 1724724473.187275, "pid": 1611, "batch_idx": 11, "duration": 3.4251351356506348}
+{"event": "get-batch start", "time": 1724724473.200147, "pid": 1611, "batch_idx": 19}
+{"event": "get-batch end", "time": 1724724476.172783, "pid": 1611, "batch_idx": 19, "duration": 2.9726321697235107}
+{"event": "get-batch start", "time": 1724724476.1891768, "pid": 1611, "batch_idx": 27}
+{"event": "get-batch end", "time": 1724724480.0954087, "pid": 1611, "batch_idx": 27, "duration": 3.906228542327881}
+{"event": "get-batch start", "time": 1724724480.1081507, "pid": 1611, "batch_idx": 35}
+{"event": "get-batch end", "time": 1724724483.8446927, "pid": 1611, "batch_idx": 35, "duration": 3.7365095615386963}
+{"event": "get-batch start", "time": 1724724483.8626997, "pid": 1611, "batch_idx": 43}
+{"event": "get-batch end", "time": 1724724487.2418182, "pid": 1611, "batch_idx": 43, "duration": 3.3791139125823975}
+{"event": "get-batch start", "time": 1724724487.2426732, "pid": 1611, "batch_idx": 51}
+{"event": "get-batch end", "time": 1724724490.8222277, "pid": 1611, "batch_idx": 51, "duration": 3.5795514583587646}
+{"event": "get-batch start", "time": 1724724490.8531322, "pid": 1611, "batch_idx": 59}
+{"event": "get-batch end", "time": 1724724494.2557652, "pid": 1611, "batch_idx": 59, "duration": 3.402630090713501}
+{"event": "get-batch start", "time": 1724724494.2601562, "pid": 1611, "batch_idx": 67}
+{"event": "get-batch end", "time": 1724724497.6787498, "pid": 1611, "batch_idx": 67, "duration": 3.4185893535614014}
+{"event": "get-batch start", "time": 1724724497.6894243, "pid": 1611, "batch_idx": 75}
+{"event": "get-batch end", "time": 1724724501.1401541, "pid": 1611, "batch_idx": 75, "duration": 3.450726270675659}
+{"event": "get-batch start", "time": 1724724501.158252, "pid": 1611, "batch_idx": 83}
+{"event": "get-batch end", "time": 1724724504.010317, "pid": 1611, "batch_idx": 83, "duration": 2.8520610332489014}
+{"event": "get-batch start", "time": 1724724504.0272317, "pid": 1611, "batch_idx": 91}
+{"event": "get-batch end", "time": 1724724507.5275874, "pid": 1611, "batch_idx": 91, "duration": 3.5003528594970703}
+{"event": "get-batch start", "time": 1724724507.540138, "pid": 1611, "batch_idx": 99}
+{"event": "get-batch end", "time": 1724724511.231342, "pid": 1611, "batch_idx": 99, "duration": 3.6912002563476562}
+{"event": "get-batch start", "time": 1724724511.2316334, "pid": 1611, "batch_idx": 107}
+{"event": "get-batch end", "time": 1724724514.407935, "pid": 1611, "batch_idx": 107, "duration": 3.176298141479492}
+{"event": "get-batch start", "time": 1724724514.416204, "pid": 1611, "batch_idx": 115}
+{"event": "get-batch end", "time": 1724724518.0271766, "pid": 1611, "batch_idx": 115, "duration": 3.610968828201294}
+{"event": "get-batch start", "time": 1724724518.0351243, "pid": 1611, "batch_idx": 123}
+{"event": "get-batch end", "time": 1724724520.8191614, "pid": 1611, "batch_idx": 123, "duration": 2.78403377532959}
+{"event": "get-batch start", "time": 1724724520.8411696, "pid": 1611, "batch_idx": 131}
+{"event": "get-batch end", "time": 1724724523.969725, "pid": 1611, "batch_idx": 131, "duration": 3.1285386085510254}
+{"event": "get-batch start", "time": 1724724524.7450883, "pid": 1611, "batch_idx": 139}
+{"event": "get-batch end", "time": 1724724527.557624, "pid": 1611, "batch_idx": 139, "duration": 2.8125319480895996}
+{"event": "get-batch start", "time": 1724724529.6168807, "pid": 1611, "batch_idx": 147}
+{"event": "get-batch end", "time": 1724724532.6751032, "pid": 1611, "batch_idx": 147, "duration": 3.0582194328308105}
+{"event": "get-batch start", "time": 1724724538.6250908, "pid": 1611, "batch_idx": 3}
+{"event": "get-batch end", "time": 1724724542.3644145, "pid": 1611, "batch_idx": 3, "duration": 3.7393198013305664}
+{"event": "get-batch start", "time": 1724724542.3647912, "pid": 1611, "batch_idx": 11}
+{"event": "get-batch end", "time": 1724724545.6992686, "pid": 1611, "batch_idx": 11, "duration": 3.3344736099243164}
+{"event": "get-batch start", "time": 1724724545.7191434, "pid": 1611, "batch_idx": 19}
+{"event": "get-batch end", "time": 1724724548.5694325, "pid": 1611, "batch_idx": 19, "duration": 2.850285530090332}
+{"event": "get-batch start", "time": 1724724548.584159, "pid": 1611, "batch_idx": 27}
+{"event": "get-batch end", "time": 1724724552.4555402, "pid": 1611, "batch_idx": 27, "duration": 3.87137770652771}
+{"event": "get-batch start", "time": 1724724552.4731855, "pid": 1611, "batch_idx": 35}
+{"event": "get-batch end", "time": 1724724556.7727847, "pid": 1611, "batch_idx": 35, "duration": 4.299596071243286}
+{"event": "get-batch start", "time": 1724724556.7891717, "pid": 1611, "batch_idx": 43}
+{"event": "get-batch end", "time": 1724724560.3932254, "pid": 1611, "batch_idx": 43, "duration": 3.6040499210357666}
+{"event": "get-batch start", "time": 1724724560.4111454, "pid": 1611, "batch_idx": 51}
+{"event": "get-batch end", "time": 1724724563.4421232, "pid": 1611, "batch_idx": 51, "duration": 3.0309739112854004}
+{"event": "get-batch start", "time": 1724724563.4578202, "pid": 1611, "batch_idx": 59}
+{"event": "get-batch end", "time": 1724724566.5376177, "pid": 1611, "batch_idx": 59, "duration": 3.079793691635132}
+{"event": "get-batch start", "time": 1724724566.558184, "pid": 1611, "batch_idx": 67}
+{"event": "get-batch end", "time": 1724724569.5358834, "pid": 1611, "batch_idx": 67, "duration": 2.9776954650878906}
+{"event": "get-batch start", "time": 1724724569.5491464, "pid": 1611, "batch_idx": 75}
+{"event": "get-batch end", "time": 1724724572.9923387, "pid": 1611, "batch_idx": 75, "duration": 3.4431886672973633}
+{"event": "get-batch start", "time": 1724724572.9931414, "pid": 1611, "batch_idx": 83}
+{"event": "get-batch end", "time": 1724724576.4510655, "pid": 1611, "batch_idx": 83, "duration": 3.457921028137207}
+{"event": "get-batch start", "time": 1724724576.4513855, "pid": 1611, "batch_idx": 91}
+{"event": "get-batch end", "time": 1724724579.5884254, "pid": 1611, "batch_idx": 91, "duration": 3.1370368003845215}
+{"event": "get-batch start", "time": 1724724579.6031752, "pid": 1611, "batch_idx": 99}
+{"event": "get-batch end", "time": 1724724583.3623226, "pid": 1611, "batch_idx": 99, "duration": 3.759143829345703}
+{"event": "get-batch start", "time": 1724724583.3751602, "pid": 1611, "batch_idx": 107}
+{"event": "get-batch end", "time": 1724724586.4730687, "pid": 1611, "batch_idx": 107, "duration": 3.097904920578003}
+{"event": "get-batch start", "time": 1724724586.4745848, "pid": 1611, "batch_idx": 115}
+{"event": "get-batch end", "time": 1724724590.4725738, "pid": 1611, "batch_idx": 115, "duration": 3.997985363006592}
+{"event": "get-batch start", "time": 1724724590.4852018, "pid": 1611, "batch_idx": 123}
+{"event": "get-batch end", "time": 1724724593.892446, "pid": 1611, "batch_idx": 123, "duration": 3.4072391986846924}
+{"event": "get-batch start", "time": 1724724593.8941276, "pid": 1611, "batch_idx": 131}
+{"event": "get-batch end", "time": 1724724597.0912876, "pid": 1611, "batch_idx": 131, "duration": 3.197157144546509}
+{"event": "get-batch start", "time": 1724724597.9402747, "pid": 1611, "batch_idx": 139}
+{"event": "get-batch end", "time": 1724724601.3470702, "pid": 1611, "batch_idx": 139, "duration": 3.4067916870117188}
+{"event": "get-batch start", "time": 1724724602.8003185, "pid": 1611, "batch_idx": 147}
+{"event": "get-batch end", "time": 1724724605.4832165, "pid": 1611, "batch_idx": 147, "duration": 2.6828956604003906}
+{"event": "get-batch start", "time": 1724724366.0366082, "pid": 1557, "batch_idx": 0}
+{"event": "get-batch end", "time": 1724724371.2038414, "pid": 1557, "batch_idx": 0, "duration": 5.1672282218933105}
+{"event": "get-batch start", "time": 1724724371.2101674, "pid": 1557, "batch_idx": 8}
+{"event": "get-batch end", "time": 1724724376.970724, "pid": 1557, "batch_idx": 8, "duration": 5.760551929473877}
+{"event": "get-batch start", "time": 1724724376.9711206, "pid": 1557, "batch_idx": 16}
+{"event": "get-batch end", "time": 1724724379.9196544, "pid": 1557, "batch_idx": 16, "duration": 2.948530912399292}
+{"event": "get-batch start", "time": 1724724379.919986, "pid": 1557, "batch_idx": 24}
+{"event": "get-batch end", "time": 1724724383.3874393, "pid": 1557, "batch_idx": 24, "duration": 3.4674508571624756}
+{"event": "get-batch start", "time": 1724724383.4001129, "pid": 1557, "batch_idx": 32}
+{"event": "get-batch end", "time": 1724724386.5669062, "pid": 1557, "batch_idx": 32, "duration": 3.166790246963501}
+{"event": "get-batch start", "time": 1724724386.583194, "pid": 1557, "batch_idx": 40}
+{"event": "get-batch end", "time": 1724724389.3879235, "pid": 1557, "batch_idx": 40, "duration": 2.8047261238098145}
+{"event": "get-batch start", "time": 1724724389.3882678, "pid": 1557, "batch_idx": 48}
+{"event": "get-batch end", "time": 1724724392.0741463, "pid": 1557, "batch_idx": 48, "duration": 2.685875177383423}
+{"event": "get-batch start", "time": 1724724392.7498686, "pid": 1557, "batch_idx": 0}
+{"event": "get-batch end", "time": 1724724396.266511, "pid": 1557, "batch_idx": 0, "duration": 3.516639471054077}
+{"event": "get-batch start", "time": 1724724396.2684274, "pid": 1557, "batch_idx": 8}
+{"event": "get-batch end", "time": 1724724399.6224062, "pid": 1557, "batch_idx": 8, "duration": 3.353975534439087}
+{"event": "get-batch start", "time": 1724724399.6411395, "pid": 1557, "batch_idx": 16}
+{"event": "get-batch end", "time": 1724724402.6488495, "pid": 1557, "batch_idx": 16, "duration": 3.007707118988037}
+{"event": "get-batch start", "time": 1724724402.6498008, "pid": 1557, "batch_idx": 24}
+{"event": "get-batch end", "time": 1724724406.2339349, "pid": 1557, "batch_idx": 24, "duration": 3.5841310024261475}
+{"event": "get-batch start", "time": 1724724406.251146, "pid": 1557, "batch_idx": 32}
+{"event": "get-batch end", "time": 1724724409.8556778, "pid": 1557, "batch_idx": 32, "duration": 3.6045289039611816}
+{"event": "get-batch start", "time": 1724724409.8723776, "pid": 1557, "batch_idx": 40}
+{"event": "get-batch end", "time": 1724724413.6516297, "pid": 1557, "batch_idx": 40, "duration": 3.7792491912841797}
+{"event": "get-batch start", "time": 1724724413.667332, "pid": 1557, "batch_idx": 48}
+{"event": "get-batch end", "time": 1724724417.4157763, "pid": 1557, "batch_idx": 48, "duration": 3.748441219329834}
+{"event": "get-batch start", "time": 1724724417.4292052, "pid": 1557, "batch_idx": 56}
+{"event": "get-batch end", "time": 1724724420.5898716, "pid": 1557, "batch_idx": 56, "duration": 3.16066312789917}
+{"event": "get-batch start", "time": 1724724420.6031697, "pid": 1557, "batch_idx": 64}
+{"event": "get-batch end", "time": 1724724423.8502393, "pid": 1557, "batch_idx": 64, "duration": 3.2470664978027344}
+{"event": "get-batch start", "time": 1724724423.8631723, "pid": 1557, "batch_idx": 72}
+{"event": "get-batch end", "time": 1724724427.192971, "pid": 1557, "batch_idx": 72, "duration": 3.329796075820923}
+{"event": "get-batch start", "time": 1724724427.193884, "pid": 1557, "batch_idx": 80}
+{"event": "get-batch end", "time": 1724724431.0818257, "pid": 1557, "batch_idx": 80, "duration": 3.8879380226135254}
+{"event": "get-batch start", "time": 1724724431.0828574, "pid": 1557, "batch_idx": 88}
+{"event": "get-batch end", "time": 1724724434.0542362, "pid": 1557, "batch_idx": 88, "duration": 2.9713757038116455}
+{"event": "get-batch start", "time": 1724724434.055393, "pid": 1557, "batch_idx": 96}
+{"event": "get-batch end", "time": 1724724439.1827376, "pid": 1557, "batch_idx": 96, "duration": 5.127342224121094}
+{"event": "get-batch start", "time": 1724724439.199147, "pid": 1557, "batch_idx": 104}
+{"event": "get-batch end", "time": 1724724442.5029123, "pid": 1557, "batch_idx": 104, "duration": 3.303762197494507}
+{"event": "get-batch start", "time": 1724724442.5211318, "pid": 1557, "batch_idx": 112}
+{"event": "get-batch end", "time": 1724724445.5615754, "pid": 1557, "batch_idx": 112, "duration": 3.040440082550049}
+{"event": "get-batch start", "time": 1724724445.584889, "pid": 1557, "batch_idx": 120}
+{"event": "get-batch end", "time": 1724724448.6549406, "pid": 1557, "batch_idx": 120, "duration": 3.0700488090515137}
+{"event": "get-batch start", "time": 1724724448.6681871, "pid": 1557, "batch_idx": 128}
+{"event": "get-batch end", "time": 1724724451.425435, "pid": 1557, "batch_idx": 128, "duration": 2.757244825363159}
+{"event": "get-batch start", "time": 1724724451.4381554, "pid": 1557, "batch_idx": 136}
+{"event": "get-batch end", "time": 1724724454.4008088, "pid": 1557, "batch_idx": 136, "duration": 2.9626498222351074}
+{"event": "get-batch start", "time": 1724724454.96517, "pid": 1557, "batch_idx": 144}
+{"event": "get-batch end", "time": 1724724458.7194946, "pid": 1557, "batch_idx": 144, "duration": 3.754322052001953}
+{"event": "get-batch start", "time": 1724724465.872365, "pid": 1557, "batch_idx": 0}
+{"event": "get-batch end", "time": 1724724468.973938, "pid": 1557, "batch_idx": 0, "duration": 3.101569890975952}
+{"event": "get-batch start", "time": 1724724468.9901435, "pid": 1557, "batch_idx": 8}
+{"event": "get-batch end", "time": 1724724473.230177, "pid": 1557, "batch_idx": 8, "duration": 4.240029573440552}
+{"event": "get-batch start", "time": 1724724473.23132, "pid": 1557, "batch_idx": 16}
+{"event": "get-batch end", "time": 1724724476.557658, "pid": 1557, "batch_idx": 16, "duration": 3.3263347148895264}
+{"event": "get-batch start", "time": 1724724476.571154, "pid": 1557, "batch_idx": 24}
+{"event": "get-batch end", "time": 1724724479.9379644, "pid": 1557, "batch_idx": 24, "duration": 3.366807460784912}
+{"event": "get-batch start", "time": 1724724479.9511368, "pid": 1557, "batch_idx": 32}
+{"event": "get-batch end", "time": 1724724483.6009874, "pid": 1557, "batch_idx": 32, "duration": 3.6498470306396484}
+{"event": "get-batch start", "time": 1724724483.6141675, "pid": 1557, "batch_idx": 40}
+{"event": "get-batch end", "time": 1724724487.2087967, "pid": 1557, "batch_idx": 40, "duration": 3.59462571144104}
+{"event": "get-batch start", "time": 1724724487.228178, "pid": 1557, "batch_idx": 48}
+{"event": "get-batch end", "time": 1724724490.7790017, "pid": 1557, "batch_idx": 48, "duration": 3.550820827484131}
+{"event": "get-batch start", "time": 1724724490.7798004, "pid": 1557, "batch_idx": 56}
+{"event": "get-batch end", "time": 1724724494.041246, "pid": 1557, "batch_idx": 56, "duration": 3.261441707611084}
+{"event": "get-batch start", "time": 1724724494.0541732, "pid": 1557, "batch_idx": 64}
+{"event": "get-batch end", "time": 1724724497.3935394, "pid": 1557, "batch_idx": 64, "duration": 3.3393633365631104}
+{"event": "get-batch start", "time": 1724724497.4061646, "pid": 1557, "batch_idx": 72}
+{"event": "get-batch end", "time": 1724724500.7413769, "pid": 1557, "batch_idx": 72, "duration": 3.3352088928222656}
+{"event": "get-batch start", "time": 1724724500.7621493, "pid": 1557, "batch_idx": 80}
+{"event": "get-batch end", "time": 1724724503.8811827, "pid": 1557, "batch_idx": 80, "duration": 3.119030237197876}
+{"event": "get-batch start", "time": 1724724503.897186, "pid": 1557, "batch_idx": 88}
+{"event": "get-batch end", "time": 1724724507.9279234, "pid": 1557, "batch_idx": 88, "duration": 4.030734062194824}
+{"event": "get-batch start", "time": 1724724507.9461524, "pid": 1557, "batch_idx": 96}
+{"event": "get-batch end", "time": 1724724510.8324723, "pid": 1557, "batch_idx": 96, "duration": 2.8863162994384766}
+{"event": "get-batch start", "time": 1724724510.846137, "pid": 1557, "batch_idx": 104}
+{"event": "get-batch end", "time": 1724724513.9559739, "pid": 1557, "batch_idx": 104, "duration": 3.1098337173461914}
+{"event": "get-batch start", "time": 1724724513.9567544, "pid": 1557, "batch_idx": 112}
+{"event": "get-batch end", "time": 1724724517.2994792, "pid": 1557, "batch_idx": 112, "duration": 3.342722177505493}
+{"event": "get-batch start", "time": 1724724517.3121486, "pid": 1557, "batch_idx": 120}
+{"event": "get-batch end", "time": 1724724520.4728105, "pid": 1557, "batch_idx": 120, "duration": 3.160658121109009}
+{"event": "get-batch start", "time": 1724724520.4924212, "pid": 1557, "batch_idx": 128}
+{"event": "get-batch end", "time": 1724724524.0618916, "pid": 1557, "batch_idx": 128, "duration": 3.569467782974243}
+{"event": "get-batch start", "time": 1724724524.0625997, "pid": 1557, "batch_idx": 136}
+{"event": "get-batch end", "time": 1724724526.830481, "pid": 1557, "batch_idx": 136, "duration": 2.7678792476654053}
+{"event": "get-batch start", "time": 1724724527.8049676, "pid": 1557, "batch_idx": 144}
+{"event": "get-batch end", "time": 1724724533.9194412, "pid": 1557, "batch_idx": 144, "duration": 6.114471197128296}
+{"event": "get-batch start", "time": 1724724538.6263697, "pid": 1557, "batch_idx": 0}
+{"event": "get-batch end", "time": 1724724542.4286005, "pid": 1557, "batch_idx": 0, "duration": 3.802227735519409}
+{"event": "get-batch start", "time": 1724724542.44119, "pid": 1557, "batch_idx": 8}
+{"event": "get-batch end", "time": 1724724546.1569269, "pid": 1557, "batch_idx": 8, "duration": 3.7157342433929443}
+{"event": "get-batch start", "time": 1724724546.174742, "pid": 1557, "batch_idx": 16}
+{"event": "get-batch end", "time": 1724724549.8492322, "pid": 1557, "batch_idx": 16, "duration": 3.6744871139526367}
+{"event": "get-batch start", "time": 1724724549.8638132, "pid": 1557, "batch_idx": 24}
+{"event": "get-batch end", "time": 1724724554.515101, "pid": 1557, "batch_idx": 24, "duration": 4.651284456253052}
+{"event": "get-batch start", "time": 1724724554.5341568, "pid": 1557, "batch_idx": 32}
+{"event": "get-batch end", "time": 1724724557.735121, "pid": 1557, "batch_idx": 32, "duration": 3.200961112976074}
+{"event": "get-batch start", "time": 1724724557.7381423, "pid": 1557, "batch_idx": 40}
+{"event": "get-batch end", "time": 1724724561.3560493, "pid": 1557, "batch_idx": 40, "duration": 3.617903232574463}
+{"event": "get-batch start", "time": 1724724561.3702083, "pid": 1557, "batch_idx": 48}
+{"event": "get-batch end", "time": 1724724564.6169775, "pid": 1557, "batch_idx": 48, "duration": 3.2467663288116455}
+{"event": "get-batch start", "time": 1724724564.6301818, "pid": 1557, "batch_idx": 56}
+{"event": "get-batch end", "time": 1724724568.388156, "pid": 1557, "batch_idx": 56, "duration": 3.7579715251922607}
+{"event": "get-batch start", "time": 1724724568.4011366, "pid": 1557, "batch_idx": 64}
+{"event": "get-batch end", "time": 1724724572.3726494, "pid": 1557, "batch_idx": 64, "duration": 3.971510171890259}
+{"event": "get-batch start", "time": 1724724572.391282, "pid": 1557, "batch_idx": 72}
+{"event": "get-batch end", "time": 1724724576.4301145, "pid": 1557, "batch_idx": 72, "duration": 4.038829565048218}
+{"event": "get-batch start", "time": 1724724576.438237, "pid": 1557, "batch_idx": 80}
+{"event": "get-batch end", "time": 1724724579.827039, "pid": 1557, "batch_idx": 80, "duration": 3.3887991905212402}
+{"event": "get-batch start", "time": 1724724579.8274975, "pid": 1557, "batch_idx": 88}
+{"event": "get-batch end", "time": 1724724583.0036962, "pid": 1557, "batch_idx": 88, "duration": 3.1761960983276367}
+{"event": "get-batch start", "time": 1724724583.0161498, "pid": 1557, "batch_idx": 96}
+{"event": "get-batch end", "time": 1724724586.1743329, "pid": 1557, "batch_idx": 96, "duration": 3.15817928314209}
+{"event": "get-batch start", "time": 1724724586.187394, "pid": 1557, "batch_idx": 104}
+{"event": "get-batch end", "time": 1724724589.6015618, "pid": 1557, "batch_idx": 104, "duration": 3.4141647815704346}
+{"event": "get-batch start", "time": 1724724589.6141338, "pid": 1557, "batch_idx": 112}
+{"event": "get-batch end", "time": 1724724593.6689374, "pid": 1557, "batch_idx": 112, "duration": 4.054800987243652}
+{"event": "get-batch start", "time": 1724724593.6826274, "pid": 1557, "batch_idx": 120}
+{"event": "get-batch end", "time": 1724724597.209224, "pid": 1557, "batch_idx": 120, "duration": 3.5265932083129883}
+{"event": "get-batch start", "time": 1724724597.2095053, "pid": 1557, "batch_idx": 128}
+{"event": "get-batch end", "time": 1724724600.8449268, "pid": 1557, "batch_idx": 128, "duration": 3.63541841506958}
+{"event": "get-batch start", "time": 1724724600.873143, "pid": 1557, "batch_idx": 136}
+{"event": "get-batch end", "time": 1724724603.3094351, "pid": 1557, "batch_idx": 136, "duration": 2.436289072036743}
+{"event": "get-batch start", "time": 1724724603.3303523, "pid": 1557, "batch_idx": 144}
+{"event": "get-batch end", "time": 1724724605.7697346, "pid": 1557, "batch_idx": 144, "duration": 2.439380407333374}
+{"event": "get-batch start", "time": 1724724366.0390596, "pid": 1648, "batch_idx": 5}
+{"event": "get-batch end", "time": 1724724370.9831147, "pid": 1648, "batch_idx": 5, "duration": 4.9440507888793945}
+{"event": "get-batch start", "time": 1724724370.9856403, "pid": 1648, "batch_idx": 13}
+{"event": "get-batch end", "time": 1724724376.2566497, "pid": 1648, "batch_idx": 13, "duration": 5.27100682258606}
+{"event": "get-batch start", "time": 1724724376.267247, "pid": 1648, "batch_idx": 21}
+{"event": "get-batch end", "time": 1724724380.5703263, "pid": 1648, "batch_idx": 21, "duration": 4.303076267242432}
+{"event": "get-batch start", "time": 1724724380.5798185, "pid": 1648, "batch_idx": 29}
+{"event": "get-batch end", "time": 1724724384.0436218, "pid": 1648, "batch_idx": 29, "duration": 3.463799476623535}
+{"event": "get-batch start", "time": 1724724384.0659297, "pid": 1648, "batch_idx": 37}
+{"event": "get-batch end", "time": 1724724387.6056302, "pid": 1648, "batch_idx": 37, "duration": 3.5396976470947266}
+{"event": "get-batch start", "time": 1724724387.6193333, "pid": 1648, "batch_idx": 45}
+{"event": "get-batch end", "time": 1724724390.544383, "pid": 1648, "batch_idx": 45, "duration": 2.9250471591949463}
+{"event": "get-batch start", "time": 1724724392.7496514, "pid": 1648, "batch_idx": 5}
+{"event": "get-batch end", "time": 1724724396.216053, "pid": 1648, "batch_idx": 5, "duration": 3.466398000717163}
+{"event": "get-batch start", "time": 1724724396.2167506, "pid": 1648, "batch_idx": 13}
+{"event": "get-batch end", "time": 1724724399.172828, "pid": 1648, "batch_idx": 13, "duration": 2.9560739994049072}
+{"event": "get-batch start", "time": 1724724399.1891384, "pid": 1648, "batch_idx": 21}
+{"event": "get-batch end", "time": 1724724402.2686536, "pid": 1648, "batch_idx": 21, "duration": 3.079511880874634}
+{"event": "get-batch start", "time": 1724724402.2832358, "pid": 1648, "batch_idx": 29}
+{"event": "get-batch end", "time": 1724724405.8827, "pid": 1648, "batch_idx": 29, "duration": 3.599461793899536}
+{"event": "get-batch start", "time": 1724724405.8951802, "pid": 1648, "batch_idx": 37}
+{"event": "get-batch end", "time": 1724724409.3530967, "pid": 1648, "batch_idx": 37, "duration": 3.457913398742676}
+{"event": "get-batch start", "time": 1724724409.3681479, "pid": 1648, "batch_idx": 45}
+{"event": "get-batch end", "time": 1724724412.6852033, "pid": 1648, "batch_idx": 45, "duration": 3.3170523643493652}
+{"event": "get-batch start", "time": 1724724412.6981401, "pid": 1648, "batch_idx": 53}
+{"event": "get-batch end", "time": 1724724416.5493042, "pid": 1648, "batch_idx": 53, "duration": 3.851161241531372}
+{"event": "get-batch start", "time": 1724724416.5672262, "pid": 1648, "batch_idx": 61}
+{"event": "get-batch end", "time": 1724724420.0805023, "pid": 1648, "batch_idx": 61, "duration": 3.513272523880005}
+{"event": "get-batch start", "time": 1724724420.0931668, "pid": 1648, "batch_idx": 69}
+{"event": "get-batch end", "time": 1724724423.3450987, "pid": 1648, "batch_idx": 69, "duration": 3.2519285678863525}
+{"event": "get-batch start", "time": 1724724423.3581388, "pid": 1648, "batch_idx": 77}
+{"event": "get-batch end", "time": 1724724426.6974366, "pid": 1648, "batch_idx": 77, "duration": 3.3392953872680664}
+{"event": "get-batch start", "time": 1724724426.6981752, "pid": 1648, "batch_idx": 85}
+{"event": "get-batch end", "time": 1724724429.4997964, "pid": 1648, "batch_idx": 85, "duration": 2.8016176223754883}
+{"event": "get-batch start", "time": 1724724429.516014, "pid": 1648, "batch_idx": 93}
+{"event": "get-batch end", "time": 1724724432.8383224, "pid": 1648, "batch_idx": 93, "duration": 3.322305679321289}
+{"event": "get-batch start", "time": 1724724432.8511238, "pid": 1648, "batch_idx": 101}
+{"event": "get-batch end", "time": 1724724436.5617619, "pid": 1648, "batch_idx": 101, "duration": 3.710634708404541}
+{"event": "get-batch start", "time": 1724724436.5741317, "pid": 1648, "batch_idx": 109}
+{"event": "get-batch end", "time": 1724724439.8933117, "pid": 1648, "batch_idx": 109, "duration": 3.319176435470581}
+{"event": "get-batch start", "time": 1724724439.9131806, "pid": 1648, "batch_idx": 117}
+{"event": "get-batch end", "time": 1724724442.8538997, "pid": 1648, "batch_idx": 117, "duration": 2.940715789794922}
+{"event": "get-batch start", "time": 1724724443.3754375, "pid": 1648, "batch_idx": 125}
+{"event": "get-batch end", "time": 1724724447.434236, "pid": 1648, "batch_idx": 125, "duration": 4.058795690536499}
+{"event": "get-batch start", "time": 1724724448.238006, "pid": 1648, "batch_idx": 133}
+{"event": "get-batch end", "time": 1724724451.65576, "pid": 1648, "batch_idx": 133, "duration": 3.4177513122558594}
+{"event": "get-batch start", "time": 1724724453.1321914, "pid": 1648, "batch_idx": 141}
+{"event": "get-batch end", "time": 1724724458.7846339, "pid": 1648, "batch_idx": 141, "duration": 5.65243935585022}
+{"event": "get-batch start", "time": 1724724465.87397, "pid": 1648, "batch_idx": 5}
+{"event": "get-batch end", "time": 1724724468.6528223, "pid": 1648, "batch_idx": 5, "duration": 2.7788491249084473}
+{"event": "get-batch start", "time": 1724724468.666116, "pid": 1648, "batch_idx": 13}
+{"event": "get-batch end", "time": 1724724472.7271047, "pid": 1648, "batch_idx": 13, "duration": 4.060985803604126}
+{"event": "get-batch start", "time": 1724724472.7401202, "pid": 1648, "batch_idx": 21}
+{"event": "get-batch end", "time": 1724724476.7846303, "pid": 1648, "batch_idx": 21, "duration": 4.044506788253784}
+{"event": "get-batch start", "time": 1724724476.807255, "pid": 1648, "batch_idx": 29}
+{"event": "get-batch end", "time": 1724724480.354886, "pid": 1648, "batch_idx": 29, "duration": 3.54762864112854}
+{"event": "get-batch start", "time": 1724724480.3702524, "pid": 1648, "batch_idx": 37}
+{"event": "get-batch end", "time": 1724724483.9067965, "pid": 1648, "batch_idx": 37, "duration": 3.5365407466888428}
+{"event": "get-batch start", "time": 1724724483.921164, "pid": 1648, "batch_idx": 45}
+{"event": "get-batch end", "time": 1724724487.8666437, "pid": 1648, "batch_idx": 45, "duration": 3.945476531982422}
+{"event": "get-batch start", "time": 1724724487.867601, "pid": 1648, "batch_idx": 53}
+{"event": "get-batch end", "time": 1724724491.2550702, "pid": 1648, "batch_idx": 53, "duration": 3.3874661922454834}
+{"event": "get-batch start", "time": 1724724491.2711477, "pid": 1648, "batch_idx": 61}
+{"event": "get-batch end", "time": 1724724494.6024647, "pid": 1648, "batch_idx": 61, "duration": 3.3313136100769043}
+{"event": "get-batch start", "time": 1724724494.6171434, "pid": 1648, "batch_idx": 69}
+{"event": "get-batch end", "time": 1724724497.9172704, "pid": 1648, "batch_idx": 69, "duration": 3.3001246452331543}
+{"event": "get-batch start", "time": 1724724497.9217472, "pid": 1648, "batch_idx": 77}
+{"event": "get-batch end", "time": 1724724500.7384818, "pid": 1648, "batch_idx": 77, "duration": 2.8167312145233154}
+{"event": "get-batch start", "time": 1724724500.7542028, "pid": 1648, "batch_idx": 85}
+{"event": "get-batch end", "time": 1724724504.644552, "pid": 1648, "batch_idx": 85, "duration": 3.890345573425293}
+{"event": "get-batch start", "time": 1724724504.6450138, "pid": 1648, "batch_idx": 93}
+{"event": "get-batch end", "time": 1724724508.3257523, "pid": 1648, "batch_idx": 93, "duration": 3.680734872817993}
+{"event": "get-batch start", "time": 1724724508.339149, "pid": 1648, "batch_idx": 101}
+{"event": "get-batch end", "time": 1724724511.5453632, "pid": 1648, "batch_idx": 101, "duration": 3.2062113285064697}
+{"event": "get-batch start", "time": 1724724511.5581994, "pid": 1648, "batch_idx": 109}
+{"event": "get-batch end", "time": 1724724514.8366594, "pid": 1648, "batch_idx": 109, "duration": 3.2784571647644043}
+{"event": "get-batch start", "time": 1724724514.8374481, "pid": 1648, "batch_idx": 117}
+{"event": "get-batch end", "time": 1724724518.3913572, "pid": 1648, "batch_idx": 117, "duration": 3.553905725479126}
+{"event": "get-batch start", "time": 1724724518.407259, "pid": 1648, "batch_idx": 125}
+{"event": "get-batch end", "time": 1724724521.4296775, "pid": 1648, "batch_idx": 125, "duration": 3.0224153995513916}
+{"event": "get-batch start", "time": 1724724521.4299932, "pid": 1648, "batch_idx": 133}
+{"event": "get-batch end", "time": 1724724525.2634118, "pid": 1648, "batch_idx": 133, "duration": 3.8334155082702637}
+{"event": "get-batch start", "time": 1724724525.9544206, "pid": 1648, "batch_idx": 141}
+{"event": "get-batch end", "time": 1724724532.2460613, "pid": 1648, "batch_idx": 141, "duration": 6.291638135910034}
+{"event": "get-batch start", "time": 1724724538.6254125, "pid": 1648, "batch_idx": 5}
+{"event": "get-batch end", "time": 1724724542.6767826, "pid": 1648, "batch_idx": 5, "duration": 4.051366329193115}
+{"event": "get-batch start", "time": 1724724542.6771905, "pid": 1648, "batch_idx": 13}
+{"event": "get-batch end", "time": 1724724546.416424, "pid": 1648, "batch_idx": 13, "duration": 3.739229917526245}
+{"event": "get-batch start", "time": 1724724546.4290988, "pid": 1648, "batch_idx": 21}
+{"event": "get-batch end", "time": 1724724550.292908, "pid": 1648, "batch_idx": 21, "duration": 3.86380672454834}
+{"event": "get-batch start", "time": 1724724550.321147, "pid": 1648, "batch_idx": 29}
+{"event": "get-batch end", "time": 1724724553.7166748, "pid": 1648, "batch_idx": 29, "duration": 3.395524740219116}
+{"event": "get-batch start", "time": 1724724553.7291467, "pid": 1648, "batch_idx": 37}
+{"event": "get-batch end", "time": 1724724556.9195795, "pid": 1648, "batch_idx": 37, "duration": 3.1904296875}
+{"event": "get-batch start", "time": 1724724556.9203947, "pid": 1648, "batch_idx": 45}
+{"event": "get-batch end", "time": 1724724560.2731652, "pid": 1648, "batch_idx": 45, "duration": 3.3527672290802}
+{"event": "get-batch start", "time": 1724724560.286173, "pid": 1648, "batch_idx": 53}
+{"event": "get-batch end", "time": 1724724564.2259383, "pid": 1648, "batch_idx": 53, "duration": 3.939762592315674}
+{"event": "get-batch start", "time": 1724724564.2461886, "pid": 1648, "batch_idx": 61}
+{"event": "get-batch end", "time": 1724724568.1431274, "pid": 1648, "batch_idx": 61, "duration": 3.896934747695923}
+{"event": "get-batch start", "time": 1724724568.1434636, "pid": 1648, "batch_idx": 69}
+{"event": "get-batch end", "time": 1724724572.2425098, "pid": 1648, "batch_idx": 69, "duration": 4.099042654037476}
+{"event": "get-batch start", "time": 1724724572.2481468, "pid": 1648, "batch_idx": 77}
+{"event": "get-batch end", "time": 1724724574.9494138, "pid": 1648, "batch_idx": 77, "duration": 2.701263427734375}
+{"event": "get-batch start", "time": 1724724574.9701471, "pid": 1648, "batch_idx": 85}
+{"event": "get-batch end", "time": 1724724578.4156275, "pid": 1648, "batch_idx": 85, "duration": 3.445476770401001}
+{"event": "get-batch start", "time": 1724724578.436169, "pid": 1648, "batch_idx": 93}
+{"event": "get-batch end", "time": 1724724582.2834477, "pid": 1648, "batch_idx": 93, "duration": 3.8472745418548584}
+{"event": "get-batch start", "time": 1724724582.3052325, "pid": 1648, "batch_idx": 101}
+{"event": "get-batch end", "time": 1724724585.8309965, "pid": 1648, "batch_idx": 101, "duration": 3.5257608890533447}
+{"event": "get-batch start", "time": 1724724585.8699348, "pid": 1648, "batch_idx": 109}
+{"event": "get-batch end", "time": 1724724589.554218, "pid": 1648, "batch_idx": 109, "duration": 3.684279680252075}
+{"event": "get-batch start", "time": 1724724589.5671391, "pid": 1648, "batch_idx": 117}
+{"event": "get-batch end", "time": 1724724592.362407, "pid": 1648, "batch_idx": 117, "duration": 2.795264720916748}
+{"event": "get-batch start", "time": 1724724592.3782313, "pid": 1648, "batch_idx": 125}
+{"event": "get-batch end", "time": 1724724595.449396, "pid": 1648, "batch_idx": 125, "duration": 3.0711472034454346}
+{"event": "get-batch start", "time": 1724724595.4621396, "pid": 1648, "batch_idx": 133}
+{"event": "get-batch end", "time": 1724724598.07266, "pid": 1648, "batch_idx": 133, "duration": 2.6105170249938965}
+{"event": "get-batch start", "time": 1724724599.148242, "pid": 1648, "batch_idx": 141}
+{"event": "get-batch end", "time": 1724724605.8724754, "pid": 1648, "batch_idx": 141, "duration": 6.724231243133545}
+{"event": "setup end", "time": 1724724374.7877772, "pid": 1541, "duration": 38.26604461669922}
+{"event": "epoch start", "time": 1724724374.787835, "pid": 1541, "epoch": 0}
+{"event": "training start", "time": 1724724396.3154192, "pid": 1541, "batch": 0}
+{"event": "training end", "time": 1724724396.9156573, "pid": 1541, "batch": 0, "duration": 0.6002151966094971, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724396.9202135, "pid": 1541, "batch": 1}
+{"event": "training end", "time": 1724724397.5203836, "pid": 1541, "batch": 1, "duration": 0.6001498699188232, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724397.6694524, "pid": 1541, "batch": 2}
+{"event": "training end", "time": 1724724398.2696974, "pid": 1541, "batch": 2, "duration": 0.6002256870269775, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724398.2735794, "pid": 1541, "batch": 3}
+{"event": "training end", "time": 1724724398.873811, "pid": 1541, "batch": 3, "duration": 0.600210428237915, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724398.8773398, "pid": 1541, "batch": 4}
+{"event": "training end", "time": 1724724399.4775178, "pid": 1541, "batch": 4, "duration": 0.600156307220459, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724399.4805152, "pid": 1541, "batch": 5}
+{"event": "training end", "time": 1724724400.080684, "pid": 1541, "batch": 5, "duration": 0.6001489162445068, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724400.0861204, "pid": 1541, "batch": 6}
+{"event": "training end", "time": 1724724400.686278, "pid": 1541, "batch": 6, "duration": 0.6001379489898682, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724400.6901968, "pid": 1541, "batch": 7}
+{"event": "training end", "time": 1724724401.2904112, "pid": 1541, "batch": 7, "duration": 0.6001849174499512, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724401.3008797, "pid": 1541, "batch": 8}
+{"event": "training end", "time": 1724724401.9010422, "pid": 1541, "batch": 8, "duration": 0.6001348495483398, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724401.9062917, "pid": 1541, "batch": 9}
+{"event": "training end", "time": 1724724402.506452, "pid": 1541, "batch": 9, "duration": 0.6001443862915039, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724402.514588, "pid": 1541, "batch": 10}
+{"event": "training end", "time": 1724724403.1147742, "pid": 1541, "batch": 10, "duration": 0.6001651287078857, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724403.1183424, "pid": 1541, "batch": 11}
+{"event": "training end", "time": 1724724403.7185209, "pid": 1541, "batch": 11, "duration": 0.6001598834991455, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724403.7223985, "pid": 1541, "batch": 12}
+{"event": "training end", "time": 1724724404.322562, "pid": 1541, "batch": 12, "duration": 0.6001441478729248, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724404.3262541, "pid": 1541, "batch": 13}
+{"event": "training end", "time": 1724724404.9265487, "pid": 1541, "batch": 13, "duration": 0.600273609161377, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724404.93095, "pid": 1541, "batch": 14}
+{"event": "training end", "time": 1724724405.5341084, "pid": 1541, "batch": 14, "duration": 0.6031415462493896, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724405.5398965, "pid": 1541, "batch": 15}
+{"event": "training end", "time": 1724724406.1400776, "pid": 1541, "batch": 15, "duration": 0.6001617908477783, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724406.1529615, "pid": 1541, "batch": 16}
+{"event": "training end", "time": 1724724406.7531729, "pid": 1541, "batch": 16, "duration": 0.6001927852630615, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724406.762542, "pid": 1541, "batch": 17}
+{"event": "training end", "time": 1724724407.3628273, "pid": 1541, "batch": 17, "duration": 0.6002452373504639, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724407.369448, "pid": 1541, "batch": 18}
+{"event": "training end", "time": 1724724407.969959, "pid": 1541, "batch": 18, "duration": 0.6004929542541504, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724407.9732525, "pid": 1541, "batch": 19}
+{"event": "training end", "time": 1724724408.5734973, "pid": 1541, "batch": 19, "duration": 0.6002073287963867, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724408.5774007, "pid": 1541, "batch": 20}
+{"event": "training end", "time": 1724724409.177646, "pid": 1541, "batch": 20, "duration": 0.600226640701294, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724409.1816063, "pid": 1541, "batch": 21}
+{"event": "training end", "time": 1724724409.7817726, "pid": 1541, "batch": 21, "duration": 0.6001479625701904, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724409.785024, "pid": 1541, "batch": 22}
+{"event": "training end", "time": 1724724410.3852057, "pid": 1541, "batch": 22, "duration": 0.6001622676849365, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724410.3941288, "pid": 1541, "batch": 23}
+{"event": "training end", "time": 1724724410.9943478, "pid": 1541, "batch": 23, "duration": 0.6002018451690674, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724410.999516, "pid": 1541, "batch": 24}
+{"event": "training end", "time": 1724724411.5999584, "pid": 1541, "batch": 24, "duration": 0.6004214286804199, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724411.608234, "pid": 1541, "batch": 25}
+{"event": "training end", "time": 1724724412.2083912, "pid": 1541, "batch": 25, "duration": 0.6001327037811279, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724412.2145615, "pid": 1541, "batch": 26}
+{"event": "training end", "time": 1724724412.8147333, "pid": 1541, "batch": 26, "duration": 0.6001505851745605, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724412.8182092, "pid": 1541, "batch": 27}
+{"event": "training end", "time": 1724724413.4183726, "pid": 1541, "batch": 27, "duration": 0.6001465320587158, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724413.4218776, "pid": 1541, "batch": 28}
+{"event": "training end", "time": 1724724414.0221207, "pid": 1541, "batch": 28, "duration": 0.600224494934082, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724414.0253966, "pid": 1541, "batch": 29}
+{"event": "training end", "time": 1724724414.625722, "pid": 1541, "batch": 29, "duration": 0.6003079414367676, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724414.6298358, "pid": 1541, "batch": 30}
+{"event": "training end", "time": 1724724415.2300012, "pid": 1541, "batch": 30, "duration": 0.6001451015472412, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724415.2355306, "pid": 1541, "batch": 31}
+{"event": "training end", "time": 1724724415.8357346, "pid": 1541, "batch": 31, "duration": 0.6001794338226318, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724415.8425019, "pid": 1541, "batch": 32}
+{"event": "training end", "time": 1724724416.4426906, "pid": 1541, "batch": 32, "duration": 0.6001706123352051, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724416.4481394, "pid": 1541, "batch": 33}
+{"event": "training end", "time": 1724724417.048295, "pid": 1541, "batch": 33, "duration": 0.6001348495483398, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724417.0903342, "pid": 1541, "batch": 34}
+{"event": "training end", "time": 1724724417.6905048, "pid": 1541, "batch": 34, "duration": 0.6001496315002441, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724417.694402, "pid": 1541, "batch": 35}
+{"event": "training end", "time": 1724724418.2945635, "pid": 1541, "batch": 35, "duration": 0.6001431941986084, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724418.2987168, "pid": 1541, "batch": 36}
+{"event": "training end", "time": 1724724418.8989244, "pid": 1541, "batch": 36, "duration": 0.6001882553100586, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724418.9027226, "pid": 1541, "batch": 37}
+{"event": "training end", "time": 1724724419.502884, "pid": 1541, "batch": 37, "duration": 0.6001420021057129, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724419.5062196, "pid": 1541, "batch": 38}
+{"event": "training end", "time": 1724724420.1063828, "pid": 1541, "batch": 38, "duration": 0.6001439094543457, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724420.1109507, "pid": 1541, "batch": 39}
+{"event": "training end", "time": 1724724420.7110717, "pid": 1541, "batch": 39, "duration": 0.6001029014587402, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724420.7211263, "pid": 1541, "batch": 40}
+{"event": "training end", "time": 1724724421.3212774, "pid": 1541, "batch": 40, "duration": 0.6001327037811279, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724421.3253274, "pid": 1541, "batch": 41}
+{"event": "training end", "time": 1724724421.9254885, "pid": 1541, "batch": 41, "duration": 0.6001424789428711, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724421.9365046, "pid": 1541, "batch": 42}
+{"event": "training end", "time": 1724724422.5366676, "pid": 1541, "batch": 42, "duration": 0.6001472473144531, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724422.5404303, "pid": 1541, "batch": 43}
+{"event": "training end", "time": 1724724423.1406953, "pid": 1541, "batch": 43, "duration": 0.6001861095428467, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724423.14807, "pid": 1541, "batch": 44}
+{"event": "training end", "time": 1724724423.7482796, "pid": 1541, "batch": 44, "duration": 0.6001911163330078, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724423.7518532, "pid": 1541, "batch": 45}
+{"event": "training end", "time": 1724724424.3520737, "pid": 1541, "batch": 45, "duration": 0.6001505851745605, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724424.3555503, "pid": 1541, "batch": 46}
+{"event": "training end", "time": 1724724424.9557555, "pid": 1541, "batch": 46, "duration": 0.6001861095428467, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724425.0500581, "pid": 1541, "batch": 47}
+{"event": "training end", "time": 1724724425.6502194, "pid": 1541, "batch": 47, "duration": 0.6001441478729248, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724425.6538718, "pid": 1541, "batch": 48}
+{"event": "training end", "time": 1724724426.254054, "pid": 1541, "batch": 48, "duration": 0.6001341342926025, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724426.260268, "pid": 1541, "batch": 49}
+{"event": "training end", "time": 1724724426.8607693, "pid": 1541, "batch": 49, "duration": 0.6004843711853027, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724426.8674066, "pid": 1541, "batch": 50}
+{"event": "training end", "time": 1724724427.467642, "pid": 1541, "batch": 50, "duration": 0.6002154350280762, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724427.4721296, "pid": 1541, "batch": 51}
+{"event": "training end", "time": 1724724428.0723517, "pid": 1541, "batch": 51, "duration": 0.6002037525177002, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724428.0761623, "pid": 1541, "batch": 52}
+{"event": "training end", "time": 1724724428.6763527, "pid": 1541, "batch": 52, "duration": 0.6001713275909424, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724428.6803243, "pid": 1541, "batch": 53}
+{"event": "training end", "time": 1724724429.2805462, "pid": 1541, "batch": 53, "duration": 0.6002049446105957, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724429.2841685, "pid": 1541, "batch": 54}
+{"event": "training end", "time": 1724724429.8843246, "pid": 1541, "batch": 54, "duration": 0.6001400947570801, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724429.9622848, "pid": 1541, "batch": 55}
+{"event": "training end", "time": 1724724430.5625112, "pid": 1541, "batch": 55, "duration": 0.6002085208892822, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724430.5665092, "pid": 1541, "batch": 56}
+{"event": "training end", "time": 1724724431.1666808, "pid": 1541, "batch": 56, "duration": 0.6001541614532471, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724431.1702108, "pid": 1541, "batch": 57}
+{"event": "training end", "time": 1724724431.7704277, "pid": 1541, "batch": 57, "duration": 0.6001958847045898, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724431.774223, "pid": 1541, "batch": 58}
+{"event": "training end", "time": 1724724432.3743787, "pid": 1541, "batch": 58, "duration": 0.6001384258270264, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724432.3781815, "pid": 1541, "batch": 59}
+{"event": "training end", "time": 1724724432.9783332, "pid": 1541, "batch": 59, "duration": 0.6001341342926025, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724432.9813359, "pid": 1541, "batch": 60}
+{"event": "training end", "time": 1724724433.5814986, "pid": 1541, "batch": 60, "duration": 0.6001455783843994, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724433.5853379, "pid": 1541, "batch": 61}
+{"event": "training end", "time": 1724724434.1855211, "pid": 1541, "batch": 61, "duration": 0.6001644134521484, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724434.190438, "pid": 1541, "batch": 62}
+{"event": "training end", "time": 1724724434.7905986, "pid": 1541, "batch": 62, "duration": 0.6001420021057129, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724434.806084, "pid": 1541, "batch": 63}
+{"event": "training end", "time": 1724724435.4063141, "pid": 1541, "batch": 63, "duration": 0.6002092361450195, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724435.4115722, "pid": 1541, "batch": 64}
+{"event": "training end", "time": 1724724436.0118215, "pid": 1541, "batch": 64, "duration": 0.6002333164215088, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724436.0150084, "pid": 1541, "batch": 65}
+{"event": "training end", "time": 1724724436.6151915, "pid": 1541, "batch": 65, "duration": 0.6001644134521484, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724436.619149, "pid": 1541, "batch": 66}
+{"event": "training end", "time": 1724724437.2193038, "pid": 1541, "batch": 66, "duration": 0.6001367568969727, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724437.2224836, "pid": 1541, "batch": 67}
+{"event": "training end", "time": 1724724437.8340633, "pid": 1541, "batch": 67, "duration": 0.6115648746490479, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724437.8375604, "pid": 1541, "batch": 68}
+{"event": "training end", "time": 1724724438.4377766, "pid": 1541, "batch": 68, "duration": 0.6001746654510498, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724438.442187, "pid": 1541, "batch": 69}
+{"event": "training end", "time": 1724724439.0423682, "pid": 1541, "batch": 69, "duration": 0.6001615524291992, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724439.1475568, "pid": 1541, "batch": 70}
+{"event": "training end", "time": 1724724439.7478652, "pid": 1541, "batch": 70, "duration": 0.6002895832061768, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724439.7522488, "pid": 1541, "batch": 71}
+{"event": "training end", "time": 1724724440.352476, "pid": 1541, "batch": 71, "duration": 0.6002097129821777, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724440.3571048, "pid": 1541, "batch": 72}
+{"event": "training end", "time": 1724724440.9573095, "pid": 1541, "batch": 72, "duration": 0.6001870632171631, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724440.9615908, "pid": 1541, "batch": 73}
+{"event": "training end", "time": 1724724441.5617537, "pid": 1541, "batch": 73, "duration": 0.6001443862915039, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724441.5652208, "pid": 1541, "batch": 74}
+{"event": "training end", "time": 1724724442.1653948, "pid": 1541, "batch": 74, "duration": 0.6001455783843994, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724442.1689427, "pid": 1541, "batch": 75}
+{"event": "training end", "time": 1724724442.769614, "pid": 1541, "batch": 75, "duration": 0.600614070892334, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724442.7732763, "pid": 1541, "batch": 76}
+{"event": "training end", "time": 1724724443.3747375, "pid": 1541, "batch": 76, "duration": 0.6014437675476074, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724443.3795192, "pid": 1541, "batch": 77}
+{"event": "training end", "time": 1724724443.9796982, "pid": 1541, "batch": 77, "duration": 0.6001615524291992, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724444.0139232, "pid": 1541, "batch": 78}
+{"event": "training end", "time": 1724724444.6141634, "pid": 1541, "batch": 78, "duration": 0.6002223491668701, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724444.6184342, "pid": 1541, "batch": 79}
+{"event": "training end", "time": 1724724445.2186255, "pid": 1541, "batch": 79, "duration": 0.6001737117767334, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724445.2221005, "pid": 1541, "batch": 80}
+{"event": "training end", "time": 1724724445.8222675, "pid": 1541, "batch": 80, "duration": 0.6001491546630859, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724445.8258488, "pid": 1541, "batch": 81}
+{"event": "training end", "time": 1724724446.4260473, "pid": 1541, "batch": 81, "duration": 0.6001644134521484, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724446.4296684, "pid": 1541, "batch": 82}
+{"event": "training end", "time": 1724724447.029853, "pid": 1541, "batch": 82, "duration": 0.6001474857330322, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724447.0333009, "pid": 1541, "batch": 83}
+{"event": "training end", "time": 1724724447.6334846, "pid": 1541, "batch": 83, "duration": 0.6001644134521484, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724447.637237, "pid": 1541, "batch": 84}
+{"event": "training end", "time": 1724724448.237408, "pid": 1541, "batch": 84, "duration": 0.600151777267456, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724448.249747, "pid": 1541, "batch": 85}
+{"event": "training end", "time": 1724724448.8499312, "pid": 1541, "batch": 85, "duration": 0.6001677513122559, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724448.8967702, "pid": 1541, "batch": 86}
+{"event": "training end", "time": 1724724449.497549, "pid": 1541, "batch": 86, "duration": 0.6007351875305176, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724449.5019057, "pid": 1541, "batch": 87}
+{"event": "training end", "time": 1724724450.1028, "pid": 1541, "batch": 87, "duration": 0.6008765697479248, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724450.1088636, "pid": 1541, "batch": 88}
+{"event": "training end", "time": 1724724450.710752, "pid": 1541, "batch": 88, "duration": 0.6018671989440918, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724450.714923, "pid": 1541, "batch": 89}
+{"event": "training end", "time": 1724724451.3151882, "pid": 1541, "batch": 89, "duration": 0.6002469062805176, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724451.3198497, "pid": 1541, "batch": 90}
+{"event": "training end", "time": 1724724451.9200299, "pid": 1541, "batch": 90, "duration": 0.6001486778259277, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724451.923857, "pid": 1541, "batch": 91}
+{"event": "training end", "time": 1724724452.5240402, "pid": 1541, "batch": 91, "duration": 0.6001496315002441, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724452.5274024, "pid": 1541, "batch": 92}
+{"event": "training end", "time": 1724724453.1275575, "pid": 1541, "batch": 92, "duration": 0.6001381874084473, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724453.1317768, "pid": 1541, "batch": 93}
+{"event": "training end", "time": 1724724453.7320092, "pid": 1541, "batch": 93, "duration": 0.6001670360565186, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724453.7608576, "pid": 1541, "batch": 94}
+{"event": "training end", "time": 1724724454.361071, "pid": 1541, "batch": 94, "duration": 0.6001956462860107, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724454.36433, "pid": 1541, "batch": 95}
+{"event": "training end", "time": 1724724454.964522, "pid": 1541, "batch": 95, "duration": 0.6001734733581543, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724454.9677734, "pid": 1541, "batch": 96}
+{"event": "training end", "time": 1724724455.5679805, "pid": 1541, "batch": 96, "duration": 0.6001901626586914, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724455.5702293, "pid": 1541, "batch": 97}
+{"event": "training end", "time": 1724724456.1703956, "pid": 1541, "batch": 97, "duration": 0.6001491546630859, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724456.173592, "pid": 1541, "batch": 98}
+{"event": "training end", "time": 1724724456.7737882, "pid": 1541, "batch": 98, "duration": 0.6001782417297363, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724456.7781935, "pid": 1541, "batch": 99}
+{"event": "training end", "time": 1724724457.3783982, "pid": 1541, "batch": 99, "duration": 0.6001813411712646, "batch_shape": [64, 128, 16, 24]}
+{"event": "epoch end", "time": 1724724457.3785841, "pid": 1541, "epoch": 0, "duration": 82.5907473564148}
+{"event": "epoch start", "time": 1724724457.3786192, "pid": 1541, "epoch": 1}
+{"event": "training start", "time": 1724724469.0047293, "pid": 1541, "batch": 0}
+{"event": "training end", "time": 1724724469.604902, "pid": 1541, "batch": 0, "duration": 0.6001541614532471, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724470.032398, "pid": 1541, "batch": 1}
+{"event": "training end", "time": 1724724470.632549, "pid": 1541, "batch": 1, "duration": 0.6001338958740234, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724470.636678, "pid": 1541, "batch": 2}
+{"event": "training end", "time": 1724724471.2370722, "pid": 1541, "batch": 2, "duration": 0.6003756523132324, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724471.24111, "pid": 1541, "batch": 3}
+{"event": "training end", "time": 1724724471.8412755, "pid": 1541, "batch": 3, "duration": 0.6001431941986084, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724471.8452082, "pid": 1541, "batch": 4}
+{"event": "training end", "time": 1724724472.445423, "pid": 1541, "batch": 4, "duration": 0.600149393081665, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724472.453324, "pid": 1541, "batch": 5}
+{"event": "training end", "time": 1724724473.0534875, "pid": 1541, "batch": 5, "duration": 0.6001453399658203, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724473.1173093, "pid": 1541, "batch": 6}
+{"event": "training end", "time": 1724724473.717557, "pid": 1541, "batch": 6, "duration": 0.6001856327056885, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724473.7211854, "pid": 1541, "batch": 7}
+{"event": "training end", "time": 1724724474.3213537, "pid": 1541, "batch": 7, "duration": 0.6001510620117188, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724474.333359, "pid": 1541, "batch": 8}
+{"event": "training end", "time": 1724724474.93354, "pid": 1541, "batch": 8, "duration": 0.6001653671264648, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724474.9376364, "pid": 1541, "batch": 9}
+{"event": "training end", "time": 1724724475.5378025, "pid": 1541, "batch": 9, "duration": 0.6001474857330322, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724475.5420961, "pid": 1541, "batch": 10}
+{"event": "training end", "time": 1724724476.1422596, "pid": 1541, "batch": 10, "duration": 0.600144624710083, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724476.1457217, "pid": 1541, "batch": 11}
+{"event": "training end", "time": 1724724476.7459145, "pid": 1541, "batch": 11, "duration": 0.6001729965209961, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724476.7501764, "pid": 1541, "batch": 12}
+{"event": "training end", "time": 1724724477.350445, "pid": 1541, "batch": 12, "duration": 0.6002490520477295, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724477.3566008, "pid": 1541, "batch": 13}
+{"event": "training end", "time": 1724724477.9568267, "pid": 1541, "batch": 13, "duration": 0.6002054214477539, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724477.960699, "pid": 1541, "batch": 14}
+{"event": "training end", "time": 1724724478.5608706, "pid": 1541, "batch": 14, "duration": 0.6001520156860352, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724478.5656931, "pid": 1541, "batch": 15}
+{"event": "training end", "time": 1724724479.1658802, "pid": 1541, "batch": 15, "duration": 0.600167989730835, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724479.2127395, "pid": 1541, "batch": 16}
+{"event": "training end", "time": 1724724479.8128989, "pid": 1541, "batch": 16, "duration": 0.6001448631286621, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724479.8172846, "pid": 1541, "batch": 17}
+{"event": "training end", "time": 1724724480.4175, "pid": 1541, "batch": 17, "duration": 0.6001965999603271, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724480.4214826, "pid": 1541, "batch": 18}
+{"event": "training end", "time": 1724724481.0217721, "pid": 1541, "batch": 18, "duration": 0.6002724170684814, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724481.0253985, "pid": 1541, "batch": 19}
+{"event": "training end", "time": 1724724481.6256022, "pid": 1541, "batch": 19, "duration": 0.6001837253570557, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724481.6287525, "pid": 1541, "batch": 20}
+{"event": "training end", "time": 1724724482.228923, "pid": 1541, "batch": 20, "duration": 0.6001489162445068, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724482.233749, "pid": 1541, "batch": 21}
+{"event": "training end", "time": 1724724482.8339136, "pid": 1541, "batch": 21, "duration": 0.6001489162445068, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724482.8391209, "pid": 1541, "batch": 22}
+{"event": "training end", "time": 1724724483.4393265, "pid": 1541, "batch": 22, "duration": 0.6001682281494141, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724483.449683, "pid": 1541, "batch": 23}
+{"event": "training end", "time": 1724724484.0501363, "pid": 1541, "batch": 23, "duration": 0.600330114364624, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724484.0591795, "pid": 1541, "batch": 24}
+{"event": "training end", "time": 1724724484.659518, "pid": 1541, "batch": 24, "duration": 0.6002931594848633, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724484.6631331, "pid": 1541, "batch": 25}
+{"event": "training end", "time": 1724724485.2633262, "pid": 1541, "batch": 25, "duration": 0.6001741886138916, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724485.269401, "pid": 1541, "batch": 26}
+{"event": "training end", "time": 1724724485.869581, "pid": 1541, "batch": 26, "duration": 0.6001615524291992, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724485.874446, "pid": 1541, "batch": 27}
+{"event": "training end", "time": 1724724486.4746327, "pid": 1541, "batch": 27, "duration": 0.6001684665679932, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724486.4780517, "pid": 1541, "batch": 28}
+{"event": "training end", "time": 1724724487.0782137, "pid": 1541, "batch": 28, "duration": 0.600139856338501, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724487.08449, "pid": 1541, "batch": 29}
+{"event": "training end", "time": 1724724487.701208, "pid": 1541, "batch": 29, "duration": 0.6166951656341553, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724487.7242627, "pid": 1541, "batch": 30}
+{"event": "training end", "time": 1724724488.324569, "pid": 1541, "batch": 30, "duration": 0.6002886295318604, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724488.3322508, "pid": 1541, "batch": 31}
+{"event": "training end", "time": 1724724488.9324057, "pid": 1541, "batch": 31, "duration": 0.6001365184783936, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724488.9428453, "pid": 1541, "batch": 32}
+{"event": "training end", "time": 1724724489.543046, "pid": 1541, "batch": 32, "duration": 0.6001818180084229, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724489.5486495, "pid": 1541, "batch": 33}
+{"event": "training end", "time": 1724724490.1488261, "pid": 1541, "batch": 33, "duration": 0.6001570224761963, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724490.1522298, "pid": 1541, "batch": 34}
+{"event": "training end", "time": 1724724490.752388, "pid": 1541, "batch": 34, "duration": 0.6001400947570801, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724490.7568743, "pid": 1541, "batch": 35}
+{"event": "training end", "time": 1724724491.357056, "pid": 1541, "batch": 35, "duration": 0.6001632213592529, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724491.362504, "pid": 1541, "batch": 36}
+{"event": "training end", "time": 1724724491.9627008, "pid": 1541, "batch": 36, "duration": 0.6001510620117188, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724491.9679065, "pid": 1541, "batch": 37}
+{"event": "training end", "time": 1724724492.5680988, "pid": 1541, "batch": 37, "duration": 0.6001436710357666, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724492.572369, "pid": 1541, "batch": 38}
+{"event": "training end", "time": 1724724493.1725307, "pid": 1541, "batch": 38, "duration": 0.6001436710357666, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724493.178973, "pid": 1541, "batch": 39}
+{"event": "training end", "time": 1724724493.7791584, "pid": 1541, "batch": 39, "duration": 0.6001651287078857, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724493.8248563, "pid": 1541, "batch": 40}
+{"event": "training end", "time": 1724724494.4250593, "pid": 1541, "batch": 40, "duration": 0.6001830101013184, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724494.4311373, "pid": 1541, "batch": 41}
+{"event": "training end", "time": 1724724495.0312996, "pid": 1541, "batch": 41, "duration": 0.6001439094543457, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724495.0351942, "pid": 1541, "batch": 42}
+{"event": "training end", "time": 1724724495.6354146, "pid": 1541, "batch": 42, "duration": 0.6002001762390137, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724495.6406693, "pid": 1541, "batch": 43}
+{"event": "training end", "time": 1724724496.2408373, "pid": 1541, "batch": 43, "duration": 0.6001491546630859, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724496.2445107, "pid": 1541, "batch": 44}
+{"event": "training end", "time": 1724724496.8446677, "pid": 1541, "batch": 44, "duration": 0.6001372337341309, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724496.8493714, "pid": 1541, "batch": 45}
+{"event": "training end", "time": 1724724497.4500659, "pid": 1541, "batch": 45, "duration": 0.6006762981414795, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724497.45356, "pid": 1541, "batch": 46}
+{"event": "training end", "time": 1724724498.053727, "pid": 1541, "batch": 46, "duration": 0.600149393081665, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724498.0694811, "pid": 1541, "batch": 47}
+{"event": "training end", "time": 1724724498.669642, "pid": 1541, "batch": 47, "duration": 0.6001439094543457, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724498.6733885, "pid": 1541, "batch": 48}
+{"event": "training end", "time": 1724724499.273547, "pid": 1541, "batch": 48, "duration": 0.6001381874084473, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724499.2809427, "pid": 1541, "batch": 49}
+{"event": "training end", "time": 1724724499.8810778, "pid": 1541, "batch": 49, "duration": 0.6001150608062744, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724499.8840382, "pid": 1541, "batch": 50}
+{"event": "training end", "time": 1724724500.4841912, "pid": 1541, "batch": 50, "duration": 0.6001355648040771, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724500.4877486, "pid": 1541, "batch": 51}
+{"event": "training end", "time": 1724724501.0879993, "pid": 1541, "batch": 51, "duration": 0.6002311706542969, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724501.0917842, "pid": 1541, "batch": 52}
+{"event": "training end", "time": 1724724501.6920106, "pid": 1541, "batch": 52, "duration": 0.6002094745635986, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724501.6956723, "pid": 1541, "batch": 53}
+{"event": "training end", "time": 1724724502.29587, "pid": 1541, "batch": 53, "duration": 0.6001791954040527, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724502.3009865, "pid": 1541, "batch": 54}
+{"event": "training end", "time": 1724724502.901169, "pid": 1541, "batch": 54, "duration": 0.6001629829406738, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724502.9149342, "pid": 1541, "batch": 55}
+{"event": "training end", "time": 1724724503.5151014, "pid": 1541, "batch": 55, "duration": 0.6001479625701904, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724503.5197313, "pid": 1541, "batch": 56}
+{"event": "training end", "time": 1724724504.1200843, "pid": 1541, "batch": 56, "duration": 0.6003365516662598, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724504.1238081, "pid": 1541, "batch": 57}
+{"event": "training end", "time": 1724724504.7239602, "pid": 1541, "batch": 57, "duration": 0.6001365184783936, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724504.728186, "pid": 1541, "batch": 58}
+{"event": "training end", "time": 1724724505.3284233, "pid": 1541, "batch": 58, "duration": 0.6002187728881836, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724505.3333752, "pid": 1541, "batch": 59}
+{"event": "training end", "time": 1724724505.933553, "pid": 1541, "batch": 59, "duration": 0.6001591682434082, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724505.9376874, "pid": 1541, "batch": 60}
+{"event": "training end", "time": 1724724506.537858, "pid": 1541, "batch": 60, "duration": 0.6001489162445068, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724506.5409255, "pid": 1541, "batch": 61}
+{"event": "training end", "time": 1724724507.1410859, "pid": 1541, "batch": 61, "duration": 0.6001408100128174, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724507.1448822, "pid": 1541, "batch": 62}
+{"event": "training end", "time": 1724724507.7450535, "pid": 1541, "batch": 62, "duration": 0.6001527309417725, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724507.767711, "pid": 1541, "batch": 63}
+{"event": "training end", "time": 1724724508.367871, "pid": 1541, "batch": 63, "duration": 0.6001436710357666, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724508.3709958, "pid": 1541, "batch": 64}
+{"event": "training end", "time": 1724724508.9711645, "pid": 1541, "batch": 64, "duration": 0.6001508235931396, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724508.9747665, "pid": 1541, "batch": 65}
+{"event": "training end", "time": 1724724509.5749333, "pid": 1541, "batch": 65, "duration": 0.6001477241516113, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724509.5784614, "pid": 1541, "batch": 66}
+{"event": "training end", "time": 1724724510.1788518, "pid": 1541, "batch": 66, "duration": 0.6003427505493164, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724510.1830585, "pid": 1541, "batch": 67}
+{"event": "training end", "time": 1724724510.7832406, "pid": 1541, "batch": 67, "duration": 0.6001613140106201, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724510.7883449, "pid": 1541, "batch": 68}
+{"event": "training end", "time": 1724724511.388756, "pid": 1541, "batch": 68, "duration": 0.6003954410552979, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724511.3926735, "pid": 1541, "batch": 69}
+{"event": "training end", "time": 1724724511.992828, "pid": 1541, "batch": 69, "duration": 0.6001369953155518, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724512.0044289, "pid": 1541, "batch": 70}
+{"event": "training end", "time": 1724724512.6045911, "pid": 1541, "batch": 70, "duration": 0.6001427173614502, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724512.6371171, "pid": 1541, "batch": 71}
+{"event": "training end", "time": 1724724513.2372937, "pid": 1541, "batch": 71, "duration": 0.60015869140625, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724513.241194, "pid": 1541, "batch": 72}
+{"event": "training end", "time": 1724724513.8413975, "pid": 1541, "batch": 72, "duration": 0.6001865863800049, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724513.844896, "pid": 1541, "batch": 73}
+{"event": "training end", "time": 1724724514.4450626, "pid": 1541, "batch": 73, "duration": 0.6001489162445068, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724514.448965, "pid": 1541, "batch": 74}
+{"event": "training end", "time": 1724724515.0491812, "pid": 1541, "batch": 74, "duration": 0.6002001762390137, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724515.0544384, "pid": 1541, "batch": 75}
+{"event": "training end", "time": 1724724515.6545968, "pid": 1541, "batch": 75, "duration": 0.6001403331756592, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724515.658429, "pid": 1541, "batch": 76}
+{"event": "training end", "time": 1724724516.2586083, "pid": 1541, "batch": 76, "duration": 0.600161075592041, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724516.2620661, "pid": 1541, "batch": 77}
+{"event": "training end", "time": 1724724516.8622293, "pid": 1541, "batch": 77, "duration": 0.6001436710357666, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724516.8788402, "pid": 1541, "batch": 78}
+{"event": "training end", "time": 1724724517.4790478, "pid": 1541, "batch": 78, "duration": 0.6001877784729004, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724517.4840577, "pid": 1541, "batch": 79}
+{"event": "training end", "time": 1724724518.084212, "pid": 1541, "batch": 79, "duration": 0.6001369953155518, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724518.0877504, "pid": 1541, "batch": 80}
+{"event": "training end", "time": 1724724518.6879113, "pid": 1541, "batch": 80, "duration": 0.6001427173614502, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724518.6912594, "pid": 1541, "batch": 81}
+{"event": "training end", "time": 1724724519.2914062, "pid": 1541, "batch": 81, "duration": 0.6001284122467041, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724519.2952547, "pid": 1541, "batch": 82}
+{"event": "training end", "time": 1724724519.8954196, "pid": 1541, "batch": 82, "duration": 0.6001465320587158, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724519.8988595, "pid": 1541, "batch": 83}
+{"event": "training end", "time": 1724724520.4991457, "pid": 1541, "batch": 83, "duration": 0.6002438068389893, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724520.5032437, "pid": 1541, "batch": 84}
+{"event": "training end", "time": 1724724521.1034133, "pid": 1541, "batch": 84, "duration": 0.6001520156860352, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724521.1075895, "pid": 1541, "batch": 85}
+{"event": "training end", "time": 1724724521.7077687, "pid": 1541, "batch": 85, "duration": 0.60015869140625, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724521.7262497, "pid": 1541, "batch": 86}
+{"event": "training end", "time": 1724724522.326408, "pid": 1541, "batch": 86, "duration": 0.600139856338501, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724522.3326216, "pid": 1541, "batch": 87}
+{"event": "training end", "time": 1724724522.932781, "pid": 1541, "batch": 87, "duration": 0.600142240524292, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724522.9377027, "pid": 1541, "batch": 88}
+{"event": "training end", "time": 1724724523.5378792, "pid": 1541, "batch": 88, "duration": 0.6001589298248291, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724523.5407555, "pid": 1541, "batch": 89}
+{"event": "training end", "time": 1724724524.1409209, "pid": 1541, "batch": 89, "duration": 0.6001465320587158, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724524.1443615, "pid": 1541, "batch": 90}
+{"event": "training end", "time": 1724724524.744534, "pid": 1541, "batch": 90, "duration": 0.600153923034668, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724524.748268, "pid": 1541, "batch": 91}
+{"event": "training end", "time": 1724724525.3485117, "pid": 1541, "batch": 91, "duration": 0.6001434326171875, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724525.3525348, "pid": 1541, "batch": 92}
+{"event": "training end", "time": 1724724525.9527552, "pid": 1541, "batch": 92, "duration": 0.6002027988433838, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724525.9567516, "pid": 1541, "batch": 93}
+{"event": "training end", "time": 1724724526.556928, "pid": 1541, "batch": 93, "duration": 0.6001620292663574, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724526.6005075, "pid": 1541, "batch": 94}
+{"event": "training end", "time": 1724724527.2006984, "pid": 1541, "batch": 94, "duration": 0.6001715660095215, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724527.2041783, "pid": 1541, "batch": 95}
+{"event": "training end", "time": 1724724527.8044016, "pid": 1541, "batch": 95, "duration": 0.6001980304718018, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724527.8085222, "pid": 1541, "batch": 96}
+{"event": "training end", "time": 1724724528.4086974, "pid": 1541, "batch": 96, "duration": 0.6001582145690918, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724528.4123404, "pid": 1541, "batch": 97}
+{"event": "training end", "time": 1724724529.0125206, "pid": 1541, "batch": 97, "duration": 0.6001617908477783, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724529.0158672, "pid": 1541, "batch": 98}
+{"event": "training end", "time": 1724724529.6160834, "pid": 1541, "batch": 98, "duration": 0.6001992225646973, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724529.6199698, "pid": 1541, "batch": 99}
+{"event": "training end", "time": 1724724530.2201474, "pid": 1541, "batch": 99, "duration": 0.60015869140625, "batch_shape": [64, 128, 16, 24]}
+{"event": "epoch end", "time": 1724724530.2202296, "pid": 1541, "epoch": 1, "duration": 72.84160828590393}
+{"event": "epoch start", "time": 1724724530.2202473, "pid": 1541, "epoch": 2}
+{"event": "training start", "time": 1724724542.4854589, "pid": 1541, "batch": 0}
+{"event": "training end", "time": 1724724543.085639, "pid": 1541, "batch": 0, "duration": 0.6001625061035156, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724543.088849, "pid": 1541, "batch": 1}
+{"event": "training end", "time": 1724724543.6890578, "pid": 1541, "batch": 1, "duration": 0.6001911163330078, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724543.6925347, "pid": 1541, "batch": 2}
+{"event": "training end", "time": 1724724544.2927046, "pid": 1541, "batch": 2, "duration": 0.6001527309417725, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724544.296669, "pid": 1541, "batch": 3}
+{"event": "training end", "time": 1724724544.8968382, "pid": 1541, "batch": 3, "duration": 0.6001491546630859, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724544.9006045, "pid": 1541, "batch": 4}
+{"event": "training end", "time": 1724724545.5007699, "pid": 1541, "batch": 4, "duration": 0.6001448631286621, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724545.50976, "pid": 1541, "batch": 5}
+{"event": "training end", "time": 1724724546.110035, "pid": 1541, "batch": 5, "duration": 0.6002442836761475, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724546.1140702, "pid": 1541, "batch": 6}
+{"event": "training end", "time": 1724724546.714253, "pid": 1541, "batch": 6, "duration": 0.6001477241516113, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724546.717983, "pid": 1541, "batch": 7}
+{"event": "training end", "time": 1724724547.3181696, "pid": 1541, "batch": 7, "duration": 0.6001682281494141, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724547.4563618, "pid": 1541, "batch": 8}
+{"event": "training end", "time": 1724724548.0565403, "pid": 1541, "batch": 8, "duration": 0.6001579761505127, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724548.0602937, "pid": 1541, "batch": 9}
+{"event": "training end", "time": 1724724548.6604662, "pid": 1541, "batch": 9, "duration": 0.6001553535461426, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724548.6639917, "pid": 1541, "batch": 10}
+{"event": "training end", "time": 1724724549.264412, "pid": 1541, "batch": 10, "duration": 0.6003460884094238, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724549.272091, "pid": 1541, "batch": 11}
+{"event": "training end", "time": 1724724549.872489, "pid": 1541, "batch": 11, "duration": 0.6003828048706055, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724549.876126, "pid": 1541, "batch": 12}
+{"event": "training end", "time": 1724724550.4762847, "pid": 1541, "batch": 12, "duration": 0.6001381874084473, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724550.482303, "pid": 1541, "batch": 13}
+{"event": "training end", "time": 1724724551.0829659, "pid": 1541, "batch": 13, "duration": 0.6006443500518799, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724551.087823, "pid": 1541, "batch": 14}
+{"event": "training end", "time": 1724724551.6879811, "pid": 1541, "batch": 14, "duration": 0.6001408100128174, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724551.6914105, "pid": 1541, "batch": 15}
+{"event": "training end", "time": 1724724552.291569, "pid": 1541, "batch": 15, "duration": 0.6001410484313965, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724552.308716, "pid": 1541, "batch": 16}
+{"event": "training end", "time": 1724724552.9089093, "pid": 1541, "batch": 16, "duration": 0.6001734733581543, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724552.9120102, "pid": 1541, "batch": 17}
+{"event": "training end", "time": 1724724553.5121832, "pid": 1541, "batch": 17, "duration": 0.600153923034668, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724553.516239, "pid": 1541, "batch": 18}
+{"event": "training end", "time": 1724724554.116426, "pid": 1541, "batch": 18, "duration": 0.6001670360565186, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724554.12068, "pid": 1541, "batch": 19}
+{"event": "training end", "time": 1724724554.7208776, "pid": 1541, "batch": 19, "duration": 0.6001791954040527, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724554.7246232, "pid": 1541, "batch": 20}
+{"event": "training end", "time": 1724724555.3248668, "pid": 1541, "batch": 20, "duration": 0.6002280712127686, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724555.3313227, "pid": 1541, "batch": 21}
+{"event": "training end", "time": 1724724555.931514, "pid": 1541, "batch": 21, "duration": 0.6001713275909424, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724555.9351835, "pid": 1541, "batch": 22}
+{"event": "training end", "time": 1724724556.5357344, "pid": 1541, "batch": 22, "duration": 0.6004984378814697, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724556.5405922, "pid": 1541, "batch": 23}
+{"event": "training end", "time": 1724724557.140749, "pid": 1541, "batch": 23, "duration": 0.6001386642456055, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724557.1560514, "pid": 1541, "batch": 24}
+{"event": "training end", "time": 1724724557.7562022, "pid": 1541, "batch": 24, "duration": 0.600135087966919, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724557.759597, "pid": 1541, "batch": 25}
+{"event": "training end", "time": 1724724558.3597615, "pid": 1541, "batch": 25, "duration": 0.6001455783843994, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724558.3632693, "pid": 1541, "batch": 26}
+{"event": "training end", "time": 1724724558.963439, "pid": 1541, "batch": 26, "duration": 0.6001510620117188, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724558.9667275, "pid": 1541, "batch": 27}
+{"event": "training end", "time": 1724724559.5668888, "pid": 1541, "batch": 27, "duration": 0.6001451015472412, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724559.5702956, "pid": 1541, "batch": 28}
+{"event": "training end", "time": 1724724560.1705132, "pid": 1541, "batch": 28, "duration": 0.6001980304718018, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724560.1763556, "pid": 1541, "batch": 29}
+{"event": "training end", "time": 1724724560.7765148, "pid": 1541, "batch": 29, "duration": 0.600142240524292, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724560.781419, "pid": 1541, "batch": 30}
+{"event": "training end", "time": 1724724561.3815858, "pid": 1541, "batch": 30, "duration": 0.600144624710083, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724561.3985586, "pid": 1541, "batch": 31}
+{"event": "training end", "time": 1724724561.998708, "pid": 1541, "batch": 31, "duration": 0.6001324653625488, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724562.058848, "pid": 1541, "batch": 32}
+{"event": "training end", "time": 1724724562.659013, "pid": 1541, "batch": 32, "duration": 0.6001486778259277, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724562.663311, "pid": 1541, "batch": 33}
+{"event": "training end", "time": 1724724563.2635303, "pid": 1541, "batch": 33, "duration": 0.6002006530761719, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724563.2695541, "pid": 1541, "batch": 34}
+{"event": "training end", "time": 1724724563.869719, "pid": 1541, "batch": 34, "duration": 0.6001467704772949, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724563.8739765, "pid": 1541, "batch": 35}
+{"event": "training end", "time": 1724724564.4741511, "pid": 1541, "batch": 35, "duration": 0.6001570224761963, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724564.478043, "pid": 1541, "batch": 36}
+{"event": "training end", "time": 1724724565.0781987, "pid": 1541, "batch": 36, "duration": 0.6001377105712891, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724565.0819333, "pid": 1541, "batch": 37}
+{"event": "training end", "time": 1724724565.682104, "pid": 1541, "batch": 37, "duration": 0.6001522541046143, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724565.6868649, "pid": 1541, "batch": 38}
+{"event": "training end", "time": 1724724566.2870755, "pid": 1541, "batch": 38, "duration": 0.6001930236816406, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724566.2971723, "pid": 1541, "batch": 39}
+{"event": "training end", "time": 1724724566.8974247, "pid": 1541, "batch": 39, "duration": 0.6002352237701416, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724566.911032, "pid": 1541, "batch": 40}
+{"event": "training end", "time": 1724724567.5111935, "pid": 1541, "batch": 40, "duration": 0.6001424789428711, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724567.5147598, "pid": 1541, "batch": 41}
+{"event": "training end", "time": 1724724568.1149242, "pid": 1541, "batch": 41, "duration": 0.6001467704772949, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724568.1190126, "pid": 1541, "batch": 42}
+{"event": "training end", "time": 1724724568.719181, "pid": 1541, "batch": 42, "duration": 0.6001505851745605, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724568.723039, "pid": 1541, "batch": 43}
+{"event": "training end", "time": 1724724569.323214, "pid": 1541, "batch": 43, "duration": 0.6001541614532471, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724569.3276203, "pid": 1541, "batch": 44}
+{"event": "training end", "time": 1724724569.9277864, "pid": 1541, "batch": 44, "duration": 0.6001491546630859, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724569.9310622, "pid": 1541, "batch": 45}
+{"event": "training end", "time": 1724724570.5312684, "pid": 1541, "batch": 45, "duration": 0.6001861095428467, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724570.53494, "pid": 1541, "batch": 46}
+{"event": "training end", "time": 1724724571.1350758, "pid": 1541, "batch": 46, "duration": 0.6001143455505371, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724571.1482782, "pid": 1541, "batch": 47}
+{"event": "training end", "time": 1724724571.7490706, "pid": 1541, "batch": 47, "duration": 0.6007697582244873, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724571.7525651, "pid": 1541, "batch": 48}
+{"event": "training end", "time": 1724724572.3527267, "pid": 1541, "batch": 48, "duration": 0.6001420021057129, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724572.355945, "pid": 1541, "batch": 49}
+{"event": "training end", "time": 1724724572.9561527, "pid": 1541, "batch": 49, "duration": 0.6001875400543213, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724572.9592748, "pid": 1541, "batch": 50}
+{"event": "training end", "time": 1724724573.5594327, "pid": 1541, "batch": 50, "duration": 0.6001408100128174, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724573.5626786, "pid": 1541, "batch": 51}
+{"event": "training end", "time": 1724724574.1628597, "pid": 1541, "batch": 51, "duration": 0.6001625061035156, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724574.1665432, "pid": 1541, "batch": 52}
+{"event": "training end", "time": 1724724574.7667181, "pid": 1541, "batch": 52, "duration": 0.6001548767089844, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724574.7701254, "pid": 1541, "batch": 53}
+{"event": "training end", "time": 1724724575.370291, "pid": 1541, "batch": 53, "duration": 0.6001448631286621, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724575.3740165, "pid": 1541, "batch": 54}
+{"event": "training end", "time": 1724724575.9742117, "pid": 1541, "batch": 54, "duration": 0.6001744270324707, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724575.9848583, "pid": 1541, "batch": 55}
+{"event": "training end", "time": 1724724576.5850132, "pid": 1541, "batch": 55, "duration": 0.60013747215271, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724576.588566, "pid": 1541, "batch": 56}
+{"event": "training end", "time": 1724724577.188739, "pid": 1541, "batch": 56, "duration": 0.6001534461975098, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724577.1921701, "pid": 1541, "batch": 57}
+{"event": "training end", "time": 1724724577.7923374, "pid": 1541, "batch": 57, "duration": 0.6001501083374023, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724577.795728, "pid": 1541, "batch": 58}
+{"event": "training end", "time": 1724724578.3958864, "pid": 1541, "batch": 58, "duration": 0.6001400947570801, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724578.3993142, "pid": 1541, "batch": 59}
+{"event": "training end", "time": 1724724578.9994628, "pid": 1541, "batch": 59, "duration": 0.6001331806182861, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724579.0029612, "pid": 1541, "batch": 60}
+{"event": "training end", "time": 1724724579.6030853, "pid": 1541, "batch": 60, "duration": 0.6001043319702148, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724579.6069741, "pid": 1541, "batch": 61}
+{"event": "training end", "time": 1724724580.2076542, "pid": 1541, "batch": 61, "duration": 0.6006598472595215, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724580.2119732, "pid": 1541, "batch": 62}
+{"event": "training end", "time": 1724724580.812249, "pid": 1541, "batch": 62, "duration": 0.6002583503723145, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724580.8248703, "pid": 1541, "batch": 63}
+{"event": "training end", "time": 1724724581.4250863, "pid": 1541, "batch": 63, "duration": 0.60019850730896, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724581.4288764, "pid": 1541, "batch": 64}
+{"event": "training end", "time": 1724724582.0290973, "pid": 1541, "batch": 64, "duration": 0.6002027988433838, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724582.0336678, "pid": 1541, "batch": 65}
+{"event": "training end", "time": 1724724582.6338334, "pid": 1541, "batch": 65, "duration": 0.6001474857330322, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724582.6373825, "pid": 1541, "batch": 66}
+{"event": "training end", "time": 1724724583.2375417, "pid": 1541, "batch": 66, "duration": 0.6001420021057129, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724583.2421446, "pid": 1541, "batch": 67}
+{"event": "training end", "time": 1724724583.8423305, "pid": 1541, "batch": 67, "duration": 0.6001687049865723, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724583.8454533, "pid": 1541, "batch": 68}
+{"event": "training end", "time": 1724724584.445656, "pid": 1541, "batch": 68, "duration": 0.6001839637756348, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724584.4490757, "pid": 1541, "batch": 69}
+{"event": "training end", "time": 1724724585.049227, "pid": 1541, "batch": 69, "duration": 0.6001341342926025, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724585.0575376, "pid": 1541, "batch": 70}
+{"event": "training end", "time": 1724724585.6576977, "pid": 1541, "batch": 70, "duration": 0.6001400947570801, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724585.6689975, "pid": 1541, "batch": 71}
+{"event": "training end", "time": 1724724586.2693017, "pid": 1541, "batch": 71, "duration": 0.6001753807067871, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724586.273847, "pid": 1541, "batch": 72}
+{"event": "training end", "time": 1724724586.8740616, "pid": 1541, "batch": 72, "duration": 0.6001970767974854, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724586.8778667, "pid": 1541, "batch": 73}
+{"event": "training end", "time": 1724724587.478043, "pid": 1541, "batch": 73, "duration": 0.600147008895874, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724587.4811416, "pid": 1541, "batch": 74}
+{"event": "training end", "time": 1724724588.0813189, "pid": 1541, "batch": 74, "duration": 0.6001598834991455, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724588.085762, "pid": 1541, "batch": 75}
+{"event": "training end", "time": 1724724588.6859329, "pid": 1541, "batch": 75, "duration": 0.6001472473144531, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724588.6949155, "pid": 1541, "batch": 76}
+{"event": "training end", "time": 1724724589.295126, "pid": 1541, "batch": 76, "duration": 0.6001935005187988, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724589.298537, "pid": 1541, "batch": 77}
+{"event": "training end", "time": 1724724589.898731, "pid": 1541, "batch": 77, "duration": 0.6001744270324707, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724589.9874175, "pid": 1541, "batch": 78}
+{"event": "training end", "time": 1724724590.5875847, "pid": 1541, "batch": 78, "duration": 0.6001508235931396, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724590.6477742, "pid": 1541, "batch": 79}
+{"event": "training end", "time": 1724724591.2479753, "pid": 1541, "batch": 79, "duration": 0.6001839637756348, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724591.2559788, "pid": 1541, "batch": 80}
+{"event": "training end", "time": 1724724591.8561347, "pid": 1541, "batch": 80, "duration": 0.6001377105712891, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724591.8596818, "pid": 1541, "batch": 81}
+{"event": "training end", "time": 1724724592.4598424, "pid": 1541, "batch": 81, "duration": 0.6001460552215576, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724592.4631119, "pid": 1541, "batch": 82}
+{"event": "training end", "time": 1724724593.0632775, "pid": 1541, "batch": 82, "duration": 0.6001451015472412, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724593.0665505, "pid": 1541, "batch": 83}
+{"event": "training end", "time": 1724724593.6667454, "pid": 1541, "batch": 83, "duration": 0.600175142288208, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724593.6703572, "pid": 1541, "batch": 84}
+{"event": "training end", "time": 1724724594.27063, "pid": 1541, "batch": 84, "duration": 0.6002552509307861, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724594.2747622, "pid": 1541, "batch": 85}
+{"event": "training end", "time": 1724724594.8749666, "pid": 1541, "batch": 85, "duration": 0.600184440612793, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724594.8794568, "pid": 1541, "batch": 86}
+{"event": "training end", "time": 1724724595.4796124, "pid": 1541, "batch": 86, "duration": 0.6001381874084473, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724595.5112534, "pid": 1541, "batch": 87}
+{"event": "training end", "time": 1724724596.1114256, "pid": 1541, "batch": 87, "duration": 0.6001501083374023, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724596.1312664, "pid": 1541, "batch": 88}
+{"event": "training end", "time": 1724724596.731435, "pid": 1541, "batch": 88, "duration": 0.6001510620117188, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724596.7356858, "pid": 1541, "batch": 89}
+{"event": "training end", "time": 1724724597.335862, "pid": 1541, "batch": 89, "duration": 0.60015869140625, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724597.339554, "pid": 1541, "batch": 90}
+{"event": "training end", "time": 1724724597.939726, "pid": 1541, "batch": 90, "duration": 0.6001565456390381, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724597.9429374, "pid": 1541, "batch": 91}
+{"event": "training end", "time": 1724724598.5430815, "pid": 1541, "batch": 91, "duration": 0.6001260280609131, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724598.5474498, "pid": 1541, "batch": 92}
+{"event": "training end", "time": 1724724599.1476007, "pid": 1541, "batch": 92, "duration": 0.6001317501068115, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724599.1600213, "pid": 1541, "batch": 93}
+{"event": "training end", "time": 1724724599.7602031, "pid": 1541, "batch": 93, "duration": 0.6001622676849365, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724599.7735648, "pid": 1541, "batch": 94}
+{"event": "training end", "time": 1724724600.373716, "pid": 1541, "batch": 94, "duration": 0.6001358032226562, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724600.3776655, "pid": 1541, "batch": 95}
+{"event": "training end", "time": 1724724600.9860718, "pid": 1541, "batch": 95, "duration": 0.6083877086639404, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724600.9892569, "pid": 1541, "batch": 96}
+{"event": "training end", "time": 1724724601.5896063, "pid": 1541, "batch": 96, "duration": 0.6003186702728271, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724601.5947418, "pid": 1541, "batch": 97}
+{"event": "training end", "time": 1724724602.1949418, "pid": 1541, "batch": 97, "duration": 0.6001541614532471, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724602.1992114, "pid": 1541, "batch": 98}
+{"event": "training end", "time": 1724724602.7993717, "pid": 1541, "batch": 98, "duration": 0.6001412868499756, "batch_shape": [64, 128, 16, 24]}
+{"event": "training start", "time": 1724724602.803451, "pid": 1541, "batch": 99}
+{"event": "training end", "time": 1724724603.4036472, "pid": 1541, "batch": 99, "duration": 0.6001772880554199, "batch_shape": [64, 128, 16, 24]}
+{"event": "epoch end", "time": 1724724603.4037278, "pid": 1541, "epoch": 2, "duration": 73.18347907066345}
+{"event": "run end", "time": 1724724603.4071422, "pid": 1541, "duration": 266.8854537010193}

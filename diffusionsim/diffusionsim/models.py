@@ -61,7 +61,7 @@ class VariationalEncoder(torch.nn.Module):
     """
     Conditional VAE Encoder with <layers>+1 fully connected layer
     """
-    def __init__(self, in_dims, hidden_dims=[64, 32, 16], latent_dims=16, logstd_bias=True, dropout=0, device='cpu'):
+    def __init__(self, in_dims, hidden_dims=[64, 32, 16], latent_dims=16, logstd_bias=False, dropout=0, device='cpu'):
         super().__init__()
 
         self.linears = nn.ModuleList([nn.Linear(in_dims, hidden_dims[0])])
@@ -111,7 +111,7 @@ class Decoder(torch.nn.Module):
 
 class VariationalAutoencoder(torch.nn.Module):
     def __init__(self, data_dims=128, label_dims=128,
-                 latent_dims=16, hidden_dims=[64, 32, 16], enable_logstd_bias=False):
+                 latent_dims=16, hidden_dims=[64, 32, 16], disable_logstd_bias=False):
         """
         Conditional VAE
         Encoder: [y x] -> [mu/sigma] -sample-> [z]
@@ -129,7 +129,7 @@ class VariationalAutoencoder(torch.nn.Module):
         super().__init__()
         self.latent_dims = latent_dims
         self.label_dims = label_dims
-        self.encoder = VariationalEncoder(data_dims, hidden_dims, latent_dims, logstd_bias= enable_logstd_bias)
+        self.encoder = VariationalEncoder(data_dims, hidden_dims, latent_dims, logstd_bias= not disable_logstd_bias)
         decoder_hidden = list(reversed(hidden_dims))
         self.decoder = Decoder(data_dims, decoder_hidden, latent_dims)
 

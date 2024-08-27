@@ -22,12 +22,12 @@ def get_path(file):
 
 #print(os.path.dirname(__file__))
 
-def get_norm_info(style='npy'):
-    if(style=='npy'):    
-        X_mean = xr.DataArray(np.load(get_path("X_mean.npy")), coords={'mli' : self.mli})
-        X_std = xr.DataArray(np.load(get_path("X_std.npy")), coords={'mli' : self.mli})
-        Y_mean = xr.DataArray(np.load(get_path("Y_mean.npy")), coords={'mlo' : self.mlo})
-        Y_std = xr.DataArray(np.load(get_path("Y_std.npy")), coords={'mlo' : self.mlo})
+def get_norm_info(style='image'):
+    if(style=='image'):    
+        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
+        X_std = xr.open_dataset(get_path("image_xstd.nc"))
+        Y_mean = xr.open_dataset(get_path("output_mean.nc"))
+        Y_std = xr.open_dataset(get_path("output_std.nc"))
         return(X_mean, X_std, Y_mean, Y_std)
     elif(style=='nc'):
         input_mean = xr.open_dataset(get_path('input_mean.nc'))
@@ -146,6 +146,7 @@ class ClimsimDataset(Dataset):
         return(self.Y[idx])
 
 def image_regridding(ds):
+    
     lat, lon = np.round(ds.lat.data), np.round(ds.lon.data)
     array = np.column_stack([lon, lat])
     # first sort by longitude, then by latitude (top is area of high longitude)
@@ -159,7 +160,7 @@ def image_regridding(ds):
     return(sorted_indices[indices])
 
 
-def add_space(ds_in, ds_out, ds_grid=False, lat=False, lon=False):
+def add_space(ds, ds_grid=False, lat=False, lon=False):
     if not ds_grid:
         mapper = fs.get_mapper("gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.grid-info.zarr")
         ds_grid = xr.open_dataset(mapper, engine='zarr')
@@ -167,13 +168,11 @@ def add_space(ds_in, ds_out, ds_grid=False, lat=False, lon=False):
         lat = ds_grid.lat.values.round(2) 
         lon = ds_grid.lon.values.round(2)  
         lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
-    def add_ll(ds):
-        ds = ds.assign_coords({'ncol' : ds.ncol})
-        ds['lat'] = (('ncol'),lat.T)
-        ds['lon'] = (('ncol'),lon.T)
-        ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
-        return(ds)
-    return(add_ll(ds_in), add_ll(ds_out))
+    ds = ds.assign_coords({'ncol' : ds.ncol})
+    ds['lat'] = (('ncol'),lat.T)
+    ds['lon'] = (('ncol'),lon.T)
+    ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
+    return(ds)
 
 
 class ClimsimImageDataset(Dataset):
