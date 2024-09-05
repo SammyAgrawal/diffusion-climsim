@@ -7,7 +7,7 @@ from .mydatasets import ClimsimDataset, reconstruct_xarr_from_npy, load_numpy_ar
 
 
 __all__ = [
-    'climsim_training_utils', 'fetch_config', 'load_training_objects', 
+    'climsim_utils', 'fetch_config', 'load_training_objects', 
     'load_model', 'TrainingConfig', 'VAETrainer',
     'load_numpy_arrays', 'reconstruct_xarr_from_npy', 'ClimsimDataset', 'ClimsimImageDataset'
 ]

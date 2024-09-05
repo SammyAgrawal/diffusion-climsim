@@ -17,31 +17,24 @@ import cftime
 import json
 import fsspec
 
+from .mydatasets import get_norm_info
+
 def tocft(year=1, month=1, day=1):
     return(cftime.DatetimeNoLeap(year, month, day, has_year_zero=True))
 
 def expand_ds_name(ds_type=''):
     match ds_type.lower():
-        case "aquaplanet":
+        case t if "aqua" in t:
             return("ClimSim_low-res_aqua-planet")
-        case "ClimSim_low-res_aqua-planet":
-            return("ClimSim_low-res_aqua-planet")
-        case "aqua-planet":
-            return("ClimSim_low-res_aqua-planet")
-        case "ClimSim_low-res":
+        case t if "expand" in t:
+            return("ClimSim_low-res-expanded")
+        case t if ("lowres" in t or "low-res" in t or "low_res" in t): 
             return("ClimSim_low-res")
-        case "lowres":
-            return("ClimSim_low-res")
-        case "low-res":
-            return("ClimSim_low-res")
-        case "high-res":
-            return("ClimSim_high-res")
-        case "highres":
-            return("ClimSim_high-res")
-        case "ClimSim_high-res":
+        case t if ("highres" in t or "high-res" in t or "high_res" in t): 
             return("ClimSim_high-res")
         case _:
-            return("ClimSim_low-res_aqua-planet")
+            print("Unrecognized type")
+            
 
 def read_url_xarray(url):
     fs_local = fsspec.filesystem('local')
@@ -83,13 +76,18 @@ def make_url(time: cftime.DatetimeNoLeap, ds_type: str, dataset: str=''):
         f"{time.year:04}-{time.month:02}-{time.day:02}-{seconds:05}.nc"
     )
 
-def generate_urls(start, stop, interval, dataset=''):
+#https://huggingface.co/datasets/LEAP/ClimSim_low-res-expanded/resolve/main/train/0001-02/E3SM-MMF.mlexpand.0001-02-01-06000.nc
+
+def generate_urls(start, stop, interval, dataset='expanded', input_types=['mli', 'mlo']):
     for time in generate_times(start, stop, interval):
-        input_nc = make_url(time, 'mli', dataset)
-        output_nc = make_url(time, 'mlo', dataset)
+        mli, mlo = input_types
+        input_nc = make_url(time, mli, dataset)
+        output_nc = make_url(time, mlo, dataset)
         yield(time, input_nc, output_nc)
 
 def load_grid_info(ds_type=''):
+    if('expand' in ds_type):
+        ds_type = "lowres"
     n = expand_ds_name(ds_type)
     grid_url = f"https://huggingface.co/datasets/LEAP/{n}/resolve/main/{n}_grid-info.nc"
     return(read_url_xarray(grid_url))
@@ -184,14 +182,13 @@ def load_climsim(start, stop, interval, input_vars=[], output_vars=[], ds_type='
 
 MLBackendType = Literal["tensorflow", "pytorch"]
 
-def setup_data_utils(ds_type='aquaplanet', data_source='gcsfs', data_vars='v1', **kwargs):
+def setup_data_utils(ds_type='lowres', data_source='gcsfs', data_vars='v1', **kwargs):
     # data source is either a google cloud bucket, local file path, or tries to load directly from Huggingface
     ds_type = expand_ds_name(ds_type)
     if('grid_info' in kwargs):
         grid_info = kwargs['grid_info']
     else:
-        grid_url = f"https://huggingface.co/datasets/LEAP/{ds_type}/resolve/main/{ds_type}_grid-info.nc"
-        grid_info = read_url_xarray(grid_url)
+        grid_info = load_grid_info(ds_type)
         
     data = data_utils(data_source, ds_type, grid_info.compute())
     if(data_source == 'hf'):
@@ -207,11 +204,7 @@ def setup_data_utils(ds_type='aquaplanet', data_source='gcsfs', data_vars='v1', 
     elif(data_vars == 'v2'):
         data.set_to_v2_vars()
 
-
-    input_mean = xr.open_dataset('Climsim_info/input_mean.nc')
-    input_max = xr.open_dataset('Climsim_info/input_max.nc')
-    input_min = xr.open_dataset('Climsim_info/input_min.nc')
-    output_scale = xr.open_dataset('Climsim_info/output_scale.nc')
+    input_mean, input_max, input_min, output_scale = get_norm_info("nc")
     data.set_norm_info(input_mean, input_max, input_min, output_scale)
             
     
@@ -223,6 +216,10 @@ class data_utils:
     def __init__(self, source_type, ds_type, grid_info='', ml_backend: MLBackendType = "pytorch"):
         self.source_type = source_type
         self.ds_type = ds_type
+        if("expand" in ds_type):
+            self.mlivar = "mlexpand"
+        else:
+            self.mlivar = "mli"
         self.data_path = None
         self.input_vars = []
         self.target_vars = []
@@ -595,7 +592,7 @@ class data_utils:
         '''
         # read inputs
         ds_input = self.get_input(input_file)
-        ds_target = self.get_xrdata(input_file.replace('.mli.','.mlo.'))
+        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'))
         # each timestep is 20 minutes which corresponds to 1200 seconds
         ds_target['ptend_t'] = (ds_target['state_t'] - ds_input['state_t'])/1200 # T tendency [K/s]
         ds_target['ptend_q0001'] = (ds_target['state_q0001'] - ds_input['state_q0001'])/1200 # Q tendency [kg/kg/s]
@@ -652,7 +649,7 @@ class data_utils:
             time = start + (interval * i)
             seconds = (time.hour * 3600) + (time.minute * 60)
             fname = (
-                f"{time.year:04}-{time.month:02}/E3SM-MMF.mli."
+                f"{time.year:04}-{time.month:02}/E3SM-MMF.{self.mlivar}."
                 f"{time.year:04}-{time.month:02}-{time.day:02}-{seconds:05}.nc"
             )
             filepaths.append(os.path.join(self.data_path, fname))
@@ -802,8 +799,8 @@ class data_utils:
         elif data_split == 'test':
             data_files = self.test_filelist
         if save_latlontime_dict:
-            dates = [re.sub('^.*mli\.', '', x) for x in data_files]
-            dates = [re.sub('\.nc$', '', x) for x in dates]
+            dates = [re.sub(r'^.*mli\.', '', x) for x in data_files]
+            dates = [re.sub(r'\.nc$', '', x) for x in dates]
             repeat_dates = []
             for date in dates:
                 for i in range(self.num_latlon):
@@ -1489,7 +1486,7 @@ class data_utils:
             ax[1,i].set_ylim(ax[1,i].get_ylim()[::-1])
             ax[1,i].set_title(self.model_names[i] + " - ptend_q0001")
             ax[1,i].xaxis.set_ticks([np.sin(-50/180*np.pi), 0, np.sin(50/180*np.pi)])
-            ax[1,i].xaxis.set_ticklabels(['50$^\circ$S', '0$^\circ$', '50$^\circ$N'])
+            ax[1,i].xaxis.set_ticklabels([r'50$^\circ$S', r'0$^\circ$', r'50$^\circ$N'])
             ax[1,i].xaxis.set_tick_params(width = 2)
             
             if i != 0:
