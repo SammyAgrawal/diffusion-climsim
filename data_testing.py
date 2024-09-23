@@ -35,43 +35,6 @@ def log_event(event_name, **kwargs):
     print(json.dumps(log))
     return(t)
 
-class XBatchDataset(torch.utils.data.Dataset):
-    def __init__(self, dso, batch_size, normalize=False, log=True):
-        self.Xmean, self.Xstd, self.Ymean, self.Ystd = data.get_norm_info("image")
-        # snowfall has some zeros, so just take global mean to avoid dividing by zero
-        self.Ystd['cam_out_PRECSC'].data = self.Ystd.cam_out_PRECSC.mean().item() * np.ones_like(self.Ystd.cam_out_PRECSC.data) 
-        self.height, self.width = (16, 24)
-        self.normalize = normalize
-        self.log = log
-        self.permute_indices = data.image_regridding(dso)
-        if(normalize):
-            #print("Normalizing")
-            self.data = (dso - self.Ymean) / self.Ystd
-        else:
-            self.data = dso
-
-        self.bgen = xbatcher.BatchGenerator(self.data,
-                input_dims=dict(time=batch_size, lev=60, ncol=384),
-                preload_batch=False,
-        )
-    def __len__(self):
-        return(len(self.bgen))
-    
-    def __getitem__(self, idx):
-        if(self.log):
-            t0 = log_event("get-batch start", batch_idx=idx)
-        data = self.bgen[idx].load()
-        if(not self.normalize): # wasn't normalized from beginning, must do now
-            data = (data - self.Ymean.mean(dim='ncol')) / self.Ystd.mean(dim='ncol')
-        data = data.isel(ncol=self.permute_indices)
-        stacked = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
-        stacked = stacked.transpose("time", "mlo", "ncol")
-        item = torch.tensor(stacked.data.reshape(-1, 128, self.height, self.width), dtype=torch.float32)
-        if(self.log):
-            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
-
-        return item
-
 
 def setup(batch_size):
     input_vars, output_vars = data.load_vars('v1', tendencies=False)
@@ -81,6 +44,7 @@ def setup(batch_size):
     ds_out = data.add_space(ds_out)
     dataset = XBatchDataset(ds_out, batch_size, normalize=False, log=True)
     return(dataset)
+
 
 def train(training_generator, num_epochs, train_step_time, num_batches):
     for epoch in range(num_epochs):

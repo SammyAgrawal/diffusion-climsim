@@ -169,3 +169,7 @@ experiments/VAE_August05_07:09/
 experiments/VAE_August05_12:00/
 experiments/VAE_two_sample_test/
 experiments/test_ddpm_1/trial_alpha_log.json
+file.nc
+mydask.png
+plot.ipynb
+

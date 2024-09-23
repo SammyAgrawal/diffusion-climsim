@@ -5,6 +5,7 @@ import xarray as xr
 import numpy as np
 import pandas as pd
 import gcsfs 
+import xbatcher
 from dataclasses import dataclass, asdict, field
 import inspect
 try:
@@ -22,6 +23,31 @@ def get_path(file):
 
 #print(os.path.dirname(__file__))
 
+def load_dataset(dconfig):
+    if(dconfig.source and dconfig.climsim_type):
+        input_vars, output_vars = load_vars(dconfig.data_vars, tendencies=dconfig.use_tendencies)
+        dsi, dso = load_raw_dataset(dconfig.climsim_type, chunks=True, chunksizes=dconfig.chunksize)
+        dso = dso[output_vars].rename({'sample':'time'})
+    dso = add_space(dso)
+    match dconfig.dataset_type.lower():
+        case ds if "xbatch" in ds:
+            return(XBatchDataset(dso, dconfig))
+
+def collate_test_fn(batches):
+    return(batches[0])
+
+def load_dataloader(dconfig):
+    dataset = load_dataset(dconfig)
+    params = asdict(dconfig.dataloader_params)
+    match dconfig.dataset_type.lower():
+        case ds if "xbatch" in ds:
+            # batch size is already set via xbatcher in dataset sample; dataloader should just return one item
+            params['batch_size'] = 1
+            return(DataLoader(dataset, collate_fn=collate_test_fn, **params))
+        case _:
+            return(DataLoader(dataset, **params))
+
+
 def get_norm_info(style='image'):
     if(style=='image'):    
         X_mean = xr.open_dataset(get_path("image_xmean.nc"))
@@ -36,8 +62,6 @@ def get_norm_info(style='image'):
         output_scale = xr.open_dataset(get_path('output_scale.nc'))
         return(input_mean, input_max, input_min, output_scale)
     
-
-
 def load_numpy_arrays(bucket='persist', fprefix='climsim'):
     if('scratch' in bucket):
         bucket = "leap-scratch"
@@ -66,20 +90,27 @@ def save_arrays(X, Y, bucket='scratch', fprefix='climsim'):
     with fsspec.open(f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy", 'wb') as f:
         np.save(f, Y)
 
-def load_scheduler(config):
+def load_scheduler(mconfig):
     def pass_config(func, data_class):
         accepted_params = inspect.signature(func).parameters
         filtered_kwargs = {k: v for k, v in asdict(data_class).items() if k in accepted_params}
         return func(**filtered_kwargs)
-    match config.scheduler_type.lower():
+    match mconfig.scheduler_type.lower():
         case sched if 'ddpm' in sched:
             # in charge of betas
-            return(pass_config(diffusers.DDPMScheduler, config.scheduler))
+            return(pass_config(diffusers.DDPMScheduler, mconfig.scheduler))
         case sched if 'ddim' in sched:
-            return(pass_config(diffusers.DDIMScheduler, config.scheduler))
+            return(pass_config(diffusers.DDIMScheduler, mconfig.scheduler))
         case other if True:
             print(f"scheduler '{other}' not yet supported")
-    
+        
+def noise_batch(scheduler, clean_images, device):
+    num_timesteps = scheduler.config.num_train_timesteps
+    # Given a batch from a dataloader on the dataset, return a noised sample
+    noise = torch.randn(clean_images.shape, device=device)
+    timesteps = torch.randint(0, num_timesteps, size=(clean_images.shape[0],), device=device, dtype=torch.int64)
+    noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
+    return(noisy_images, timesteps, noise)
 
 def reconstruct_xarr_from_npy(X: np.ndarray, Y: np.ndarray, subsampling=(36,210240, 144), data_vars='v1'):
     ds_in, ds_out = load_raw_dataset(chunks=True)
@@ -247,6 +278,41 @@ class ClimsimImageDataset(Dataset):
         noisy_images = self.scheduler.add_noise(clean_images, noise, timesteps)
         return(noisy_images, timesteps, noise)
 
+class XBatchDataset(torch.utils.data.Dataset):
+    def __init__(self, dso, dconfig, log=True):
+        self.Xmean, self.Xstd, self.Ymean, self.Ystd = get_norm_info(dconfig.norm_info)
+        # snowfall has some zeros, so just take global mean to avoid dividing by zero
+        self.Ystd['cam_out_PRECSC'].data = self.Ystd.cam_out_PRECSC.mean().item() * np.ones_like(self.Ystd.cam_out_PRECSC.data) 
+        self.height, self.width = (16, 24)
+        self.normalize = dconfig.prenormalize
+        self.log = log
+        self.permute_indices = image_regridding(dso)
+        if(self.normalize):
+            self.data = (dso - self.Ymean) / self.Ystd
+        else:
+            self.data = dso
+
+        self.bgen = xbatcher.BatchGenerator(self.data,
+                input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384),
+                preload_batch=False,
+        )
+
+    def __len__(self):
+        return(len(self.bgen))
+    
+    def __getitem__(self, idx):
+        if(self.log):
+            t0 = log_event("get-batch start", batch_idx=idx)
+        data = self.bgen[idx].load()
+        if(not self.normalize): # wasn't normalized from beginning, must do now
+            data = (data - self.Ymean.mean(dim='ncol')) / self.Ystd.mean(dim='ncol')
+        data = data.isel(ncol=self.permute_indices)
+        stacked = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
+        stacked = stacked.transpose("time", "mlo", "ncol")
+        item = torch.tensor(stacked.data.reshape(-1, 128, self.height, self.width), dtype=torch.float32)
+        if(self.log):
+            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
+        return item
 
 def load_vars(s, tendencies=True):
     v1_inputs = ['state_t', 'state_q0001', 'state_ps', 'pbuf_SOLIN','pbuf_LHFLX', 'pbuf_SHFLX']
@@ -270,7 +336,7 @@ def load_vars(s, tendencies=True):
         return(v2_inputs, v2_outputs)
     print("Input should be v1 or v2")
 
-def load_raw_dataset(ds_type='', data_vars = 'v1', chunks=False, chunksizes={}):
+def load_raw_dataset(ds_type='', chunks=False, chunksizes={}):
     # change once re-ingested/ virtualized pipeline works
     # eventually want ds_type to specify aquaplanet / res    
     if(chunks):
@@ -284,6 +350,8 @@ def load_raw_dataset(ds_type='', data_vars = 'v1', chunks=False, chunksizes={}):
         mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
         ds_output = xr.open_dataset(mapper, engine='zarr')
     return(ds_input, ds_output)
+
+
 
 
 def add_time(ds_in, ds_out):
@@ -308,5 +376,19 @@ def add_tendencies(ds_out, output_vars):
 
     return(ds_out[output_vars])
 
+import time
+from torch import multiprocessing
+import json
+def log_event(event_name, **kwargs):
+    t = time.time()
+    log = {
+        "event": event_name,
+        "time": t,
+        "pid": multiprocessing.current_process().pid,
+    }
+    for key in kwargs:
+        log[key] = kwargs[key]
+    print(json.dumps(log))
+    return(t)
 
 

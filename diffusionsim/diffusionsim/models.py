@@ -17,6 +17,7 @@ import inspect
 def load_model(config):
     registered = ['VAE', 'diffusion', 'latent_diffusion']
     def pass_config(func, data_class):
+        # only pass model config params that function takes in
         accepted_params = inspect.signature(func).parameters
         filtered_kwargs = {k: v for k, v in asdict(data_class).items() if k in accepted_params}
         return func(**filtered_kwargs)
@@ -31,7 +32,7 @@ def load_model(config):
             )
             return(model)
         case model_type if "diffusion" in model_type:
-            if 'latent' in model_type:
+            if 'latent' in model_type: # modify channels for VAE 
                 config.unet.in_channels = config.latent_dims 
                 config.unet.out_channels = config.latent_dims
             return(pass_config(diffusers.UNet2DModel, config.unet))

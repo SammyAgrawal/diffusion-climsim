@@ -16,15 +16,39 @@ from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Tuple
 
 @dataclass
-class TrainingConfig:
-    # data params
+class TrainLoaderParams:
+    batch_size: int = 1
+    shuffle: bool = False
+    num_workers: int = 8
+    prefetch_factor: int = 6
+    persistent_workers: bool = True
+    multiprocessing_context: str = "forkserver"
+    pin_memory: bool = True
+
+@dataclass
+class DataConfig:
+    dataset_type: str = "XBatchDataset"
+    climsim_type: str = "low-res"
+    source = "gcsfs"
     train_test_split: List[int] = field(default_factory=lambda: [0.75, 0.25])
-    phases: List[str] = field(default_factory=lambda: ['train', 'eval'])
-    num_epochs: int = 5
-    distributed_training: bool = False
-    shuffle_data: Dict[str, bool] = None
-    batch_size: int = 32
+    dataloader_params: TrainLoaderParams = field(default_factory=lambda: TrainLoaderParams())
     xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)
+    data_vars: str = "v1"
+    use_tendencies: bool = False
+    norm_info: str = "image"
+    prenormalize: bool = False
+    chunksize: Dict = field(default_factory=lambda:{})
+    def __post_init__(self):
+        if isinstance(self.dataloader_params, dict):
+            self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
+
+@dataclass
+class TrainingConfig:
+    exp_id: str = "expName"
+    # data params
+    num_epochs: int = 5
+    phases: List[str] = field(default_factory=lambda: ['train', 'eval'])
+    distributed_training: bool = False
     # learning parameters
     optimizer: str = 'adam'
     lr_scheduler: str = None
@@ -44,7 +68,6 @@ class TrainingConfig:
     
     def __post_init__(self):
         self.shuffle_data = {'train':False, 'eval':False}
-
 @dataclass
 class UNetParams:
     sample_size: Tuple[int, int] = field(default_factory=lambda: (16, 24))
@@ -110,15 +133,28 @@ def load_config(fname, expid, base_dir="experiments/"):
     except:
         print("mismatch between mconfig and class")
         mconfig = cdict['model_config']
+    try:
+        dconfig = DataConfig(**cdict['data_config'])
+    except:
+        print("mismatch between dconfig and class")
+        dconfig = cdict['data_config']
 
-    return(tconfig, mconfig)
+    return(tconfig, mconfig, dconfig)
 
-def fetch_model_from_ckpt(ckpt_fname, log_fname, expid, base_dir="experiments/"):
+def load_model_from_ckpt(ckpt_fname, log_fname, expid, base_dir="experiments/"):
     tconfig, mconfig = load_config(log_fname, expid, base_dir)
     model = load_model(mconfig)
     cpath = os.path.join(base_dir, expid, ckpt_fname)
     model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu')))
     return(model)
+
+#def load_lr_scheduler(config, optim, dataloader):
+#    lr = get_cosine_schedule_with_warmup(
+#        optimizer=optim, 
+#        num_warmup_steps=config.lr_warmup_steps, 
+#        num_training_steps=len(dataloader) * config.num_epochs,
+#    )
+#    return(lr)
 
 
 os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
