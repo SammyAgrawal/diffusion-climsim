@@ -5,24 +5,46 @@ import numpy as np
 import os
 
 import gcsfs
-import datetime as dt
 import json
 import torch
 
 from .models import load_model
-from .mydatasets import ClimsimDataset, ClimsimImageDataset
-
+from .mydatasets import load_dataset, load_dataloader, load_scheduler
+from .trainers import VAETrainer, DiffusionTrainer, create_optimizer
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Tuple
 
+def setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, exp_dir="./experiments"):
+    from pathlib import Path
+    base_dir = os.path.join(exp_dir, exp_id)
+    Path(base_dir).mkdir(parents=True, exist_ok=True)
+    tconfig.exp_id = exp_id
+    with open(os.path.join(base_dir, f'{run_id}.json'), "w") as f:
+        json.dump(dict(
+            training_config=asdict(tconfig),
+            model_config=asdict(mconfig),
+            data_config=asdict(dconfig),
+        ), f)
+    model = load_model(mconfig)
+    dataloader = load_dataloader(dconfig)
+    optimizer = create_optimizer(model, tconfig)
+    next(iter(dataloader)) # just to finish setting up
+    match mconfig.model_type:
+        case mtype if "diffusion" in mtype:
+            loss_fn = torch.nn.MSELoss()
+            scheduler = load_scheduler(mconfig)
+            trainer = DiffusionTrainer(model, scheduler, dataloader, loss_fn, optimizer, tconfig, rank=0, base_dir=base_dir)
+
+    return(trainer)
+
 @dataclass
 class TrainLoaderParams:
-    batch_size: int = 1
+    batch_size: int = 128
     shuffle: bool = False
-    num_workers: int = 8
-    prefetch_factor: int = 6
-    persistent_workers: bool = True
-    multiprocessing_context: str = "forkserver"
+    num_workers: int = 0
+    prefetch_factor: int = None
+    persistent_workers: bool = False
+    multiprocessing_context: str = None
     pin_memory: bool = True
 
 @dataclass
@@ -30,7 +52,7 @@ class DataConfig:
     dataset_type: str = "XBatchDataset"
     climsim_type: str = "low-res"
     source = "gcsfs"
-    train_test_split: List[int] = field(default_factory=lambda: [0.75, 0.25])
+    train_test_split: List[int] = field(default_factory=lambda: [1.0, 0.0])
     dataloader_params: TrainLoaderParams = field(default_factory=lambda: TrainLoaderParams())
     xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)
     data_vars: str = "v1"
@@ -41,7 +63,7 @@ class DataConfig:
     def __post_init__(self):
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
-
+            
 @dataclass
 class TrainingConfig:
     exp_id: str = "expName"
@@ -51,9 +73,10 @@ class TrainingConfig:
     distributed_training: bool = False
     # learning parameters
     optimizer: str = 'adam'
+    betas: Tuple[float, float] = (0.9, 0.999)
     lr_scheduler: str = None
     learning_rate: float = 1e-4
-    beta: float = 0.2
+    beta: float = 0.2 # VAE Kl div beta
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
     lr_warmup_steps = 500
@@ -61,7 +84,7 @@ class TrainingConfig:
     # logging params
     save_best_epoch: bool = True
     batch_logging_interval: int = 4
-    model_checkpoint_interval: int = 2 # save checkpoint every 2 epochs
+    batch_checkpoint_interval: int = 100 # save checkpoint every 100 batches
     log_gradients: bool = True
     #save_image_epochs: int = 2
     push_to_hub: bool = False
@@ -141,8 +164,7 @@ def load_config(fname, expid, base_dir="experiments/"):
 
     return(tconfig, mconfig, dconfig)
 
-def load_model_from_ckpt(ckpt_fname, log_fname, expid, base_dir="experiments/"):
-    tconfig, mconfig = load_config(log_fname, expid, base_dir)
+def load_model_from_ckpt(ckpt_fname, mconfig, expid, base_dir="experiments/"):
     model = load_model(mconfig)
     cpath = os.path.join(base_dir, expid, ckpt_fname)
     model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu')))
@@ -155,7 +177,6 @@ def load_model_from_ckpt(ckpt_fname, log_fname, expid, base_dir="experiments/"):
 #        num_training_steps=len(dataloader) * config.num_epochs,
 #    )
 #    return(lr)
-
 
 os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 def train_test_split(Xarr, Yarr, split_frac=[0.75, 0.25]):

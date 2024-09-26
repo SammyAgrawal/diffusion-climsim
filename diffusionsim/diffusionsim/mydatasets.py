@@ -1,20 +1,23 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import os
+import json
+import sys
 import xarray as xr
 import numpy as np
 import pandas as pd
-import gcsfs 
+import gcsfs
+import dask
 import xbatcher
 from dataclasses import dataclass, asdict, field
 import inspect
 try:
     import diffusers
     diffusers_available = True
-except:
+except Exception as e:
     diffusers_available = False
 
-
+import time
 fs = gcsfs.GCSFileSystem()
 
 _ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -22,6 +25,14 @@ def get_path(file):
     return os.path.join(_ROOT, 'climsim_data', file)
 
 #print(os.path.dirname(__file__))
+
+def log_event(event_name, **kwargs):
+    t = time.time()
+    log = dict(event=event_name, time=t, pid=torch.multiprocessing.current_process().pid)
+    for key in kwargs:
+        log[key] = kwargs[key]
+    print(json.dumps(log), file=sys.stderr)
+    return(t)
 
 def load_dataset(dconfig):
     if(dconfig.source and dconfig.climsim_type):
@@ -296,9 +307,20 @@ class XBatchDataset(torch.utils.data.Dataset):
                 input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384),
                 preload_batch=False,
         )
+        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+            self.mlo = dso.to_stacked_array(new_dim='mlo', sample_dims=("time", "ncol")).mlo
 
     def __len__(self):
         return(len(self.bgen))
+
+    def reconstruct_X(self, X_norm):
+        X_rec = (X_norm * self.X_std) + self.X_mean
+        return(X_rec)
+        
+    def reconstruct_Y(self, Y_norm):
+        mean, std = torch.tensor(self.Y_mean.values).view(128, 1, 1), torch.tensor(self.Y_std.values).view(128, 1, 1)
+        Y_rec = (Y_norm * std) + mean
+        return(Y_rec)
     
     def __getitem__(self, idx):
         if(self.log):
@@ -375,20 +397,5 @@ def add_tendencies(ds_out, output_vars):
             ds_out[var] = (ds_out[v] - ds_out[v]) / 1200
 
     return(ds_out[output_vars])
-
-import time
-from torch import multiprocessing
-import json
-def log_event(event_name, **kwargs):
-    t = time.time()
-    log = {
-        "event": event_name,
-        "time": t,
-        "pid": multiprocessing.current_process().pid,
-    }
-    for key in kwargs:
-        log[key] = kwargs[key]
-    print(json.dumps(log))
-    return(t)
 
 
