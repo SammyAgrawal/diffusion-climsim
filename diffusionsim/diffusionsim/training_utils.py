@@ -60,6 +60,7 @@ class DataConfig:
     norm_info: str = "image"
     prenormalize: bool = False
     chunksize: Dict = field(default_factory=lambda:{})
+    log_batching: bool = True
     def __post_init__(self):
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
@@ -128,6 +129,7 @@ class ModelConfig:
     scheduler_type: str = 'ddpm'
     unet: UNetParams = field(default_factory=lambda: UNetParams())
     scheduler: SchedulerParams = field(default_factory=lambda:SchedulerParams())
+    scheduler_inference_steps: int = 100
     # VAE params
     num_channels: int = 128
     latent_dims: int = 16
@@ -165,6 +167,8 @@ def load_config(fname, expid, base_dir="experiments/"):
     return(tconfig, mconfig, dconfig)
 
 def load_model_from_ckpt(ckpt_fname, mconfig, expid, base_dir="experiments/"):
+    if(isinstance(mconfig, dict)):
+        mconfig = ModelConfig(**mconfig)
     model = load_model(mconfig)
     cpath = os.path.join(base_dir, expid, ckpt_fname)
     model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu')))
@@ -177,22 +181,6 @@ def load_model_from_ckpt(ckpt_fname, mconfig, expid, base_dir="experiments/"):
 #        num_training_steps=len(dataloader) * config.num_epochs,
 #    )
 #    return(lr)
-
-os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
-def train_test_split(Xarr, Yarr, split_frac=[0.75, 0.25]):
-    datasets = []
-    num_samples = Yarr.shape[0]
-    indices = np.arange(num_samples)
-    np.random.shuffle(indices)
-    counter = 0
-    for frac in split_frac:
-        # Calculate the split index
-        split = int(num_samples * frac)
-        phase_indices = indices[counter:counter+split]
-        datasets.append((Xarr[phase_indices], Yarr[phase_indices]))
-        counter += split
-
-    return(datasets)
  
 
 fs = gcsfs.GCSFileSystem()

@@ -34,24 +34,26 @@ def log_event(event_name, **kwargs):
     print(json.dumps(log), file=sys.stderr)
     return(t)
 
-def load_dataset(dconfig):
+def load_dataset(dconfig, log=False):
     if(dconfig.source and dconfig.climsim_type):
         input_vars, output_vars = load_vars(dconfig.data_vars, tendencies=dconfig.use_tendencies)
         dsi, dso = load_raw_dataset(dconfig.climsim_type, chunks=True, chunksizes=dconfig.chunksize)
-        dso = dso[output_vars].rename({'sample':'time'})
-    dso = add_space(dso)
+    dsi = add_space(dsi[input_vars].rename({'sample':'time'}))
+    dso = add_space(dso[output_vars].rename({'sample':'time'}))
+    (dsi_train, dso_train), (dsi_test, dso_test) = train_test_split(dsi, dso, dconfig.train_test_split)
     match dconfig.dataset_type.lower():
         case ds if "xbatch" in ds:
-            return(XBatchDataset(dso, dconfig))
+            return(XBatchDataset(dso_train, dconfig, log=dconfig.log_batching), XBatchDataset(dso_test, dconfig, log=dconfig.log_batching))
+        case ds if "image" in ds:
+            return(ClimsimImageDataset(dsi_train, dso_train, dconfig, log), ClimsimImageDataset(dsi_test, dso_test, dconfig, log))
+        case _:
+            return(dsi, dso)
 
-def collate_test_fn(batches):
-    return(batches[0])
-
-def load_dataloader(dconfig):
-    dataset = load_dataset(dconfig)
+def load_dataloader(dconfig, log=False):
+    dataset = load_dataset(dconfig, log)
     params = asdict(dconfig.dataloader_params)
     match dconfig.dataset_type.lower():
-        case ds if "xbatch" in ds:
+        case ds if "xbatch" in ds or "image" in ds:
             # batch size is already set via xbatcher in dataset sample; dataloader should just return one item
             params['batch_size'] = 1
             return(DataLoader(dataset, collate_fn=collate_test_fn, **params))
@@ -65,41 +67,15 @@ def get_norm_info(style='image'):
         X_std = xr.open_dataset(get_path("image_xstd.nc"))
         Y_mean = xr.open_dataset(get_path("output_mean.nc"))
         Y_std = xr.open_dataset(get_path("output_std.nc"))
+        Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
         return(X_mean, X_std, Y_mean, Y_std)
     elif(style=='nc'):
         input_mean = xr.open_dataset(get_path('input_mean.nc'))
-        input_max = xr.open_dataset(get_path('input_max.nc'))
-        input_min = xr.open_dataset(get_path('input_min.nc'))
-        output_scale = xr.open_dataset(get_path('output_scale.nc'))
-        return(input_mean, input_max, input_min, output_scale)
-    
-def load_numpy_arrays(bucket='persist', fprefix='climsim'):
-    if('scratch' in bucket):
-        bucket = "leap-scratch"
-    elif('persist'):
-        bucket = "leap-persistent"
-    xpath = f"gs://{bucket}/sammyagrawal/input_{fprefix}.npy"
-    ypath = f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy" 
-
-    with fs.open(xpath, 'rb') as f:
-        X = np.load(f)
-    print(f"Finished Loading X from {xpath}")
-    with fs.open(ypath, 'rb') as f:
-        Y = np.load(f)
-    print(f"Finished Loading Y from {ypath}")
-
-    return(X, Y)
-
-
-def save_arrays(X, Y, bucket='scratch', fprefix='climsim'):
-    if(bucket== 'scratch'):
-        bucket = "leap-scratch"
-    elif(bucket == 'persist'):
-        bucket = "leap-persistent"
-    with fsspec.open(f"gs://{bucket}/sammyagrawal/input_{fprefix}.npy", 'wb') as f:
-        np.save(f, X)
-    with fsspec.open(f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy", 'wb') as f:
-        np.save(f, Y)
+        input_std = xr.open_dataset(get_path('input_std.nc'))
+        output_mean = xr.open_dataset(get_path('output_mean.nc'))
+        output_std = xr.open_dataset(get_path('output_std.nc'))
+        output_std['cam_out_PRECSC'] = output_std.cam_out_PRECSC.mean()
+        return(input_mean, input_std, output_mean, output_std)
 
 def load_scheduler(mconfig):
     def pass_config(func, data_class):
@@ -123,32 +99,16 @@ def noise_batch(scheduler, clean_images, device):
     noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
     return(noisy_images, timesteps, noise)
 
-def reconstruct_xarr_from_npy(X: np.ndarray, Y: np.ndarray, subsampling=(36,210240, 144), data_vars='v1'):
-    ds_in, ds_out = load_raw_dataset(chunks=True)
-    input_vars, output_vars = load_vars(data_vars, tendencies=False)
-    start, stop, stride = subsampling
-    ds_in = ds_in.isel(sample=slice(start, stop, stride))[input_vars]
-    ds_out = ds_out.isel(sample=slice(start, stop, stride))[output_vars]
-
-    mli = ds_in.to_stacked_array('mli', sample_dims=['sample', 'ncol']).mli
-    mlo = ds_out.to_stacked_array('mlo', sample_dims=['sample', 'ncol']).mlo
-    state = ds_in.stack({'state' : ['sample', 'ncol']}).state
-    
-    Xarr = xr.DataArray(X, dims=['state', 'mli'], coords={'state' : state, 'mli':mli})
-    Yarr = xr.DataArray(Y, dims=['state', 'mlo'], coords={'state' : state, 'mlo':mlo})
-
-    #Xarr, Yarr = add_space(Xarr.unstack('sample'), Yarr.unstack('sample'))
-    return(Xarr, Yarr)
 
 class ClimsimDataset(Dataset):
-    def __init__(self, X, Y, device, normalize=True):
+    def __init__(self, X, Y, normalize=True):
         self.device = device
         self.mli, self.mlo = X.mli, Y.mlo
         self.Xarr, self.Yarr = X, Y
         if(normalize):
-            X, Y = self.normalize(X, Y)
-        self.X = torch.tensor(X.values, dtype=torch.float32, device=device) # each row is datapoint
-        self.Y = torch.tensor(Y.values, dtype=torch.float32, device=device)
+            X, Y = self.normalize(X, Y, load_norm=False)
+        self.X = torch.tensor(X.values, dtype=torch.float32) # each row is datapoint
+        self.Y = torch.tensor(Y.values, dtype=torch.float32)
 
     def normalize(self, X, Y, load_norm=True):
         print("Normalizing data")
@@ -185,115 +145,66 @@ class ClimsimDataset(Dataset):
         return(self.Y.shape[0])
 
     def __getitem__(self, idx):
-        return(self.Y[idx])
+        return(self.X[idx], self.Y[idx])
 
-def image_regridding(ds):
-    
-    lat, lon = np.round(ds.lat.data), np.round(ds.lon.data)
-    array = np.column_stack([lon, lat])
-    # first sort by longitude, then by latitude (top is area of high longitude)
-    sorted_indices = np.lexsort((array[:, 0], -1*array[:, 1]))
-    arr = array[sorted_indices]
-    indices = np.array([], dtype=int)
-    for i in range(16):
-        start = i*24
-        indices = np.concatenate([indices, start + np.argsort(arr[start:start+24, 0])])
+def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr'):
+    datasets = []
+    if(typ == 'np'):
+        num_timesteps = dsi.sizes['state']
+    else:
+        num_timesteps = dsi.sizes['time']
+    times = np.arange(num_timesteps)
+    np.random.shuffle(times)
+    counter = 0
+    for frac in split_frac:
+        # Calculate the split index
+        split = int(num_timesteps * frac)
+        phase_indices = np.sort(times[counter:counter+split])
+        if(typ == 'np'):
+            datasets.append((dsi.isel(state=phase_indices), dso.isel(state=phase_indices)))
+        else:
+            datasets.append((dsi.isel(time=phase_indices), dso.isel(time=phase_indices)))
+        counter += split
 
-    return(sorted_indices[indices])
-
-
-def add_space(ds, ds_grid=False, lat=False, lon=False):
-    if not ds_grid:
-        mapper = fs.get_mapper("gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.grid-info.zarr")
-        ds_grid = xr.open_dataset(mapper, engine='zarr')
-    if not lat or not lon:
-        lat = ds_grid.lat.values.round(2) 
-        lon = ds_grid.lon.values.round(2)  
-        lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
-    ds = ds.assign_coords({'ncol' : ds.ncol})
-    ds['lat'] = (('ncol'),lat.T)
-    ds['lon'] = (('ncol'),lon.T)
-    ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
-    return(ds)
-
+    return(datasets)
 
 class ClimsimImageDataset(Dataset):
-    def __init__(self, X, Y, mconfig, device, channel_first = True, normalize=True):
-        self.device = device
-        self.mli, self.mlo = X.mli, Y.mlo
-        X, Y = add_space(X.unstack('state'), Y.unstack('state'))
-        permute_indices = image_regridding(Y)
-        X = X[:, :, permute_indices]
-        Y = Y[:, :, permute_indices]
-        if(normalize):
-            self.X_rec = X
-            self.Y_rec = Y
-            X, Y = self.normalize(X, Y)
-        
-        self.X = torch.tensor(X.values, device=device, dtype=torch.float32)
-        self.Y = torch.tensor(Y.values, device=device, dtype=torch.float32)
-        self.height, self.width = mconfig.unet.sample_size
-        if(channel_first):
-            self.X = torch.permute(self.X, (1,0,2)).reshape(-1, self.mli.shape[0], self.height, self.width) # Channels Height Width
-            self.Y = torch.permute(self.Y, (1,0,2)).reshape(-1, mconfig.unet.in_channels, self.height, self.width) # Channels Height Width
+    def __init__(self, dsi, dso, dconfig, log=False):
+        self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='nc')
+        self.normalize = dconfig.prenormalize
+        self.log = log
+        self.permute_indices = image_regridding(dsi)
+        if(self.normalize):
+            self.X = (dsi - self.X_mean) / self.X_std
+            self.Y = (dso - self.Y_mean) / self.Y_std
         else:
-            self.X = torch.permute(self.X, (1,2,0)).reshape(-1, self.height, self.width, self.mli.shape[0]) # Channels Height Width
-            self.Y = torch.permute(self.Y, (1,2,0)).reshape(-1, self.height, self.width, mconfig.unet.in_channels) # Channels Height Width
+            self.X, self.Y = dsi, dso
+        self.xgen = xbatcher.BatchGenerator(self.X, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
+        self.ygen = xbatcher.BatchGenerator(self.Y, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
+        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+            self.mli = dsi.to_stacked_array(new_dim='mli', sample_dims=("time", "ncol")).mli
+            self.mlo = dso.to_stacked_array(new_dim='mlo', sample_dims=("time", "ncol")).mlo
     
-        #assert self.X.shape[0] == self.Y.shape[0], "Number of samples does not match"
-        if(diffusers_available):
-            self.scheduler = load_scheduler(mconfig)
-            self.num_timesteps = self.scheduler.config.num_train_timesteps
-        else:
-            print("diffusers not available, scheduler not imported")
-        #self.sample_shape = image_dataset[0].shape
-        #self.static_noise = torch.randn(self.sample_shape, device=self.device)
-        
-
-    def normalize(self, X, Y, load_norm=True):
-        print("Normalizing data")
-        if(load_norm):
-            self.X_mean = xr.DataArray(np.load(get_path("X_mean.npy")), coords={'mli' : self.mli})
-            self.X_std = xr.DataArray(np.load(get_path("X_std.npy")), coords={'mli' : self.mli})
-            self.Y_mean = xr.DataArray(np.load(get_path("Y_mean.npy")), coords={'mlo' : self.mlo})
-            self.Y_std = xr.DataArray(np.load(get_path("Y_std.npy")), coords={'mlo' : self.mlo})
-        else:
-            self.X_mean, self.X_std = X.mean(dim=['sample', 'ncol']), X.std(dim=['sample', 'ncol'])
-            self.Y_mean, self.Y_std = Y.mean(dim=['sample', 'ncol']), Y.std(dim=['sample', 'ncol'])
-    
-        X_norm = (X - self.X_mean) / self.X_std
-        Y_norm = (Y - self.Y_mean) / self.Y_std
-        return(X_norm, Y_norm)
-
-    def reconstruct_X(self, X_norm):
-        X_rec = (X_norm * self.X_std) + self.X_mean
-        return(X_rec)
-    def reconstruct_Y(self, Y_norm):
-        mean, std = torch.tensor(self.Y_mean.values).view(128, 1, 1), torch.tensor(self.Y_std.values).view(128, 1, 1)
-        Y_rec = (Y_norm * std) + mean
-        return(Y_rec)
+    def __getitem__(self, idx):
+        if(self.log):
+            t0 = log_event("get-batch start", batch_idx=idx)
+        x, y = self.xgen[idx].load(), self.ygen[idx].load()
+        if(not self.normalize): # wasn't normalized from beginning, must do now
+            x, y = (x - self.X_mean) / self.X_std, (y - self.Y_mean) / self.Y_std
+        x, y = x.isel(ncol=self.permute_indices), y.isel(ncol=self.permute_indices)
+        x, y = x.to_stacked_array(new_dim="mli", sample_dims=("time", "ncol")), y.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
+        x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
+        if(self.log):
+            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
+        return x, y
     
     def __len__(self):
-        return(self.Y.shape[0])
-
-    def __getitem__(self, idx):
-        return(self.Y[idx])
-
-    def noise_batch(self, clean_images):
-        """
-        Given a batch from a dataloader on the dataset, return a noised sample
-        """
-        # TODO : do performance comparison between this and collate_fn __getitem__
-        noise = torch.randn(clean_images.shape, device=self.device)
-        timesteps = torch.randint(0, self.num_timesteps, size=(clean_images.shape[0],), device=self.device, dtype=torch.int64)
-        noisy_images = self.scheduler.add_noise(clean_images, noise, timesteps)
-        return(noisy_images, timesteps, noise)
+        return(len(self.xgen))
 
 class XBatchDataset(torch.utils.data.Dataset):
-    def __init__(self, dso, dconfig, log=True):
-        self.Xmean, self.Xstd, self.Ymean, self.Ystd = get_norm_info(dconfig.norm_info)
+    def __init__(self, dso, dconfig, log=False):
+        self.Xmean, self.Xstd, self.Ymean, self.Ystd = get_norm_info("image")
         # snowfall has some zeros, so just take global mean to avoid dividing by zero
-        self.Ystd['cam_out_PRECSC'].data = self.Ystd.cam_out_PRECSC.mean().item() * np.ones_like(self.Ystd.cam_out_PRECSC.data) 
         self.height, self.width = (16, 24)
         self.normalize = dconfig.prenormalize
         self.log = log
@@ -303,13 +214,26 @@ class XBatchDataset(torch.utils.data.Dataset):
         else:
             self.data = dso
 
-        self.bgen = xbatcher.BatchGenerator(self.data,
-                input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384),
+        self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384),
                 preload_batch=False,
         )
         with dask.config.set(**{'array.slicing.split_large_chunks': True}):
             self.mlo = dso.to_stacked_array(new_dim='mlo', sample_dims=("time", "ncol")).mlo
-
+    
+    def __getitem__(self, idx):
+        if(self.log):
+            t0 = log_event("get-batch start", batch_idx=idx)
+        data = self.bgen[idx].load()
+        if(not self.normalize): # wasn't normalized from beginning, must do now
+            data = (data - self.Ymean.mean(dim='ncol')) / self.Ystd.mean(dim='ncol')
+        data = data.isel(ncol=self.permute_indices)
+        data = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
+        data = data.transpose("time", "mlo", "ncol")
+        data = torch.tensor(data.data.reshape(-1, 128, self.height, self.width), dtype=torch.float32)
+        if(self.log):
+            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
+        return data
+        
     def __len__(self):
         return(len(self.bgen))
 
@@ -321,20 +245,6 @@ class XBatchDataset(torch.utils.data.Dataset):
         mean, std = torch.tensor(self.Y_mean.values).view(128, 1, 1), torch.tensor(self.Y_std.values).view(128, 1, 1)
         Y_rec = (Y_norm * std) + mean
         return(Y_rec)
-    
-    def __getitem__(self, idx):
-        if(self.log):
-            t0 = log_event("get-batch start", batch_idx=idx)
-        data = self.bgen[idx].load()
-        if(not self.normalize): # wasn't normalized from beginning, must do now
-            data = (data - self.Ymean.mean(dim='ncol')) / self.Ystd.mean(dim='ncol')
-        data = data.isel(ncol=self.permute_indices)
-        stacked = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
-        stacked = stacked.transpose("time", "mlo", "ncol")
-        item = torch.tensor(stacked.data.reshape(-1, 128, self.height, self.width), dtype=torch.float32)
-        if(self.log):
-            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
-        return item
 
 def load_vars(s, tendencies=True):
     v1_inputs = ['state_t', 'state_q0001', 'state_ps', 'pbuf_SOLIN','pbuf_LHFLX', 'pbuf_SHFLX']
@@ -373,6 +283,49 @@ def load_raw_dataset(ds_type='', chunks=False, chunksizes={}):
         ds_output = xr.open_dataset(mapper, engine='zarr')
     return(ds_input, ds_output)
 
+def load_numpy_arrays(bucket='persist', fprefix='climsim'):
+    if('scratch' in bucket):
+        bucket = "leap-scratch"
+    elif('persist'):
+        bucket = "leap-persistent"
+    xpath = f"gs://{bucket}/sammyagrawal/input_{fprefix}.npy"
+    ypath = f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy" 
+
+    with fs.open(xpath, 'rb') as f:
+        X = np.load(f)
+    print(f"Finished Loading X from {xpath}")
+    with fs.open(ypath, 'rb') as f:
+        Y = np.load(f)
+    print(f"Finished Loading Y from {ypath}")
+
+    return(X, Y)
+    
+def save_arrays(X, Y, bucket='scratch', fprefix='climsim'):
+    if(bucket== 'scratch'):
+        bucket = "leap-scratch"
+    elif(bucket == 'persist'):
+        bucket = "leap-persistent"
+    with fsspec.open(f"gs://{bucket}/sammyagrawal/input_{fprefix}.npy", 'wb') as f:
+        np.save(f, X)
+    with fsspec.open(f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy", 'wb') as f:
+        np.save(f, Y)
+
+def reconstruct_xarr_from_npy(X: np.ndarray, Y: np.ndarray, subsampling=(36,210240, 144), data_vars='v1'):
+    ds_in, ds_out = load_raw_dataset(chunks=True)
+    input_vars, output_vars = load_vars(data_vars, tendencies=False)
+    start, stop, stride = subsampling
+    ds_in = ds_in.isel(sample=slice(start, stop, stride))[input_vars]
+    ds_out = ds_out.isel(sample=slice(start, stop, stride))[output_vars]
+
+    mli = ds_in.to_stacked_array('mli', sample_dims=['sample', 'ncol']).mli
+    mlo = ds_out.to_stacked_array('mlo', sample_dims=['sample', 'ncol']).mlo
+    state = ds_in.stack({'state' : ['sample', 'ncol']}).state
+    
+    Xarr = xr.DataArray(X, dims=['state', 'mli'], coords={'state' : state, 'mli':mli})
+    Yarr = xr.DataArray(Y, dims=['state', 'mlo'], coords={'state' : state, 'mlo':mlo})
+
+    #Xarr, Yarr = add_space(Xarr.unstack('sample'), Yarr.unstack('sample'))
+    return(Xarr, Yarr)
 
 
 
@@ -398,4 +351,33 @@ def add_tendencies(ds_out, output_vars):
 
     return(ds_out[output_vars])
 
+def image_regridding(ds):
+    lat, lon = np.round(ds.lat.data), np.round(ds.lon.data)
+    array = np.column_stack([lon, lat])
+    # first sort by longitude, then by latitude (top is area of high longitude)
+    sorted_indices = np.lexsort((array[:, 0], -1*array[:, 1]))
+    arr = array[sorted_indices]
+    indices = np.array([], dtype=int)
+    for i in range(16):
+        start = i*24
+        indices = np.concatenate([indices, start + np.argsort(arr[start:start+24, 0])])
 
+    return(sorted_indices[indices])
+
+
+def add_space(ds, ds_grid=False, lat=False, lon=False):
+    if not ds_grid:
+        mapper = fs.get_mapper("gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.grid-info.zarr")
+        ds_grid = xr.open_dataset(mapper, engine='zarr')
+    if not lat or not lon:
+        lat = ds_grid.lat.values.round(2) 
+        lon = ds_grid.lon.values.round(2)  
+        lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
+    ds = ds.assign_coords({'ncol' : ds.ncol})
+    ds['lat'] = (('ncol'),lat.T)
+    ds['lon'] = (('ncol'),lon.T)
+    ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
+    return(ds)
+
+def collate_test_fn(batches):
+    return(batches[0])
