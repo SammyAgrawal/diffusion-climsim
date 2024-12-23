@@ -116,9 +116,6 @@ def add_time(ds, time=""):
     }
     return(ds)
 
-
-
-
 def process_ds(ds, ds_type=''):
     # ds_type is which Climsim dataset, default aquaplanet
     try:
@@ -221,8 +218,10 @@ class data_utils:
         self.ds_type = ds_type
         if("expand" in ds_type):
             self.mlivar = "mlexpand"
+            self.copy_to_local = False
         else:
             self.mlivar = "mli"
+            self.copy_to_local = True
         self.data_path = None
         self.input_vars = []
         self.target_vars = []
@@ -384,7 +383,71 @@ class data_utils:
                                    'cam_out_SOLSD':1.,
                                    'cam_out_SOLLD':1.
                                   }
-
+        
+        self.variable_metadata = {
+            # TODO: Add additional CF metadata, e.g. `standard_name`, to this dict.
+            "pbuf_SOLIN": dict(long_name="Solar insolation", units="W/m2"),
+            "pbuf_COSZRS": dict(long_name="Cosine of solar zenith angle", units=""),
+            "pbuf_LHFLX": dict(long_name="Surface latent heat flux", units="W/m2"),
+            "pbuf_SHFLX": dict(long_name="Surface sensible heat flux", units="W/m2"),
+            "pbuf_TAUX": dict(long_name="Zonal surface stress", units="N/m2"),
+            "pbuf_TAUY": dict(long_name="Meridional surface stress", units="N/m2"),
+            "pbuf_ozone": dict(long_name="Ozone volume mixing ratio", units="mol/mol"),
+            "pbuf_N2O": dict(long_name="N2O volume mixing ratio", units="mol/mol"),
+            "pbuf_CH4": dict(long_name="CH4 volume mixing ratio", units="mol/mol"),
+            "state_ps": dict(long_name="Surface pressure", units="Pa"),
+            "state_q0001": dict(long_name="Specific humidity", units="kg/kg"),
+            "state_q0002": dict(long_name="Cloud liquid mixing ratio", units="kg/kg"),
+            "state_q0003": dict(long_name="Cloud ice mixing ratio", units="kg/kg"),
+            "state_t": dict(long_name="Air temperature", units="K"),
+            "state_u": dict(long_name="Zonal wind speed", units="m/s"),
+            "state_v": dict(long_name="Meridional wind speed", units="m/s"),
+            "state_pmid": dict(long_name="Mid-level pressure", units="Pa"),
+            "cam_in_ASDIR": dict(
+                long_name="Albedo for direct shortwave radiation", units=""
+            ),
+            "cam_in_ASDIF": dict(
+                long_name="Albedo for diffuse shortwave radiation", units=""
+            ),
+            "cam_in_ALDIR": dict(
+                long_name="Albedo for direct longwave radiation", units=""
+            ),
+            "cam_in_ALDIF": dict(
+                long_name="Albedo for diffuse longwave radiation", units=""
+            ),
+            "cam_in_LWUP": dict(long_name="Upward longwave flux", units="W/m2"),
+            "cam_in_SNOWHLAND": dict(
+                long_name="Snow depth over land (liquid water equivalent)", units="m"
+            ),
+            "cam_in_SNOWHICE": dict(long_name="Snow depth over ice", units="m"),
+            "cam_in_LANDFRAC": dict(long_name="Land areal fraction", units=""),
+            "cam_in_ICEFRAC": dict(long_name="Sea-ice areal fraction", units=""),
+            "cam_out_NETSW": dict(
+                long_name="Net shortwave flux at surface", units="W/m2"
+            ),
+            "cam_out_FLWDS": dict(
+                long_name="Downward longwave flux at surface", units="W/m2"
+            ),
+            "cam_out_PRECSC": dict(
+                long_name="Snow rate (liquid water equivalent)", units="m/s"
+            ),
+            "cam_out_PRECC": dict(long_name="Rain rate", units="m/s"),
+            "cam_out_SOLS": dict(
+                long_name="Downward visible direct solar flux to surface", units="W/m2"
+            ),
+            "cam_out_SOLL": dict(
+                long_name="Downward near-infrared direct solar flux to surface",
+                units="W/m2",
+            ),
+            "cam_out_SOLSD": dict(
+                long_name="Downward visible diffuse solar flux to surface", units="W/m2"
+            ),
+            "cam_out_SOLLD": dict(
+                long_name="Downward near-infrared diffuse solar flux to surface",
+                units="W/m2",
+            ),
+        }
+        
         self.setup_metrics()
         if(grid_info):
             self.setup_grid_info(grid_info)
@@ -562,13 +625,17 @@ class data_utils:
         '''
         #file = os.path.join(self.data_path, file)
         if(self.source_type == 'hf'):
-            with fsspec.open(file, mode='rb').open() as file: 
-                with open("file.nc", 'wb') as f:
-                    f.write(file.read())
+            path = os.path.join(self.data_path, file)
+            with fsspec.open(path, mode='rb') as file: 
+                if(self.copy_to_local):
+                    with open("file.nc", 'wb') as f:
+                        f.write(file.read())
+                    ds = xr.open_dataset("file.nc", use_cftime=True)
+                    fs_local.rm("file.nc")
+                else:
+                    ds = xr.open_dataset(file, use_cftime=True).load()
             # does not work
             #xr.open_dataset(file, engine="h5netcdf", chunks={}, use_cftime=True)   
-            ds = xr.open_dataset("file.nc", use_cftime=True)
-            fs_local.rm("file.nc")
         elif(self.source_type == 'gcsfs'):
             mapper = fs.get_mapper(file)
             ds = xr.open_dataset(mapper, engine='zarr', chunks={})
@@ -577,10 +644,51 @@ class data_utils:
     
         if file_vars is not None:
             ds = ds[file_vars]
+        ds = self.process_ds(ds)
         ds = ds.merge(self.grid_info[['lat','lon']])
         ds = ds.where((ds['lat']>-999)*(ds['lat']<999), drop=True)
         ds = ds.where((ds['lon']>-999)*(ds['lon']<999), drop=True)
         return ds
+
+    def add_time(self, ds, time=""):
+        if(not time or (type(time) != cftime._cftime.DatetimeNoLeap)):
+            ymd = str(ds.ymd.values)  # e.g., '10201'
+            year, month, day = int(ymd[:-4]), int(ymd[-4:-2]), int(ymd[-2:])  # e.g., '10201' -> '1', '02', '01'
+            tod_as_minutes = (int(ds.tod.values) // 60)  # e.g., 37200 (sec) // 60 (sec/min) -> 620 min
+            hour = tod_as_minutes // 60  # e.g., 620 min // 60 (min/hr) -> 10 hrs
+            minute = tod_as_minutes % 60  # e.g., 620 min % 60 (min/hr) -> 20 min
+            time = cftime.DatetimeNoLeap(year=year, month=month, day=day, hour=hour, minute=minute)
+        ds = ds.drop_vars(['ymd', 'tod'])
+        ds = ds.expand_dims(time=np.array([time]))
+        assert 'time' in ds.dims
+        ds["time"] = xr.CFTimeIndex(ds["time"].values)
+        ds.time.encoding = {
+            # for 'units' naming convention, xref:
+            # https://cfconventions.org/Data/cf-conventions/cf-conventions-1.10/cf-conventions.html#time-coordinate
+            "units": "minutes since 0001-02-01 00:00:00",
+            "calendar": "noleap",
+        }
+        return(ds)
+
+    def process_ds(self, ds):
+        # ds_type is which Climsim dataset, default aquaplanet
+        try:
+            assert 'time' in ds.dims
+        except AssertionError as e:
+            ds = add_time(ds)
+        for vname in self.variable_metadata:
+            if vname in ds:
+                ds[vname].attrs = self.variable_metadata[vname]
+        
+        lat = self.grid_info.lat.values.round(2) 
+        lon = self.grid_info.lon.values.round(2)
+        lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
+        
+        ds['lat'] = (('ncol'),lat.T)
+        ds['lon'] = (('ncol'),lon.T)
+        
+        ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon, 'time' : ds.time})
+        return(ds)    
 
     def get_input(self, input_file):
         '''
@@ -699,7 +807,6 @@ class data_utils:
         elif data_split == 'test':
             assert self.test_filelist is not None, 'filelist for test is not set.'
             return self.test_filelist
-
     
     def load_ncdata_with_generator(self, data_split):
         '''
