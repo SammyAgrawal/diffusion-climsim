@@ -655,7 +655,7 @@ class data_utils:
                 f"{time.year:04}-{time.month:02}/E3SM-MMF.{self.mlivar}."
                 f"{time.year:04}-{time.month:02}-{time.day:02}-{seconds:05}.nc"
             )
-            filepaths.append(os.path.join(self.data_path, fname))
+            filepaths.append(fname)
         
         assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
         if data_split == 'train':
@@ -666,6 +666,21 @@ class data_utils:
             self.scoring_filelist = filepaths
         elif data_split == 'test':
             self.test_filelist = filepaths
+
+    def set_filelist_using_hfhub(self, data_split, year, month, stride_sample=1):
+        from huggingface_hub import HfFileSystem
+        fs = HfFileSystem()
+        filepaths = fs.glob(f"datasets/LEAP/ClimSim_low-res-expanded/train/000{year}-{month:02d}/*.nc")
+        filepaths = [f.split("train/")[1] for f in filepaths if self.mlivar in f]
+        assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
+        if data_split == 'train':
+            self.train_filelist = filepaths[::stride_sample]
+        elif data_split == 'val':
+            self.val_filelist = filepaths[::stride_sample]
+        elif data_split == 'scoring':
+            self.scoring_filelist = filepaths[::stride_sample]
+        elif data_split == 'test':
+            self.test_filelist = filepaths[::stride_sample]
 
     def get_filelist(self, data_split):
         '''
