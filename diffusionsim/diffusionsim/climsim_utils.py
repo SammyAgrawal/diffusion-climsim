@@ -641,10 +641,8 @@ class data_utils:
             ds = xr.open_dataset(mapper, engine='zarr', chunks={})
         else:
             ds = xr.open_dataset(file, engine = 'netcdf4')
-    
-        if file_vars is not None:
-            ds = ds[file_vars]
-        ds = self.process_ds(ds)
+
+        ds = self.process_ds(ds, file_vars)
         ds = ds.merge(self.grid_info[['lat','lon']])
         ds = ds.where((ds['lat']>-999)*(ds['lat']<999), drop=True)
         ds = ds.where((ds['lon']>-999)*(ds['lon']<999), drop=True)
@@ -658,7 +656,6 @@ class data_utils:
             hour = tod_as_minutes // 60  # e.g., 620 min // 60 (min/hr) -> 10 hrs
             minute = tod_as_minutes % 60  # e.g., 620 min % 60 (min/hr) -> 20 min
             time = cftime.DatetimeNoLeap(year=year, month=month, day=day, hour=hour, minute=minute)
-        ds = ds.drop_vars(['ymd', 'tod'])
         ds = ds.expand_dims(time=np.array([time]))
         assert 'time' in ds.dims
         ds["time"] = xr.CFTimeIndex(ds["time"].values)
@@ -670,12 +667,14 @@ class data_utils:
         }
         return(ds)
 
-    def process_ds(self, ds):
+    def process_ds(self, ds, data_vars = None):
         # ds_type is which Climsim dataset, default aquaplanet
         try:
             assert 'time' in ds.dims
         except AssertionError as e:
             ds = add_time(ds)
+        if data_vars is not None:
+            ds = ds[data_vars]
         for vname in self.variable_metadata:
             if vname in ds:
                 ds[vname].attrs = self.variable_metadata[vname]
