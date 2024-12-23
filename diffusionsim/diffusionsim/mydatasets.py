@@ -40,17 +40,20 @@ def load_dataset(dconfig, log=False):
         dsi, dso = load_raw_dataset(dconfig.climsim_type, chunks=True, chunksizes=dconfig.chunksize)
     dsi = add_space(dsi[input_vars].rename({'sample':'time'}))
     dso = add_space(dso[output_vars].rename({'sample':'time'}))
-    (dsi_train, dso_train), (dsi_test, dso_test) = train_test_split(dsi, dso, dconfig.train_test_split)
-    match dconfig.dataset_type.lower():
-        case ds if "xbatch" in ds:
-            return(XBatchDataset(dso_train, dconfig, log=dconfig.log_batching), XBatchDataset(dso_test, dconfig, log=dconfig.log_batching))
-        case ds if "image" in ds:
-            return(ClimsimImageDataset(dsi_train, dso_train, dconfig, log), ClimsimImageDataset(dsi_test, dso_test, dconfig, log))
-        case _:
-            return(dsi, dso)
+    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split)
+    datasets = []
+    for (dsi, dso) in dsets:
+        match dconfig.dataset_type.lower():
+            case ds if "xbatch" in ds:
+                datasets.append(XBatchDataset(dso, dconfig, log=log))
+            case ds if "image" in ds:
+                datasets.append(ClimsimImageDataset(dsi, dso, dconfig, log))
+            case _:
+                return(dsets, indices)
+    return(datasets, indices)
 
 def load_dataloader(dconfig, log=False):
-    dataset = load_dataset(dconfig, log)
+    dataset, indices = load_dataset(dconfig, log)
     params = asdict(dconfig.dataloader_params)
     match dconfig.dataset_type.lower():
         case ds if "xbatch" in ds or "image" in ds:
@@ -60,6 +63,28 @@ def load_dataloader(dconfig, log=False):
         case _:
             return(DataLoader(dataset, **params))
 
+def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr'):
+    datasets, indices = [], []
+    if(typ == 'np'):
+        num_timesteps = dsi.sizes['state']
+    else:
+        num_timesteps = dsi.sizes['time']
+    times = np.arange(num_timesteps)
+    np.random.shuffle(times)
+    counter = 0
+    for frac in split_frac:
+        # Calculate the split index
+        split = int(num_timesteps * frac)
+        if(split > 0):
+            phase_indices = np.sort(times[counter:counter+split])
+            indices.append(phase_indices)
+            if(typ == 'np'):
+                datasets.append((dsi.isel(state=phase_indices), dso.isel(state=phase_indices)))
+            else:
+                datasets.append((dsi.isel(time=phase_indices), dso.isel(time=phase_indices)))
+            counter += split
+
+    return(datasets, indices)
 
 def get_norm_info(style='image'):
     if(style=='image'):    
@@ -147,27 +172,6 @@ class ClimsimDataset(Dataset):
     def __getitem__(self, idx):
         return(self.X[idx], self.Y[idx])
 
-def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr'):
-    datasets = []
-    if(typ == 'np'):
-        num_timesteps = dsi.sizes['state']
-    else:
-        num_timesteps = dsi.sizes['time']
-    times = np.arange(num_timesteps)
-    np.random.shuffle(times)
-    counter = 0
-    for frac in split_frac:
-        # Calculate the split index
-        split = int(num_timesteps * frac)
-        phase_indices = np.sort(times[counter:counter+split])
-        if(typ == 'np'):
-            datasets.append((dsi.isel(state=phase_indices), dso.isel(state=phase_indices)))
-        else:
-            datasets.append((dsi.isel(time=phase_indices), dso.isel(time=phase_indices)))
-        counter += split
-
-    return(datasets)
-
 class ClimsimImageDataset(Dataset):
     def __init__(self, dsi, dso, dconfig, log=False):
         self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='nc')
@@ -213,7 +217,6 @@ class XBatchDataset(torch.utils.data.Dataset):
             self.data = (dso - self.Ymean) / self.Ystd
         else:
             self.data = dso
-
         self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384),
                 preload_batch=False,
         )

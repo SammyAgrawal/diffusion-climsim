@@ -103,26 +103,29 @@ def add_time(ds, time=""):
         )  # e.g., 37200 (sec) // 60 (sec/min) -> 620 min
         hour = tod_as_minutes // 60  # e.g., 620 min // 60 (min/hr) -> 10 hrs
         minute = tod_as_minutes % 60  # e.g., 620 min % 60 (min/hr) -> 20 min
-        time = cftime.datetime(year=year, month=month, day=day, hour=hour, 
-    minute=minute, calendar="noleap")
+        time = cftime.DatetimeNoLeap(year=year, month=month, day=day, hour=hour, minute=minute)
     ds = ds.drop_vars(['ymd', 'tod'])
     ds = ds.expand_dims(time=np.array([time]))
     assert 'time' in ds.dims
-    return(ds)
-
-def process_ds(ds, ds_type=''):
-    # ds_type is which Climsim dataset, default aquaplanet
-    try:
-        assert 'time' in ds.dims
-    except AssertionError as e:
-        add_time(ds)
-    metadata = json.load(open("Climsim_info/climsim_variable_metadata.json", 'r'))
+    ds["time"] = xr.CFTimeIndex(ds["time"].values)
     ds.time.encoding = {
         # for 'units' naming convention, xref:
         # https://cfconventions.org/Data/cf-conventions/cf-conventions-1.10/cf-conventions.html#time-coordinate
         "units": "minutes since 0001-02-01 00:00:00",
         "calendar": "noleap",
     }
+    return(ds)
+
+
+
+
+def process_ds(ds, ds_type=''):
+    # ds_type is which Climsim dataset, default aquaplanet
+    try:
+        assert 'time' in ds.dims
+    except AssertionError as e:
+        ds = add_time(ds)
+    metadata = json.load(open("Climsim_info/climsim_variable_metadata.json", 'r'))
     for vname in metadata:
         if vname in ds:
             ds[vname].attrs = metadata[vname]
@@ -135,7 +138,7 @@ def process_ds(ds, ds_type=''):
     ds['lat'] = (('ncol'),lat.T)
     ds['lon'] = (('ncol'),lon.T)
     
-    ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
+    ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon, 'time' : ds.time})
     return(ds)
 
 def load_vars(s):
