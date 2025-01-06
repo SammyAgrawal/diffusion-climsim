@@ -50,8 +50,8 @@ class TrainLoaderParams:
 @dataclass
 class DataConfig:
     dataset_type: str = "XBatchDataset"
-    climsim_type: str = "low-res"
-    source = "gcsfs"
+    climsim_type: str = "expanded-low-res"
+    source: str = "gcsfs"
     train_test_split: List[int] = field(default_factory=lambda: [1.0, 0.0])
     dataloader_params: TrainLoaderParams = field(default_factory=lambda: TrainLoaderParams())
     xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)

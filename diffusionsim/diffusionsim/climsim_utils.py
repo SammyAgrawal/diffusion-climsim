@@ -10,14 +10,89 @@ import re
 import h5py
 from tqdm import tqdm
 from typing import Literal
-
 import gcsfs
 import datetime as dt
 import cftime
 import json
 import fsspec
+import time
 
-from .mydatasets import get_norm_info
+_ROOT = os.path.abspath(os.path.dirname(__file__))
+def get_path(file):
+    return os.path.join(_ROOT, 'climsim_data', file)
+
+def load_raw_dataset(dconfig):
+    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, use_tendencies=dconfig.use_tendencies)
+    #ds_type = expand_ds_name(dconfig.climsim_type)
+    if(dconfig.source == "gcsfs"):
+        fs = gcsfs.GCSFileSystem()
+        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr')
+        dsi = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
+        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
+        dso = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
+        dsi = dsi[dutils.input_vars].rename({'sample':'time'})
+        dso = dso[dutils.target_vars].rename({'sample': 'time'})
+    
+    elif(dconfig.source == "huggingface"):
+        year = int(input("Input year: "))
+        month = int(input("Input month: "))
+        stride = int(input("Enter stride: "))
+        dutils.set_filelist_using_hfhub('train', year, month, stride_sample=stride)
+        dsi, dso = dutils.aggregate_file("train")
+    dsi = add_space(dsi, ds_grid=dutils.grid_info)
+    dso = add_space(dso, ds_grid=dutils.grid_info)
+    return(dsi, dso)
+
+def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
+    # data source is either a google cloud bucket, local file path, or tries to load directly from Huggingface
+    ds_type = expand_ds_name(ds_type)
+    if('grid_info' in kwargs):
+        grid_info = kwargs['grid_info']
+    else:
+        n = expand_ds_name("highres") if "high" in ds_type else expand_ds_name("lowres") 
+        grid_url = f"https://huggingface.co/datasets/LEAP/{n}/resolve/main/{n}_grid-info.nc"
+        grid_info = read_url(grid_url, copy_to_local=True)
+    data = data_utils(data_source, ds_type, grid_info.compute(), use_tendencies)
+    if(data_source == 'huggingface'):
+        data.data_path = f"https://huggingface.co/datasets/LEAP/{ds_type}/resolve/main/train/"
+    elif(data_source == 'local' or data_source == "gcsfs"):
+        #assert 'base_dir' in kwargs, "Need to provide base path via base_dir arg"
+        if('base_dir' in kwargs):
+            data.data_path = kwargs[base_dir]
+    else:
+        print("Invalid data source, must be huggingface, local, or gcsfs")
+    if(data_vars == 'v1'):
+        data.set_to_v1_vars()
+    elif(data_vars == 'v2'):
+        data.set_to_v2_vars()
+
+    input_mean, input_max, input_min, output_scale = get_norm_info("scale")
+    data.set_norm_info(input_mean, input_max, input_min, output_scale)
+    return(data)
+
+def get_norm_info(style='image'):
+    if(style=='image'):    
+        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
+        X_std = xr.open_dataset(get_path("image_xstd.nc"))
+        Y_mean = xr.open_dataset(get_path("output_mean.nc"))
+        Y_std = xr.open_dataset(get_path("output_std.nc"))
+        Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
+        return(X_mean, X_std, Y_mean, Y_std)
+    elif(style=='nc'):
+        input_mean = xr.open_dataset(get_path('input_mean.nc'))
+        input_std = xr.open_dataset(get_path('input_std.nc'))
+        output_mean = xr.open_dataset(get_path('output_mean.nc'))
+        output_std = xr.open_dataset(get_path('output_std.nc'))
+        output_std['cam_out_PRECSC'] = output_std.cam_out_PRECSC.mean()
+        return(input_mean, input_std, output_mean, output_std)
+    elif(style=='scale'):
+        input_mean = xr.open_dataset(get_path('input_mean.nc'))
+        input_max = xr.open_dataset(get_path('input_max.nc'))
+        input_min = xr.open_dataset(get_path('input_max.nc'))
+        output_scale = xr.open_dataset(get_path('output_scale.nc'))
+        return(input_mean, input_max, input_min, output_scale)
+
+#print(os.path.dirname(__file__))
 
 def tocft(year=1, month=1, day=1):
     return(cftime.DatetimeNoLeap(year, month, day, has_year_zero=True))
@@ -28,194 +103,51 @@ def expand_ds_name(ds_type=''):
             return("ClimSim_low-res_aqua-planet")
         case t if "expand" in t:
             return("ClimSim_low-res-expanded")
-        case t if ("lowres" in t or "low-res" in t or "low_res" in t): 
+        case t if ("low" in t): 
             return("ClimSim_low-res")
-        case t if ("highres" in t or "high-res" in t or "high_res" in t): 
+        case t if ("high" in t): 
             return("ClimSim_high-res")
         case _:
             print("Unrecognized type")
-            
 
-def read_url_xarray(url):
-    fs_local = fsspec.filesystem('local')
-    with fsspec.open(url, mode='rb').open() as file: 
-        with open("file.nc", 'wb') as f:
-            f.write(file.read())
-    # does not work
-    #xr.open_dataset(file, engine="h5netcdf", chunks={}, use_cftime=True)   
-    ds = xr.open_dataset("file.nc", use_cftime=True, chunks={})
-    fs_local.rm("file.nc")
+def read_url(url, copy_to_local=False):
+    fs_local = fsspec.filesystem('file')
+    fname = "file.nc"
+    with fsspec.open(url, mode='rb') as file:
+        if(copy_to_local):            
+            with open(fname, 'wb') as f:
+                f.write(file.read())
+            ds = xr.open_dataset(fname, use_cftime=True).load()
+            fs_local.rm(fname)
+        else:
+            ds = xr.open_dataset(file, use_cftime=True).load()   
+    
     return(ds)
 
-def generate_times(start, stop, interval):
-    """
-    takes in cftime of start and stop date as well as time interval as datatime timedelta. 
-    If interval is a numeric, assumes specifying in minutes
-    """
-    if(isinstance(interval,int)):
-        interval = dt.timedelta(minutes=interval)
-    
-    assert interval.total_seconds()%1200==0, "Interval not multiple of 20 minutes"
-    # `range(210_240)` means the last value yielded is
-    # `cftime.DatetimeNoLeap(9, 1, 31, 23, 40, 0, 0, has_year_zero=True)`
-    num_deltas = (stop - start).total_seconds() // interval.total_seconds()
-    for i in range(int(num_deltas)):
-        yield start + (interval * i)
-
-def make_url(time: cftime.DatetimeNoLeap, ds_type: str, dataset: str=''):
-    """Given a datetime and variable name, return a url pointing to the corresponding NetCDF file.
-
-    For example, the inputs ``(cftime.DatetimeNoLeap(1, 2, 1, 0, 20, 0, 0, has_year_zero=True), "mli")`` will return:
-    https://huggingface.co/datasets/LEAP/ClimSim_low-res/resolve/main/train/0001-02/E3SM-MMF.mli.0001-02-01-01200.nc
-    """
-    dataset = expand_ds_name(dataset)
-    seconds = (time.hour * 3600) + (time.minute * 60)
-    return (
-        f"https://huggingface.co/datasets/LEAP/{dataset}/resolve/main/train/"
-        f"{time.year:04}-{time.month:02}/E3SM-MMF.{ds_type}."
-        f"{time.year:04}-{time.month:02}-{time.day:02}-{seconds:05}.nc"
-    )
-
-#https://huggingface.co/datasets/LEAP/ClimSim_low-res-expanded/resolve/main/train/0001-02/E3SM-MMF.mlexpand.0001-02-01-06000.nc
-
-def generate_urls(start, stop, interval, dataset='expanded', input_types=['mli', 'mlo']):
-    for time in generate_times(start, stop, interval):
-        mli, mlo = input_types
-        input_nc = make_url(time, mli, dataset)
-        output_nc = make_url(time, mlo, dataset)
-        yield(time, input_nc, output_nc)
-
-def load_grid_info(ds_type=''):
-    if('expand' in ds_type):
-        ds_type = "lowres"
-    n = expand_ds_name(ds_type)
-    grid_url = f"https://huggingface.co/datasets/LEAP/{n}/resolve/main/{n}_grid-info.nc"
-    return(read_url_xarray(grid_url))
-
-def add_time(ds, time=""):
-    if(not time or (type(time) != cftime._cftime.DatetimeNoLeap)):
-        ymd = str(ds.ymd.values)  # e.g., '10201'
-        year = int(ymd[:-4])  # e.g., '10201'[:-4] -> '1'
-        month = int(ymd[-4:-2])  # e.g., '10201'[-4:-2] -> '02'
-        day = int(ymd[-2:])  # e.g., '10201'[-2:] -> '01'
-        tod_as_minutes = (
-            int(ds.tod.values) // 60
-        )  # e.g., 37200 (sec) // 60 (sec/min) -> 620 min
-        hour = tod_as_minutes // 60  # e.g., 620 min // 60 (min/hr) -> 10 hrs
-        minute = tod_as_minutes % 60  # e.g., 620 min % 60 (min/hr) -> 20 min
-        time = cftime.DatetimeNoLeap(year=year, month=month, day=day, hour=hour, minute=minute)
-    ds = ds.drop_vars(['ymd', 'tod'])
-    ds = ds.expand_dims(time=np.array([time]))
-    assert 'time' in ds.dims
-    ds["time"] = xr.CFTimeIndex(ds["time"].values)
-    ds.time.encoding = {
-        # for 'units' naming convention, xref:
-        # https://cfconventions.org/Data/cf-conventions/cf-conventions-1.10/cf-conventions.html#time-coordinate
-        "units": "minutes since 0001-02-01 00:00:00",
-        "calendar": "noleap",
-    }
-    return(ds)
-
-def process_ds(ds, ds_type=''):
-    # ds_type is which Climsim dataset, default aquaplanet
-    try:
-        assert 'time' in ds.dims
-    except AssertionError as e:
-        ds = add_time(ds)
-    metadata = json.load(open("Climsim_info/climsim_variable_metadata.json", 'r'))
-    for vname in metadata:
-        if vname in ds:
-            ds[vname].attrs = metadata[vname]
-    
-    ds_grid = load_grid_info(ds_type)
-    lat = ds_grid.lat.values.round(2) 
-    lon = ds_grid.lon.values.round(2)
-    lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
-    
+def add_space(ds, ds_grid=False, lat=False, lon=False, res='low'):
+    if not ds_grid:
+        n = expand_ds_name(res)
+        grid_url = f"https://huggingface.co/datasets/LEAP/{n}/resolve/main/{n}_grid-info.nc"
+        ds_grid = read_url(grid_url, copy_to_local=True)
+    if not lat or not lon:
+        lat = ds_grid.lat.values.round(2) 
+        lon = ds_grid.lon.values.round(2)  
+        lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
+    ds = ds.assign_coords({'ncol' : ds.ncol})
     ds['lat'] = (('ncol'),lat.T)
     ds['lon'] = (('ncol'),lon.T)
-    
-    ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon, 'time' : ds.time})
+    ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
     return(ds)
 
-def load_vars(s):
-    v1_inputs = ['state_t', 'state_q0001', 'state_ps', 'pbuf_SOLIN','pbuf_LHFLX', 'pbuf_SHFLX']
-
-    v1_outputs = ['ptend_t','ptend_q0001','cam_out_NETSW','cam_out_FLWDS','cam_out_PRECSC', 'cam_out_PRECC', 'cam_out_SOLS', 'cam_out_SOLL', 'cam_out_SOLSD','cam_out_SOLLD']
-
-    v2_inputs = ['state_t', 'state_q0001','state_q0002', 'state_q0003', 'state_u', 'state_v',
-             'state_ps','pbuf_SOLIN','pbuf_LHFLX', 'pbuf_SHFLX', 'pbuf_TAUX','pbuf_TAUY', 'pbuf_COSZRS',
-             'cam_in_ALDIF', 'cam_in_ALDIR', 'cam_in_ASDIF', 'cam_in_ASDIR', 'cam_in_LWUP', 'cam_in_ICEFRAC', 
-             'cam_in_LANDFRAC', 'cam_in_OCNFRAC', 'cam_in_SNOWHICE', 'cam_in_SNOWHLAND',
-             'pbuf_ozone', 'pbuf_CH4', 'pbuf_N2O'] # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3 
-
-    v2_outputs = ['ptend_t', 'ptend_q0001', 'ptend_q0002', 'ptend_q0003', 'ptend_u', 'ptend_v', 'cam_out_NETSW',
-              'cam_out_FLWDS', 'cam_out_PRECSC', 'cam_out_PRECC', 'cam_out_SOLS', 'cam_out_SOLL', 'cam_out_SOLSD', 'cam_out_SOLLD']
-
-    if(s=='v1'):
-        return(v1_inputs, v1_outputs)
-    elif(s=='v2'):
-        return(v2_inputs, v2_outputs)
-    print("Input should be v1 or v2")
-
-def load_climsim(start, stop, interval, input_vars=[], output_vars=[], ds_type=''):
-    num_deltas = (stop - start).total_seconds() // interval.total_seconds()
-    print(f"Loading {num_deltas} time files from {expand_ds_name(ds_type)}")
-    input_datasets = []
-    output_datasets = []
-    for time, inp, out in tqdm(generate_urls(start, stop, interval, ds_type), total=int(num_deltas)):
-        inp_ds, out_ds = read_url_xarray(inp), read_url_xarray(out)
-        inp_ds = add_time(inp_ds, time)
-        out_ds = add_time(out_ds, time)
-        if(input_vars):
-            inp_ds = inp_ds[input_vars]
-        if(output_vars):
-            out_ds = out_ds[output_vars]
-        input_datasets.append(inp_ds)
-        output_datasets.append(out_ds)
-
-    in_ds = xr.concat(input_datasets, dim='time')
-    out_ds = xr.concat(output_datasets, dim='time')
-
-    return(process_ds(in_ds, ds_type=ds_type), process_ds(out_ds, ds_type=ds_type))
-  
-
 MLBackendType = Literal["tensorflow", "pytorch"]
-
-def setup_data_utils(ds_type='lowres', data_source='gcsfs', data_vars='v1', **kwargs):
-    # data source is either a google cloud bucket, local file path, or tries to load directly from Huggingface
-    ds_type = expand_ds_name(ds_type)
-    if('grid_info' in kwargs):
-        grid_info = kwargs['grid_info']
-    else:
-        grid_info = load_grid_info(ds_type)
-        
-    data = data_utils(data_source, ds_type, grid_info.compute())
-    if(data_source == 'hf'):
-        data.data_path = f"https://huggingface.co/datasets/LEAP/{ds_type}/resolve/main/train/"
-    elif(data_source == 'local' or data_source == "gcsfs"):
-        #assert 'base_dir' in kwargs, "Need to provide base path via base_dir arg"
-        if('base_dir' in kwargs):
-            data.data_path = kwargs[base_dir]
-    else:
-        print("Invalid data source, must be hf, local, or gcsfs")
-    if(data_vars == 'v1'):
-        data.set_to_v1_vars()
-    elif(data_vars == 'v2'):
-        data.set_to_v2_vars()
-
-    input_mean, input_max, input_min, output_scale = get_norm_info("nc")
-    data.set_norm_info(input_mean, input_max, input_min, output_scale)
-            
-    
-    return(data)
 
 fs = gcsfs.GCSFileSystem()
 class data_utils:
     ## modified from https://github.com/leap-stc/ClimSim/blob/main/climsim_utils/data_utils.py
-    def __init__(self, source_type, ds_type, grid_info='', ml_backend: MLBackendType = "pytorch"):
+    def __init__(self, source_type, ds_type, grid_info='', use_tendencies=True, ml_backend: MLBackendType = "pytorch"):
         self.source_type = source_type
         self.ds_type = ds_type
+        self.use_tendencies = use_tendencies
         if("expand" in ds_type):
             self.mlivar = "mlexpand"
             self.copy_to_local = False
@@ -249,7 +181,6 @@ class data_utils:
 
             try:
                 import torch
-
                 self.torch = torch
                 self.successful_backend_import = True
             except ImportError:
@@ -339,9 +270,9 @@ class data_utils:
                           'cam_in_OCNFRAC',
                           'cam_in_SNOWHICE',
                           'cam_in_SNOWHLAND',
-                          'pbuf_ozone', # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3 
+                          'pbuf_ozone',
                           'pbuf_CH4',
-                          'pbuf_N2O'] 
+                          'pbuf_N2O']  # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3 
         
         self.v2_outputs = ['ptend_t',
                            'ptend_q0001',
@@ -357,6 +288,10 @@ class data_utils:
                            'cam_out_SOLL',
                            'cam_out_SOLSD',
                            'cam_out_SOLLD']
+        if(not use_tendencies):
+            self.v1_outputs = [var.replace("ptend", "state") if 'ptend' in var else var for var in self.v1_outputs]
+            self.v2_outputs = [var.replace("ptend", "state") if 'ptend' in var else var for var in self.v2_outputs]
+        
 
         self.var_short_names = {'ptend_t':'$dT/dt$',
                                 'ptend_q0001':'$dq/dt$',
@@ -623,15 +558,15 @@ class data_utils:
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
         '''
-        #file = os.path.join(self.data_path, file)
-        if(self.source_type == 'hf'):
+        if(self.source_type == 'huggingface'):
             path = os.path.join(self.data_path, file)
             with fsspec.open(path, mode='rb') as file: 
-                if(self.copy_to_local):
-                    with open("file.nc", 'wb') as f:
+                if(self.copy_to_local): # non expanded data somehow needs local copy
+                    fname = f"{file}.nc"
+                    with open(fname, 'wb') as f:
                         f.write(file.read())
-                    ds = xr.open_dataset("file.nc", use_cftime=True)
-                    fs_local.rm("file.nc")
+                    ds = xr.open_dataset(fname, use_cftime=True)
+                    #fs_local.rm(fname) # if don't wanna save to disk
                 else:
                     ds = xr.open_dataset(file, use_cftime=True).load()
             # does not work
@@ -641,27 +576,29 @@ class data_utils:
             ds = xr.open_dataset(mapper, engine='zarr', chunks={})
         else:
             ds = xr.open_dataset(file, engine = 'netcdf4')
-
-        ds = self.process_ds(ds, file_vars)
-        ds = ds.merge(self.grid_info[['lat','lon']])
-        ds = ds.where((ds['lat']>-999)*(ds['lat']<999), drop=True)
-        ds = ds.where((ds['lon']>-999)*(ds['lon']<999), drop=True)
+        ds = self.add_time(ds)
+        if(file_vars is not None):
+            return(ds[file_vars])
         return ds
-
+    
     def add_time(self, ds, time=""):
-        if(not time or (type(time) != cftime._cftime.DatetimeNoLeap)):
+        if('ymd' in ds.data_vars and 'tod' in ds.data_vars):
             ymd = str(ds.ymd.values)  # e.g., '10201'
             year, month, day = int(ymd[:-4]), int(ymd[-4:-2]), int(ymd[-2:])  # e.g., '10201' -> '1', '02', '01'
             tod_as_minutes = (int(ds.tod.values) // 60)  # e.g., 37200 (sec) // 60 (sec/min) -> 620 min
             hour = tod_as_minutes // 60  # e.g., 620 min // 60 (min/hr) -> 10 hrs
             minute = tod_as_minutes % 60  # e.g., 620 min % 60 (min/hr) -> 20 min
             time = cftime.DatetimeNoLeap(year=year, month=month, day=day, hour=hour, minute=minute)
-        ds = ds.expand_dims(time=np.array([time]))
+            time = np.array([time])
+        elif('time' in ds.dims and not time):
+            time = ds.time[0]
+        elif(not time or not isinstance(time, cftime._cftime.DatetimeNoLeap)):
+            assert False, "Unknown time or incorrect type to add"
+        ds = ds.expand_dims(time=time)
         assert 'time' in ds.dims
         ds["time"] = xr.CFTimeIndex(ds["time"].values)
         ds.time.encoding = {
-            # for 'units' naming convention, xref:
-            # https://cfconventions.org/Data/cf-conventions/cf-conventions-1.10/cf-conventions.html#time-coordinate
+            # xref: https://cfconventions.org/Data/cf-conventions/cf-conventions-1.10/cf-conventions.html#time-coordinate
             "units": "minutes since 0001-02-01 00:00:00",
             "calendar": "noleap",
         }
@@ -669,10 +606,10 @@ class data_utils:
 
     def process_ds(self, ds, data_vars = None):
         # ds_type is which Climsim dataset, default aquaplanet
-        try:
-            assert 'time' in ds.dims
-        except AssertionError as e:
-            ds = add_time(ds)
+        #try:
+        #    assert 'time' in ds.dims
+        #except AssertionError as e:
+        #    ds = add_time(ds)
         if data_vars is not None:
             ds = ds[data_vars]
         for vname in self.variable_metadata:
@@ -685,8 +622,10 @@ class data_utils:
         
         ds['lat'] = (('ncol'),lat.T)
         ds['lon'] = (('ncol'),lon.T)
-        
         ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon, 'time' : ds.time})
+        #ds = ds.merge(self.grid_info[['lat','lon']])
+        ds = ds.where((ds['lat']>-999)*(ds['lat']<999), drop=True)
+        ds = ds.where((ds['lon']>-999)*(ds['lon']<999), drop=True)
         return(ds)    
 
     def get_input(self, input_file):
@@ -701,17 +640,17 @@ class data_utils:
         This function reads in a file and returns an xarray dataset with the target variables for the emulator.
         '''
         # read inputs
-        ds_input = self.get_input(input_file)
-        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'))
-        # each timestep is 20 minutes which corresponds to 1200 seconds
-        ds_target['ptend_t'] = (ds_target['state_t'] - ds_input['state_t'])/1200 # T tendency [K/s]
-        ds_target['ptend_q0001'] = (ds_target['state_q0001'] - ds_input['state_q0001'])/1200 # Q tendency [kg/kg/s]
-        if self.full_vars:
-            ds_target['ptend_q0002'] = (ds_target['state_q0002'] - ds_input['state_q0002'])/1200 # Q tendency [kg/kg/s]
-            ds_target['ptend_q0003'] = (ds_target['state_q0003'] - ds_input['state_q0003'])/1200 # Q tendency [kg/kg/s]
-            ds_target['ptend_u'] = (ds_target['state_u'] - ds_input['state_u'])/1200 # U tendency [m/s/s]
-            ds_target['ptend_v'] = (ds_target['state_v'] - ds_input['state_v'])/1200 # V tendency [m/s/s]   
-        ds_target = ds_target[self.target_vars]
+        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), self.target_vars)
+        if(self.use_tendencies):
+            ds_input = self.get_input(input_file)
+            # each timestep is 20 minutes which corresponds to 1200 seconds
+            ds_target['ptend_t'] = (ds_target['state_t'] - ds_input['state_t'])/1200 # T tendency [K/s]
+            ds_target['ptend_q0001'] = (ds_target['state_q0001'] - ds_input['state_q0001'])/1200 # Q tendency [kg/kg/s]
+            if self.full_vars:
+                ds_target['ptend_q0002'] = (ds_target['state_q0002'] - ds_input['state_q0002'])/1200 # Q tendency [kg/kg/s]
+                ds_target['ptend_q0003'] = (ds_target['state_q0003'] - ds_input['state_q0003'])/1200 # Q tendency [kg/kg/s]
+                ds_target['ptend_u'] = (ds_target['state_u'] - ds_input['state_u'])/1200 # U tendency [m/s/s]
+                ds_target['ptend_v'] = (ds_target['state_v'] - ds_input['state_v'])/1200 # V tendency [m/s/s]   
         return ds_target
     
     def set_filelist_using_regexps(self, data_split, regexps, stride_sample):
@@ -806,16 +745,35 @@ class data_utils:
         elif data_split == 'test':
             assert self.test_filelist is not None, 'filelist for test is not set.'
             return self.test_filelist
-    
-    def load_ncdata_with_generator(self, data_split):
-        '''
-        This function works as a dataloader when training the emulator with raw netCDF files.
-        This can be used as a dataloader during training or it can be used to create entire datasets.
-        When used as a dataloader for training, I/O can slow down training considerably.
-        This function also normalizes the data.
-        mli corresponds to input
-        mlo corresponds to target
-        '''
+
+    def aggregate_file(self, data_split):
+        filelist = self.get_filelist(data_split)
+        print(f"Aggregating {len(filelist)} files")
+        ds_inputs, ds_targets = [], []
+        start = time.time()
+        for i, file in enumerate(filelist):
+            if(i%5==0):
+                t = time.time() - start
+                print(f"Processed {i} files in {t:.2f}")
+            # read inputs
+            ds_input = self.get_input(file)
+            # read targets
+            ds_target = self.get_target(file)
+            
+            # normalization, scaling
+            if self.normalize:
+                # TODO : figure out what kind of normalization is desired
+                ds_input = (ds_input - self.input_mean)/(self.input_max - self.input_min)
+                #ds_target = ds_target*self.output_scale     
+
+            ds_inputs.append(ds_input)
+            ds_targets.append(ds_target)
+        try:
+            ds_inputs = xr.concat(ds_inputs, dim='time')
+            ds_targets = xr.concat(ds_targets, dim='time')
+        finally:
+            return(ds_inputs, ds_targets)        
+    def load_generator(self, data_split):
         filelist = self.get_filelist(data_split)
         def gen():
             for file in filelist:
@@ -839,7 +797,19 @@ class data_utils:
                 ds_target = ds_target.stack({'batch':{'ncol'}})
                 ds_target = ds_target.to_stacked_array('mlvar', sample_dims=['batch'], name='mlo')
                 yield (ds_input.values, ds_target.values)
-
+        return(gen)
+        
+    
+    def load_ncdata_with_generator(self, data_split):
+        '''
+        This function works as a dataloader when training the emulator with raw netCDF files.
+        This can be used as a dataloader during training or it can be used to create entire datasets.
+        When used as a dataloader for training, I/O can slow down training considerably.
+        This function also normalizes the data.
+        mli corresponds to input
+        mlo corresponds to target
+        '''
+        gen = self.load_generator(data_split)
         if self.ml_backend == "tensorflow":
 
             # Removed output_shapes and output_types, converting to output_signature as is

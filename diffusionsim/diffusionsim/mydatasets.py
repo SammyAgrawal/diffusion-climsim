@@ -16,7 +16,7 @@ try:
     diffusers_available = True
 except Exception as e:
     diffusers_available = False
-
+from . import climsim_utils as cut
 import time
 fs = gcsfs.GCSFileSystem()
 
@@ -35,11 +35,7 @@ def log_event(event_name, **kwargs):
     return(t)
 
 def load_dataset(dconfig, log=False):
-    if(dconfig.source and dconfig.climsim_type):
-        input_vars, output_vars = load_vars(dconfig.data_vars, tendencies=dconfig.use_tendencies)
-        dsi, dso = load_raw_dataset(dconfig.climsim_type, chunks=True, chunksizes=dconfig.chunksize)
-    dsi = add_space(dsi[input_vars].rename({'sample':'time'}))
-    dso = add_space(dso[output_vars].rename({'sample':'time'}))
+    dsi, dso = cut.load_raw_dataset(dconfig)
     dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split)
     datasets = []
     for (dsi, dso) in dsets:
@@ -249,43 +245,6 @@ class XBatchDataset(torch.utils.data.Dataset):
         Y_rec = (Y_norm * std) + mean
         return(Y_rec)
 
-def load_vars(s, tendencies=True):
-    v1_inputs = ['state_t', 'state_q0001', 'state_ps', 'pbuf_SOLIN','pbuf_LHFLX', 'pbuf_SHFLX']
-
-    v1_outputs = ['ptend_t','ptend_q0001','cam_out_NETSW','cam_out_FLWDS','cam_out_PRECSC', 'cam_out_PRECC', 'cam_out_SOLS', 'cam_out_SOLL', 'cam_out_SOLSD','cam_out_SOLLD']
-
-    v2_inputs = ['state_t', 'state_q0001','state_q0002', 'state_q0003', 'state_u', 'state_v',
-             'state_ps','pbuf_SOLIN','pbuf_LHFLX', 'pbuf_SHFLX', 'pbuf_TAUX','pbuf_TAUY', 'pbuf_COSZRS',
-             'cam_in_ALDIF', 'cam_in_ALDIR', 'cam_in_ASDIF', 'cam_in_ASDIR', 'cam_in_LWUP', 'cam_in_ICEFRAC', 
-             'cam_in_LANDFRAC', 'cam_in_OCNFRAC', 'cam_in_SNOWHICE', 'cam_in_SNOWHLAND',
-             'pbuf_ozone', 'pbuf_CH4', 'pbuf_N2O'] # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3 
-
-    v2_outputs = ['ptend_t', 'ptend_q0001', 'ptend_q0002', 'ptend_q0003', 'ptend_u', 'ptend_v', 'cam_out_NETSW',
-              'cam_out_FLWDS', 'cam_out_PRECSC', 'cam_out_PRECC', 'cam_out_SOLS', 'cam_out_SOLL', 'cam_out_SOLSD', 'cam_out_SOLLD']
-
-    if(s=='v1'):
-        v1_outputs = [var.replace("ptend", "state") if 'ptend' in var else var for var in v1_outputs]
-        return(v1_inputs, v1_outputs)
-    elif(s=='v2'):
-        v2_outputs = [var.replace("ptend", "state") if 'ptend' in var else var for var in v1_outputs]
-        return(v2_inputs, v2_outputs)
-    print("Input should be v1 or v2")
-
-def load_raw_dataset(ds_type='', chunks=False, chunksizes={}):
-    # change once re-ingested/ virtualized pipeline works
-    # eventually want ds_type to specify aquaplanet / res    
-    if(chunks):
-        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr')
-        ds_input = xr.open_dataset(mapper, engine='zarr', chunks=chunksizes)
-        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
-        ds_output = xr.open_dataset(mapper, engine='zarr', chunks=chunksizes)
-    else:
-        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr')
-        ds_input = xr.open_dataset(mapper, engine='zarr')
-        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
-        ds_output = xr.open_dataset(mapper, engine='zarr')
-    return(ds_input, ds_output)
-
 def load_numpy_arrays(bucket='persist', fprefix='climsim'):
     if('scratch' in bucket):
         bucket = "leap-scratch"
@@ -368,19 +327,6 @@ def image_regridding(ds):
     return(sorted_indices[indices])
 
 
-def add_space(ds, ds_grid=False, lat=False, lon=False):
-    if not ds_grid:
-        mapper = fs.get_mapper("gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.grid-info.zarr")
-        ds_grid = xr.open_dataset(mapper, engine='zarr')
-    if not lat or not lon:
-        lat = ds_grid.lat.values.round(2) 
-        lon = ds_grid.lon.values.round(2)  
-        lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
-    ds = ds.assign_coords({'ncol' : ds.ncol})
-    ds['lat'] = (('ncol'),lat.T)
-    ds['lon'] = (('ncol'),lon.T)
-    ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
-    return(ds)
 
 def collate_test_fn(batches):
     return(batches[0])
