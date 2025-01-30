@@ -553,19 +553,19 @@ class data_utils:
         self.target_feature_len = 368
         self.full_vars = True
 
-    def get_xrdata(self, file, file_vars = None):
+    def get_xrdata(self, file_name, file_vars = None):
         '''
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
         '''
         if(self.source_type == 'huggingface'):
-            path = os.path.join(self.data_path, file)
+            path = os.path.join(self.data_path, file_name)
             with fsspec.open(path, mode='rb') as file: 
                 if(self.copy_to_local): # non expanded data somehow needs local copy
-                    fname = f"{file}.nc"
-                    with open(fname, 'wb') as f:
+                    file_name = os.path.split(file_name)[-1]
+                    with open(file_name, 'wb') as f:
                         f.write(file.read())
-                    ds = xr.open_dataset(fname, use_cftime=True)
+                    ds = xr.open_dataset(file_name, use_cftime=True)
                     #fs_local.rm(fname) # if don't wanna save to disk
                 else:
                     ds = xr.open_dataset(file, use_cftime=True).load()
@@ -577,9 +577,35 @@ class data_utils:
         else:
             ds = xr.open_dataset(file, engine = 'netcdf4')
         ds = self.add_time(ds)
-        if(file_vars is not None):
+        if(file_vars):
             return(ds[file_vars])
         return ds
+
+
+    def get_input(self, input_file):
+        '''
+        This function reads in a file and returns an xarray dataset with the input variables for the emulator.
+        '''
+        # read inputs
+        return self.get_xrdata(input_file, self.input_vars)
+
+    def get_target(self, input_file):
+        '''
+        This function reads in a file and returns an xarray dataset with the target variables for the emulator.
+        '''
+        # read inputs
+        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), self.target_vars)
+        if(self.use_tendencies):
+            ds_input = self.get_input(input_file)
+            # each timestep is 20 minutes which corresponds to 1200 seconds
+            ds_target['ptend_t'] = (ds_target['state_t'] - ds_input['state_t'])/1200 # T tendency [K/s]
+            ds_target['ptend_q0001'] = (ds_target['state_q0001'] - ds_input['state_q0001'])/1200 # Q tendency [kg/kg/s]
+            if self.full_vars:
+                ds_target['ptend_q0002'] = (ds_target['state_q0002'] - ds_input['state_q0002'])/1200 # Q tendency [kg/kg/s]
+                ds_target['ptend_q0003'] = (ds_target['state_q0003'] - ds_input['state_q0003'])/1200 # Q tendency [kg/kg/s]
+                ds_target['ptend_u'] = (ds_target['state_u'] - ds_input['state_u'])/1200 # U tendency [m/s/s]
+                ds_target['ptend_v'] = (ds_target['state_v'] - ds_input['state_v'])/1200 # V tendency [m/s/s]   
+        return ds_target
     
     def add_time(self, ds, time=""):
         if('ymd' in ds.data_vars and 'tod' in ds.data_vars):
@@ -627,31 +653,6 @@ class data_utils:
         ds = ds.where((ds['lat']>-999)*(ds['lat']<999), drop=True)
         ds = ds.where((ds['lon']>-999)*(ds['lon']<999), drop=True)
         return(ds)    
-
-    def get_input(self, input_file):
-        '''
-        This function reads in a file and returns an xarray dataset with the input variables for the emulator.
-        '''
-        # read inputs
-        return self.get_xrdata(input_file, self.input_vars)
-
-    def get_target(self, input_file):
-        '''
-        This function reads in a file and returns an xarray dataset with the target variables for the emulator.
-        '''
-        # read inputs
-        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), self.target_vars)
-        if(self.use_tendencies):
-            ds_input = self.get_input(input_file)
-            # each timestep is 20 minutes which corresponds to 1200 seconds
-            ds_target['ptend_t'] = (ds_target['state_t'] - ds_input['state_t'])/1200 # T tendency [K/s]
-            ds_target['ptend_q0001'] = (ds_target['state_q0001'] - ds_input['state_q0001'])/1200 # Q tendency [kg/kg/s]
-            if self.full_vars:
-                ds_target['ptend_q0002'] = (ds_target['state_q0002'] - ds_input['state_q0002'])/1200 # Q tendency [kg/kg/s]
-                ds_target['ptend_q0003'] = (ds_target['state_q0003'] - ds_input['state_q0003'])/1200 # Q tendency [kg/kg/s]
-                ds_target['ptend_u'] = (ds_target['state_u'] - ds_input['state_u'])/1200 # U tendency [m/s/s]
-                ds_target['ptend_v'] = (ds_target['state_v'] - ds_input['state_v'])/1200 # V tendency [m/s/s]   
-        return ds_target
     
     def set_filelist_using_regexps(self, data_split, regexps, stride_sample):
         assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
@@ -716,7 +717,7 @@ class data_utils:
     def set_filelist_using_hfhub(self, data_split, year, month, stride_sample=1):
         from huggingface_hub import HfFileSystem
         fs = HfFileSystem()
-        filepaths = fs.glob(f"datasets/LEAP/ClimSim_low-res-expanded/train/000{year}-{month:02d}/*.nc")
+        filepaths = fs.glob(f"datasets/LEAP/{self.ds_type}/train/000{year}-{month:02d}/*.nc")
         filepaths = [f.split("train/")[1] for f in filepaths if self.mlivar in f]
         assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
         if data_split == 'train':
