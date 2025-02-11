@@ -21,8 +21,8 @@ _ROOT = os.path.abspath(os.path.dirname(__file__))
 def get_path(file):
     return os.path.join(_ROOT, 'climsim_data', file)
 
-def load_raw_dataset(dconfig):
-    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, use_tendencies=dconfig.use_tendencies)
+def load_raw_dataset(dconfig, **kwargs):
+    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, dconfig.use_tendencies, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
     if(dconfig.source == "gcsfs"):
         fs = gcsfs.GCSFileSystem()
@@ -39,6 +39,31 @@ def load_raw_dataset(dconfig):
         stride = int(input("Enter stride: "))
         dutils.set_filelist_using_hfhub('train', year, month, stride_sample=stride)
         dsi, dso = dutils.aggregate_file("train")
+
+    elif(dconfig.source == "local"):
+        base_dir = dconfig.base_dir
+
+    elif(dconfig.source == "numpy"):
+        X, Y = load_numpy_arrays(dconfig)
+        fs = gcsfs.GCSFileSystem()
+        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr')
+        ds_in = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
+        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
+        ds_out = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
+        
+        start, stop, stride = dconfig.xarr_subsamples
+        ds_in = ds_in.isel(sample=slice(start, stop, stride))[dutils.input_vars]
+        ds_out = ds_out.isel(sample=slice(start, stop, stride))[dutils.target_vars]
+    
+        mli = ds_in.to_stacked_array('mli', sample_dims=['sample', 'ncol']).mli
+        mlo = ds_out.to_stacked_array('mlo', sample_dims=['sample', 'ncol']).mlo
+        state = ds_in.stack({'state' : ['sample', 'ncol']}).state
+        
+        Xarr = xr.DataArray(X, dims=['state', 'mli'], coords={'state' : state, 'mli':mli})
+        Yarr = xr.DataArray(Y, dims=['state', 'mlo'], coords={'state' : state, 'mlo':mlo})
+    
+        #Xarr, Yarr = add_space(Xarr.unstack('sample'), Yarr.unstack('sample'))
+        return(Xarr, Yarr)
     dsi = add_space(dsi, ds_grid=dutils.grid_info)
     dso = add_space(dso, ds_grid=dutils.grid_info)
     return(dsi, dso)
@@ -1681,5 +1706,33 @@ class data_utils:
 
 
 
+
+def load_numpy_arrays(dconfig, bucket='persist', fprefix='climsim'):
+    if('scratch' in bucket):
+        bucket = "leap-scratch"
+    elif('persist'):
+        bucket = "leap-persistent"
+    xpath = f"gs://{bucket}/sammyagrawal/input_{fprefix}.npy"
+    ypath = f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy" 
+
+    with fs.open(xpath, 'rb') as f:
+        X = np.load(f)
+    print(f"Finished Loading X from {xpath}")
+    with fs.open(ypath, 'rb') as f:
+        Y = np.load(f)
+    print(f"Finished Loading Y from {ypath}")
+
+    return(X, Y)
+    
+    
+def save_arrays(X, Y, bucket='scratch', fprefix='climsim'):
+    if(bucket== 'scratch'):
+        bucket = "leap-scratch"
+    elif(bucket == 'persist'):
+        bucket = "leap-persistent"
+    with fsspec.open(f"gs://{bucket}/sammyagrawal/input_{fprefix}.npy", 'wb') as f:
+        np.save(f, X)
+    with fsspec.open(f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy", 'wb') as f:
+        np.save(f, Y)
 
 

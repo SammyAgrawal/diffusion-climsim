@@ -245,52 +245,6 @@ class XBatchDataset(torch.utils.data.Dataset):
         Y_rec = (Y_norm * std) + mean
         return(Y_rec)
 
-def load_numpy_arrays(bucket='persist', fprefix='climsim'):
-    if('scratch' in bucket):
-        bucket = "leap-scratch"
-    elif('persist'):
-        bucket = "leap-persistent"
-    xpath = f"gs://{bucket}/sammyagrawal/input_{fprefix}.npy"
-    ypath = f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy" 
-
-    with fs.open(xpath, 'rb') as f:
-        X = np.load(f)
-    print(f"Finished Loading X from {xpath}")
-    with fs.open(ypath, 'rb') as f:
-        Y = np.load(f)
-    print(f"Finished Loading Y from {ypath}")
-
-    return(X, Y)
-    
-def save_arrays(X, Y, bucket='scratch', fprefix='climsim'):
-    if(bucket== 'scratch'):
-        bucket = "leap-scratch"
-    elif(bucket == 'persist'):
-        bucket = "leap-persistent"
-    with fsspec.open(f"gs://{bucket}/sammyagrawal/input_{fprefix}.npy", 'wb') as f:
-        np.save(f, X)
-    with fsspec.open(f"gs://{bucket}/sammyagrawal/output_{fprefix}.npy", 'wb') as f:
-        np.save(f, Y)
-
-def reconstruct_xarr_from_npy(X: np.ndarray, Y: np.ndarray, subsampling=(36,210240, 144), data_vars='v1'):
-    ds_in, ds_out = load_raw_dataset(chunks=True)
-    input_vars, output_vars = load_vars(data_vars, tendencies=False)
-    start, stop, stride = subsampling
-    ds_in = ds_in.isel(sample=slice(start, stop, stride))[input_vars]
-    ds_out = ds_out.isel(sample=slice(start, stop, stride))[output_vars]
-
-    mli = ds_in.to_stacked_array('mli', sample_dims=['sample', 'ncol']).mli
-    mlo = ds_out.to_stacked_array('mlo', sample_dims=['sample', 'ncol']).mlo
-    state = ds_in.stack({'state' : ['sample', 'ncol']}).state
-    
-    Xarr = xr.DataArray(X, dims=['state', 'mli'], coords={'state' : state, 'mli':mli})
-    Yarr = xr.DataArray(Y, dims=['state', 'mlo'], coords={'state' : state, 'mlo':mlo})
-
-    #Xarr, Yarr = add_space(Xarr.unstack('sample'), Yarr.unstack('sample'))
-    return(Xarr, Yarr)
-
-
-
 def add_time(ds_in, ds_out):
     def compute_time(ymd, tod):
         year, month, day = (ymd // 10000)+2000, (ymd % 10000) // 100, ymd % 100
