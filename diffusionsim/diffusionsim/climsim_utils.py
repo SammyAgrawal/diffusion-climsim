@@ -22,7 +22,11 @@ def get_path(file):
     return os.path.join(_ROOT, 'climsim_data', file)
 
 def load_raw_dataset(dconfig):
-    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, use_tendencies=dconfig.use_tendencies)
+    kwargs = {}
+    if(dconfig.source == "local"):
+        kwargs['base_dir'] = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/train"
+        kwargs['grid_info'] = xr.open_dataset(os.path.join(kwargs['base_dir'], "ClimSim_low-res_grid-info.nc"))
+    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, use_tendencies=dconfig.use_tendencies, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
     if(dconfig.source == "gcsfs"):
         fs = gcsfs.GCSFileSystem()
@@ -56,9 +60,8 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     if(data_source == 'huggingface'):
         data.data_path = f"https://huggingface.co/datasets/LEAP/{ds_type}/resolve/main/train/"
     elif(data_source == 'local' or data_source == "gcsfs"):
-        #assert 'base_dir' in kwargs, "Need to provide base path via base_dir arg"
-        if('base_dir' in kwargs):
-            data.data_path = kwargs[base_dir]
+        assert 'base_dir' in kwargs, "Need to provide base path via base_dir arg"
+        data.data_path = kwargs['base_dir']
     else:
         print("Invalid data source, must be huggingface, local, or gcsfs")
     if(data_vars == 'v1'):
@@ -558,8 +561,8 @@ class data_utils:
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
         '''
+        path = os.path.join(self.data_path, file_name)
         if(self.source_type == 'huggingface'):
-            path = os.path.join(self.data_path, file_name)
             with fsspec.open(path, mode='rb') as file: 
                 if(self.copy_to_local): # non expanded data somehow needs local copy
                     file_name = os.path.split(file_name)[-1]
@@ -572,15 +575,14 @@ class data_utils:
             # does not work
             #xr.open_dataset(file, engine="h5netcdf", chunks={}, use_cftime=True)   
         elif(self.source_type == 'gcsfs'):
-            mapper = fs.get_mapper(file)
+            mapper = fs.get_mapper(path)
             ds = xr.open_dataset(mapper, engine='zarr', chunks={})
-        else:
-            ds = xr.open_dataset(file, engine = 'netcdf4')
+        else: # local
+            ds = xr.open_dataset(path, engine = 'netcdf4')
         ds = self.add_time(ds)
         if(file_vars):
             return(ds[file_vars])
         return ds
-
 
     def get_input(self, input_file):
         '''
@@ -623,11 +625,11 @@ class data_utils:
         ds = ds.expand_dims(time=time)
         assert 'time' in ds.dims
         ds["time"] = xr.CFTimeIndex(ds["time"].values)
-        ds.time.encoding = {
+        """ds.time.encoding = {
             # xref: https://cfconventions.org/Data/cf-conventions/cf-conventions-1.10/cf-conventions.html#time-coordinate
             "units": "minutes since 0001-02-01 00:00:00",
             "calendar": "noleap",
-        }
+        }"""
         return(ds)
 
     def process_ds(self, ds, data_vars = None):
@@ -774,6 +776,7 @@ class data_utils:
             ds_targets = xr.concat(ds_targets, dim='time')
         finally:
             return(ds_inputs, ds_targets)        
+    
     def load_generator(self, data_split):
         filelist = self.get_filelist(data_split)
         def gen():
