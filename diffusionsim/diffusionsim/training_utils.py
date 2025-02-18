@@ -52,6 +52,7 @@ class DataConfig:
     dataset_type: str = "XBatchDataset"
     climsim_type: str = "expanded-low-res"
     source: str = "gcsfs"
+    data_dir: str = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/train" # only if source is local
     train_test_split: List[int] = field(default_factory=lambda: [1.0, 0.0])
     dataloader_params: TrainLoaderParams = field(default_factory=lambda: TrainLoaderParams())
     xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)
