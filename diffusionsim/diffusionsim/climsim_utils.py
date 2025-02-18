@@ -37,15 +37,12 @@ def load_raw_dataset(dconfig):
         dsi = dsi[dutils.input_vars].rename({'sample':'time'})
         dso = dso[dutils.target_vars].rename({'sample': 'time'})
     
-    elif(dconfig.source == "huggingface"):
+    elif(dconfig.source == "huggingface" or dconfig.source == "local"):
         year = int(input("Input year: "))
         month = int(input("Input month: "))
         stride = int(input("Enter stride: "))
         dutils.set_filelist_using_hfhub('train', year, month, stride_sample=stride)
         dsi, dso = dutils.aggregate_file("train")
-
-    elif(dconfig.source == "local"):
-        base_dir = dconfig.base_dir
 
     elif(dconfig.source == "numpy"):
         X, Y = load_numpy_arrays(dconfig)
@@ -587,7 +584,7 @@ class data_utils:
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
         '''
-        path = os.path.join(self.data_path, file_name)
+        
         if(self.source_type == 'huggingface'):
             with fsspec.open(path, mode='rb') as file: 
                 if(self.copy_to_local): # non expanded data somehow needs local copy
@@ -635,7 +632,8 @@ class data_utils:
                 ds_target['ptend_v'] = (ds_target['state_v'] - ds_input['state_v'])/1200 # V tendency [m/s/s]   
         return ds_target
     
-    def add_time(self, ds, time=""):
+    def parse_time(self, filename):
+        '''
         if('ymd' in ds.data_vars and 'tod' in ds.data_vars):
             ymd = str(ds.ymd.values)  # e.g., '10201'
             year, month, day = int(ymd[:-4]), int(ymd[-4:-2]), int(ymd[-2:])  # e.g., '10201' -> '1', '02', '01'
@@ -643,11 +641,18 @@ class data_utils:
             hour = tod_as_minutes // 60  # e.g., 620 min // 60 (min/hr) -> 10 hrs
             minute = tod_as_minutes % 60  # e.g., 620 min % 60 (min/hr) -> 20 min
             time = cftime.DatetimeNoLeap(year=year, month=month, day=day, hour=hour, minute=minute)
-            time = np.array([time])
         elif('time' in ds.dims and not time):
             time = ds.time[0]
         elif(not time or not isinstance(time, cftime._cftime.DatetimeNoLeap)):
             assert False, "Unknown time or incorrect type to add"
+        '''
+        year_month, file_part = filename.split('/')
+        year, month, day, seconds_into_day = map(int, file_part.split('.')[2].split('-'))
+        hour, minute = seconds_into_day // 3600, seconds_into_day % 3600 // 60
+        return cftime.DatetimeNoLeap(year, month, day, hour, minute)
+    
+    def add_time(self, ds, time):
+        time = np.array([time])
         ds = ds.expand_dims(time=time)
         assert 'time' in ds.dims
         ds["time"] = xr.CFTimeIndex(ds["time"].values)
@@ -811,22 +816,7 @@ class data_utils:
                 ds_input = self.get_input(file)
                 # read targets
                 ds_target = self.get_target(file)
-                
-                # normalization, scaling
-                if self.normalize:
-                    ds_input = (ds_input - self.input_mean)/(self.input_max - self.input_min)
-                    ds_target = ds_target*self.output_scale
-                else:
-                    ds_input = ds_input.drop(['lat','lon'])
-
-                # stack
-                # ds = ds.stack({'batch':{'sample','ncol'}})
-                ds_input = ds_input.stack({'batch':{'ncol'}})
-                ds_input = ds_input.to_stacked_array('mlvar', sample_dims=['batch'], name='mli')
-                # dso = dso.stack({'batch':{'sample','ncol'}})
-                ds_target = ds_target.stack({'batch':{'ncol'}})
-                ds_target = ds_target.to_stacked_array('mlvar', sample_dims=['batch'], name='mlo')
-                yield (ds_input.values, ds_target.values)
+                yield (ds_input, ds_target)
         return(gen)
         
     
@@ -862,14 +852,20 @@ class data_utils:
                         this_self.output_shapes = output_shapes
 
                     def __iter__(this_self):
-                        for item in this_self.data_generator:
-
-                            input_array = self.torch.tensor(
-                                item[0], dtype=this_self.output_types[0]
-                            )
-                            target_array = self.torch.tensor(
-                                item[1], dtype=this_self.output_types[1]
-                            )
+                        for (inp, out) in this_self.data_generator:
+                                            # normalization, scaling
+                            if self.normalize:
+                                inp = (inp - self.input_mean)/(self.input_max - self.input_min)
+                                out = out*self.output_scale
+                            else:
+                                inp = inp.drop(['lat','lon'])
+                            inp = inp.stack({'batch':{'ncol'}})
+                            inp = inp.to_stacked_array('mlvar', sample_dims=['batch'], name='mli')
+                            # dso = dso.stack({'batch':{'sample','ncol'}})
+                            out = out.stack({'batch':{'ncol'}})
+                            out = out.to_stacked_array('mlvar', sample_dims=['batch'], name='mlo')
+                            input_array = self.torch.tensor(inp.values, dtype=this_self.output_types[0])
+                            target_array = self.torch.tensor(out.values, dtype=this_self.output_types[1])
 
                             # Assert final dimensions are correct.
                             assert (

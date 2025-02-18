@@ -79,7 +79,6 @@ def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr'):
             else:
                 datasets.append((dsi.isel(time=phase_indices), dso.isel(time=phase_indices)))
             counter += split
-
     return(datasets, indices)
 
 def get_norm_info(style='image'):
@@ -119,7 +118,6 @@ def noise_batch(scheduler, clean_images, device):
     timesteps = torch.randint(0, num_timesteps, size=(clean_images.shape[0],), device=device, dtype=torch.int64)
     noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
     return(noisy_images, timesteps, noise)
-
 
 class ClimsimDataset(Dataset):
     def __init__(self, X, Y, normalize=True):
