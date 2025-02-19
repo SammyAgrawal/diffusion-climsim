@@ -579,12 +579,12 @@ class data_utils:
         self.target_feature_len = 368
         self.full_vars = True
 
-    def get_xrdata(self, file_name, file_vars = None):
+    def get_xrdata(self, file_name, file_vars = None, virtual=False):
         '''
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
         '''
-        
+        path = os.path.join(self.data_path, file_name)
         if(self.source_type == 'huggingface'):
             with fsspec.open(path, mode='rb') as file: 
                 if(self.copy_to_local): # non expanded data somehow needs local copy
@@ -601,8 +601,13 @@ class data_utils:
             mapper = fs.get_mapper(path)
             ds = xr.open_dataset(mapper, engine='zarr', chunks={})
         else: # local
-            ds = xr.open_dataset(path, engine = 'netcdf4')
-        ds = self.add_time(ds)
+            if virtual:
+                from virtualizarr import open_virtual_dataset
+                ds = open_virtual_dataset(path)
+            else:
+                ds = xr.open_dataset(path, engine = 'netcdf4')
+        time = self.parse_time(file_name)
+        ds = self.add_time(ds, time)
         if(file_vars):
             return(ds[file_vars])
         return ds
