@@ -73,6 +73,8 @@ def load_raw_dataset(dconfig):
 def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     # data source is either a google cloud bucket, local file path, or tries to load directly from Huggingface
     ds_type = expand_ds_name(ds_type)
+    if('normalize' not in kwargs):
+        kwargs['normalize'] = True
     if('grid_info' in kwargs):
         grid_info = kwargs['grid_info']
     else:
@@ -92,8 +94,9 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     elif(data_vars == 'v2'):
         data.set_to_v2_vars()
 
-    input_mean, input_max, input_min, output_scale = get_norm_info("scale")
-    data.set_norm_info(input_mean, input_max, input_min, output_scale)
+    if(False):
+        input_mean, input_max, input_min, output_scale = get_norm_info("scale")
+        data.set_norm_info(input_mean, input_max, input_min, output_scale)
     return(data)
 
 def get_norm_info(style='image'):
