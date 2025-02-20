@@ -23,8 +23,8 @@ device = f"cuda:{rank}" if torch.cuda.is_available() else 'cpu'
 if __name__ == "__main__":
     #typer.run(main)
     #typer.run(test_args)
-    exp_id = "full_dataset_testrun"
-    run_id = "trial_1b"
+    exp_id = "full_dataset_run2"
+    run_id = "trial_1"
     tconfig, mconfig, dconfig = tru.load_config(run_id, exp_id)
     run_start_time = data.log_event("run start", 
         data_params = asdict(dconfig.dataloader_params),
