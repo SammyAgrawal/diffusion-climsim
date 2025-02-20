@@ -26,6 +26,7 @@ def load_raw_dataset(dconfig):
     if(dconfig.source == "local"):
         kwargs['base_dir'] = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/train"
         kwargs['grid_info'] = xr.open_dataset(os.path.join(kwargs['base_dir'], "ClimSim_low-res_grid-info.nc"))
+    
     dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, use_tendencies=dconfig.use_tendencies, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
     if(dconfig.source == "gcsfs"):
@@ -84,9 +85,11 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     data = data_utils(data_source, ds_type, grid_info.compute(), use_tendencies)
     if(data_source == 'huggingface'):
         data.data_path = f"https://huggingface.co/datasets/LEAP/{ds_type}/resolve/main/train/"
-    elif(data_source == 'local' or data_source == "gcsfs"):
+    elif(data_source == 'local'):
         assert 'base_dir' in kwargs, "Need to provide base path via base_dir arg"
         data.data_path = kwargs['base_dir']
+    elif(data_source == "gcsfs"):
+        pass
     else:
         print("Invalid data source, must be huggingface, local, or gcsfs")
     if(data_vars == 'v1'):
