@@ -585,7 +585,7 @@ class data_utils:
         self.target_feature_len = 368
         self.full_vars = True
 
-    def get_xrdata(self, file_name, file_vars = None, virtual):
+    def get_xrdata(self, file_name, virtual, file_vars = None):
         '''
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
@@ -622,14 +622,14 @@ class data_utils:
         This function reads in a file and returns an xarray dataset with the input variables for the emulator.
         '''
         # read inputs
-        return self.get_xrdata(input_file, self.input_vars)
+        return self.get_xrdata(input_file, virtual, self.input_vars)
 
     def get_target(self, input_file, virtual=False):
         '''
         This function reads in a file and returns an xarray dataset with the target variables for the emulator.
         '''
         # read inputs
-        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), self.target_vars)
+        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), virtual, self.target_vars)
         if(self.use_tendencies):
             ds_input = self.get_input(input_file)
             # each timestep is 20 minutes which corresponds to 1200 seconds
