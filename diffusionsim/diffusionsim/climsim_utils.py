@@ -591,27 +591,26 @@ class data_utils:
         file_vars must be a list of strings.
         '''
         path = os.path.join(self.data_path, file_name)
-        if(self.source_type == 'huggingface'):
+        time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+        if(self.source_type == 'gcsfs'):
+            mapper = fs.get_mapper(path)
+            ds = xr.open_dataset(mapper, engine='zarr', chunks={})
+        elif(virtual):
+            from virtualizarr import open_virtual_dataset
+            ds = open_virtual_dataset(path)
+        elif(self.source_type == 'huggingface'):
             with fsspec.open(path, mode='rb') as file: 
                 if(self.copy_to_local): # non expanded data somehow needs local copy
                     file_name = os.path.split(file_name)[-1]
                     with open(file_name, 'wb') as f:
                         f.write(file.read())
-                    ds = xr.open_dataset(file_name, use_cftime=True)
+                    ds = xr.open_dataset(file_name, decode_times=time_coder)
                     #fs_local.rm(fname) # if don't wanna save to disk
                 else:
-                    ds = xr.open_dataset(file, use_cftime=True).load()
-            # does not work
-            #xr.open_dataset(file, engine="h5netcdf", chunks={}, use_cftime=True)   
-        elif(self.source_type == 'gcsfs'):
-            mapper = fs.get_mapper(path)
-            ds = xr.open_dataset(mapper, engine='zarr', chunks={})
+                    ds = xr.open_dataset(file, decode_times=time_coder).load()
+            #xr.open_dataset(file, engine="h5netcdf", chunks={}, use_cftime=True)  does not work  
         else: # local
-            if virtual:
-                from virtualizarr import open_virtual_dataset
-                ds = open_virtual_dataset(path)
-            else:
-                ds = xr.open_dataset(path, engine = 'netcdf4')
+            ds = xr.open_dataset(path, engine = 'netcdf4')
         time = self.parse_time(file_name)
         ds = self.add_time(ds, time)
         if(file_vars):
