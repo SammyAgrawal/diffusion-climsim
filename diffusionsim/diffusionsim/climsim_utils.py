@@ -155,7 +155,7 @@ def read_url(url, copy_to_local=False):
 
 def add_space(ds, ds_grid=False, lat=False, lon=False, res='low'):
     if not ds_grid:
-        n = expand_ds_name(res)
+        n = expand_ds_name("high-res") if "high" in res else expand_ds_name("low-res")
         grid_url = f"https://huggingface.co/datasets/LEAP/{n}/resolve/main/{n}_grid-info.nc"
         ds_grid = read_url(grid_url, copy_to_local=True)
     if not lat or not lon:
@@ -582,7 +582,7 @@ class data_utils:
         self.target_feature_len = 368
         self.full_vars = True
 
-    def get_xrdata(self, file_name, file_vars = None, virtual=False):
+    def get_xrdata(self, file_name, file_vars = None, virtual):
         '''
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
@@ -615,14 +615,14 @@ class data_utils:
             return(ds[file_vars])
         return ds
 
-    def get_input(self, input_file):
+    def get_input(self, input_file, virtual=False):
         '''
         This function reads in a file and returns an xarray dataset with the input variables for the emulator.
         '''
         # read inputs
         return self.get_xrdata(input_file, self.input_vars)
 
-    def get_target(self, input_file):
+    def get_target(self, input_file, virtual=False):
         '''
         This function reads in a file and returns an xarray dataset with the target variables for the emulator.
         '''
@@ -788,7 +788,7 @@ class data_utils:
             assert self.test_filelist is not None, 'filelist for test is not set.'
             return self.test_filelist
 
-    def aggregate_file(self, data_split):
+    def aggregate_file(self, data_split, virtual=False):
         filelist = self.get_filelist(data_split)
         print(f"Aggregating {len(filelist)} files")
         ds_inputs, ds_targets = [], []
@@ -798,9 +798,9 @@ class data_utils:
                 t = time.time() - start
                 print(f"Processed {i} files in {t:.2f}")
             # read inputs
-            ds_input = self.get_input(file)
+            ds_input = self.get_input(file, virtual)
             # read targets
-            ds_target = self.get_target(file)
+            ds_target = self.get_target(file, virtual)
             
             # normalization, scaling
             if self.normalize:
@@ -1711,7 +1711,6 @@ class data_utils:
             with open(save_path + 'cnn_predict_reshaped.npy', 'wb') as f:
                 np.save(f, np.float32(npy_predict_cnn_reshaped))
         return npy_predict_cnn_reshaped
-
 
 
 
