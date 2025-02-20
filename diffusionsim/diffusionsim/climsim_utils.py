@@ -44,7 +44,15 @@ def load_raw_dataset(dconfig):
         stride = int(input("Enter stride: "))
         dutils.set_filelist_using_hfhub('train', year, month, stride_sample=stride)
         dsi, dso = dutils.aggregate_file("train")
-
+    
+    elif("vzarr" in dconfig.source):
+        import icechunk
+        storage = icechunk.local_filesystem_storage(dconfig.data_dir)
+        repo = icechunk.Repository.open(storage)
+        session = repo.writable_session("main")
+        ds = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})
+        dsi = dso = ds[dutils.target_vars]
+    
     elif(dconfig.source == "numpy"):
         X, Y = load_numpy_arrays(dconfig)
         fs = gcsfs.GCSFileSystem()
