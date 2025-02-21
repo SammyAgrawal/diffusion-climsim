@@ -31,13 +31,16 @@ def create_optimizer(model, tconfig):
     return(optim)
 
 class AbstractTrainer(ABC):
-    def __init__(self, model, dataloader, loss_fn, optim, tconfig, rank=0, base_dir=''):
+    def __init__(self, model, dataloaders, loss_fn, optim, tconfig, rank=0, base_dir=''):
         self.exp_id = tconfig.exp_id
         self.training_config = tconfig
         self.device, self.rank = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu', rank
         print(f"Using device: {self.device}")
         self.distributed = bool(tconfig.distributed_training)
-        self.model, self.dataloaders, self.loss_fn, self.optimizer = model, dict(train=dataloader), loss_fn, optim
+        if(type(dataloaders) == list):
+            dataloaders = dataloaders[0]
+        self.dataloaders = dict(train=dataloaders)
+        self.model, self.loss_fn, self.optimizer = model, loss_fn, optim
         self._set_directories(base_dir=base_dir)
         self.current_run_id = ""
         if(self.distributed):
