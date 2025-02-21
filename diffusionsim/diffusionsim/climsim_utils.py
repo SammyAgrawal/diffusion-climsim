@@ -21,13 +21,9 @@ _ROOT = os.path.abspath(os.path.dirname(__file__))
 def get_path(file):
     return os.path.join(_ROOT, 'climsim_data', file)
 
-def load_raw_dataset(dconfig):
-    kwargs = {}
-    if(dconfig.source == "local"):
-        kwargs['base_dir'] = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/train"
-        kwargs['grid_info'] = xr.open_dataset(os.path.join(kwargs['base_dir'], "ClimSim_low-res_grid-info.nc"))
-    
-    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, use_tendencies=dconfig.use_tendencies, **kwargs)
+def load_raw_dataset(dconfig, **kwargs):
+    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, 
+                              use_tendencies=dconfig.use_tendencies, data_dir=dconfig.data_dir, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
     if(dconfig.source == "gcsfs"):
         fs = gcsfs.GCSFileSystem()
@@ -35,8 +31,6 @@ def load_raw_dataset(dconfig):
         dsi = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
         mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
         dso = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
-        dsi = dsi[dutils.input_vars].rename({'sample':'time'})
-        dso = dso[dutils.target_vars].rename({'sample': 'time'})
     
     elif(dconfig.source == "huggingface" or dconfig.source == "local"):
         year = int(input("Input year: "))
@@ -44,7 +38,16 @@ def load_raw_dataset(dconfig):
         stride = int(input("Enter stride: "))
         dutils.set_filelist_using_hfhub('train', year, month, stride_sample=stride)
         dsi, dso = dutils.aggregate_file("train")
-
+    
+    elif("vzarr" in dconfig.source):
+        import icechunk
+        storage = icechunk.local_filesystem_storage(dconfig.data_dir)
+        repo = icechunk.Repository.open(storage)
+        session = repo.writable_session("main")
+        with session.allow_pickling():
+            ds = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})
+            dsi = dso = ds[dutils.target_vars]
+    
     elif(dconfig.source == "numpy"):
         X, Y = load_numpy_arrays(dconfig)
         fs = gcsfs.GCSFileSystem()
@@ -74,8 +77,6 @@ def load_raw_dataset(dconfig):
 def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     # data source is either a google cloud bucket, local file path, or tries to load directly from Huggingface
     ds_type = expand_ds_name(ds_type)
-    if('normalize' not in kwargs):
-        kwargs['normalize'] = True
     if('grid_info' in kwargs):
         grid_info = kwargs['grid_info']
     else:
@@ -85,11 +86,11 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     data = data_utils(data_source, ds_type, grid_info.compute(), use_tendencies)
     if(data_source == 'huggingface'):
         data.data_path = f"https://huggingface.co/datasets/LEAP/{ds_type}/resolve/main/train/"
-    elif(data_source == 'local'):
+    elif(data_source == "gcsfs" or "vzarr" in data_source):
+        pass
+    elif('local' in data_source):
         assert 'base_dir' in kwargs, "Need to provide base path via base_dir arg"
         data.data_path = kwargs['base_dir']
-    elif(data_source == "gcsfs"):
-        pass
     else:
         print("Invalid data source, must be huggingface, local, or gcsfs")
     if(data_vars == 'v1'):
@@ -97,7 +98,7 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     elif(data_vars == 'v2'):
         data.set_to_v2_vars()
 
-    if(False):
+    if('normalize' not in kwargs or kwargs['normalize']):
         input_mean, input_max, input_min, output_scale = get_norm_info("scale")
         data.set_norm_info(input_mean, input_max, input_min, output_scale)
     return(data)
@@ -158,7 +159,7 @@ def read_url(url, copy_to_local=False):
 
 def add_space(ds, ds_grid=False, lat=False, lon=False, res='low'):
     if not ds_grid:
-        n = expand_ds_name(res)
+        n = expand_ds_name("high-res") if "high" in res else expand_ds_name("low-res")
         grid_url = f"https://huggingface.co/datasets/LEAP/{n}/resolve/main/{n}_grid-info.nc"
         ds_grid = read_url(grid_url, copy_to_local=True)
     if not lat or not lon:
@@ -585,52 +586,51 @@ class data_utils:
         self.target_feature_len = 368
         self.full_vars = True
 
-    def get_xrdata(self, file_name, file_vars = None, virtual=False):
+    def get_xrdata(self, file_name, virtual, file_vars = None):
         '''
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
         '''
         path = os.path.join(self.data_path, file_name)
-        if(self.source_type == 'huggingface'):
+        time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+        if(self.source_type == 'gcsfs'):
+            mapper = fs.get_mapper(path)
+            ds = xr.open_dataset(mapper, engine='zarr', chunks={})
+        elif(virtual):
+            from virtualizarr import open_virtual_dataset
+            ds = open_virtual_dataset(path)
+        elif(self.source_type == 'huggingface'):
             with fsspec.open(path, mode='rb') as file: 
                 if(self.copy_to_local): # non expanded data somehow needs local copy
                     file_name = os.path.split(file_name)[-1]
                     with open(file_name, 'wb') as f:
                         f.write(file.read())
-                    ds = xr.open_dataset(file_name, use_cftime=True)
+                    ds = xr.open_dataset(file_name, decode_times=time_coder)
                     #fs_local.rm(fname) # if don't wanna save to disk
                 else:
-                    ds = xr.open_dataset(file, use_cftime=True).load()
-            # does not work
-            #xr.open_dataset(file, engine="h5netcdf", chunks={}, use_cftime=True)   
-        elif(self.source_type == 'gcsfs'):
-            mapper = fs.get_mapper(path)
-            ds = xr.open_dataset(mapper, engine='zarr', chunks={})
+                    ds = xr.open_dataset(file, decode_times=time_coder).load()
+            #xr.open_dataset(file, engine="h5netcdf", chunks={}, use_cftime=True)  does not work  
         else: # local
-            if virtual:
-                from virtualizarr import open_virtual_dataset
-                ds = open_virtual_dataset(path)
-            else:
-                ds = xr.open_dataset(path, engine = 'netcdf4')
+            ds = xr.open_dataset(path, engine = 'netcdf4')
         time = self.parse_time(file_name)
         ds = self.add_time(ds, time)
         if(file_vars):
             return(ds[file_vars])
         return ds
 
-    def get_input(self, input_file):
+    def get_input(self, input_file, virtual=False):
         '''
         This function reads in a file and returns an xarray dataset with the input variables for the emulator.
         '''
         # read inputs
-        return self.get_xrdata(input_file, self.input_vars)
+        return self.get_xrdata(input_file, virtual, self.input_vars)
 
-    def get_target(self, input_file):
+    def get_target(self, input_file, virtual=False):
         '''
         This function reads in a file and returns an xarray dataset with the target variables for the emulator.
         '''
         # read inputs
-        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), self.target_vars)
+        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), virtual, self.target_vars)
         if(self.use_tendencies):
             ds_input = self.get_input(input_file)
             # each timestep is 20 minutes which corresponds to 1200 seconds
@@ -791,7 +791,7 @@ class data_utils:
             assert self.test_filelist is not None, 'filelist for test is not set.'
             return self.test_filelist
 
-    def aggregate_file(self, data_split):
+    def aggregate_file(self, data_split, virtual=False):
         filelist = self.get_filelist(data_split)
         print(f"Aggregating {len(filelist)} files")
         ds_inputs, ds_targets = [], []
@@ -801,9 +801,9 @@ class data_utils:
                 t = time.time() - start
                 print(f"Processed {i} files in {t:.2f}")
             # read inputs
-            ds_input = self.get_input(file)
+            ds_input = self.get_input(file, virtual)
             # read targets
-            ds_target = self.get_target(file)
+            ds_target = self.get_target(file, virtual)
             
             # normalization, scaling
             if self.normalize:
@@ -1714,7 +1714,6 @@ class data_utils:
             with open(save_path + 'cnn_predict_reshaped.npy', 'wb') as f:
                 np.save(f, np.float32(npy_predict_cnn_reshaped))
         return npy_predict_cnn_reshaped
-
 
 
 

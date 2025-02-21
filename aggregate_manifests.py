@@ -9,6 +9,7 @@ from diffusionsim import climsim_utils as cut
 from virtualizarr import open_virtual_dataset
 import xarray as xr
 import fsspec
+import icechunk
 import time 
 import numpy as np
 path = lambda fname : os.path.join(os.path.expanduser("~/diffusion-climsim/"), fname)
@@ -44,6 +45,12 @@ for directory in directories:
     
 virtual_ds = xr.combine_nested(virtual_datasets, concat_dim=['time'])
 print(f"writing to disk, {len(virtual_ds.time)} samples from list of {len(virtual_datasets)} virtual datasets")
-fpath = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/manifest.parquet"
-virtual_ds.virtualize.to_kerchunk(fpath, format='parquet')
+fpath = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/aggregate_manifest"
+
+storage = icechunk.local_filesystem_storage(fpath)
+repo = icechunk.Repository.create(storage)
+
+session = repo.writable_session("main")
+virtual_ds.virtualize.to_icechunk(session.store)
+session.commit("Committed aggregate manifest!")
 print(f"Time taken for entire dataset is {time.time() - start_time} seconds")
