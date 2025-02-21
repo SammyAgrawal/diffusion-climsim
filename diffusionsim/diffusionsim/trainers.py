@@ -35,6 +35,7 @@ class AbstractTrainer(ABC):
         self.exp_id = tconfig.exp_id
         self.training_config = tconfig
         self.device, self.rank = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu', rank
+        print(f"Using device: {self.device}")
         self.distributed = bool(tconfig.distributed_training)
         self.model, self.dataloaders, self.loss_fn, self.optimizer = model, dict(train=dataloader), loss_fn, optim
         self._set_directories(base_dir=base_dir)

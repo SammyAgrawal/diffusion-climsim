@@ -21,13 +21,9 @@ _ROOT = os.path.abspath(os.path.dirname(__file__))
 def get_path(file):
     return os.path.join(_ROOT, 'climsim_data', file)
 
-def load_raw_dataset(dconfig):
-    kwargs = {}
-    if(dconfig.source == "local"):
-        kwargs['base_dir'] = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/train"
-        kwargs['grid_info'] = xr.open_dataset(os.path.join(kwargs['base_dir'], "ClimSim_low-res_grid-info.nc"))
-    
-    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, use_tendencies=dconfig.use_tendencies, **kwargs)
+def load_raw_dataset(dconfig, **kwargs):
+    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, 
+                              use_tendencies=dconfig.use_tendencies, data_dir=dconfig.data_dir, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
     if(dconfig.source == "gcsfs"):
         fs = gcsfs.GCSFileSystem()
@@ -35,8 +31,6 @@ def load_raw_dataset(dconfig):
         dsi = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
         mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
         dso = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
-        dsi = dsi[dutils.input_vars].rename({'sample':'time'})
-        dso = dso[dutils.target_vars].rename({'sample': 'time'})
     
     elif(dconfig.source == "huggingface" or dconfig.source == "local"):
         year = int(input("Input year: "))
@@ -50,8 +44,9 @@ def load_raw_dataset(dconfig):
         storage = icechunk.local_filesystem_storage(dconfig.data_dir)
         repo = icechunk.Repository.open(storage)
         session = repo.writable_session("main")
-        ds = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})
-        dsi = dso = ds[dutils.target_vars]
+        with session.allow_pickling():
+            ds = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})
+            dsi = dso = ds[dutils.target_vars]
     
     elif(dconfig.source == "numpy"):
         X, Y = load_numpy_arrays(dconfig)
@@ -82,8 +77,6 @@ def load_raw_dataset(dconfig):
 def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     # data source is either a google cloud bucket, local file path, or tries to load directly from Huggingface
     ds_type = expand_ds_name(ds_type)
-    if('normalize' not in kwargs):
-        kwargs['normalize'] = True
     if('grid_info' in kwargs):
         grid_info = kwargs['grid_info']
     else:
@@ -93,11 +86,11 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     data = data_utils(data_source, ds_type, grid_info.compute(), use_tendencies)
     if(data_source == 'huggingface'):
         data.data_path = f"https://huggingface.co/datasets/LEAP/{ds_type}/resolve/main/train/"
-    elif(data_source == 'local'):
+    elif(data_source == "gcsfs" or "vzarr" in data_source):
+        pass
+    elif('local' in data_source):
         assert 'base_dir' in kwargs, "Need to provide base path via base_dir arg"
         data.data_path = kwargs['base_dir']
-    elif(data_source == "gcsfs"):
-        pass
     else:
         print("Invalid data source, must be huggingface, local, or gcsfs")
     if(data_vars == 'v1'):
@@ -105,7 +98,7 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     elif(data_vars == 'v2'):
         data.set_to_v2_vars()
 
-    if(False):
+    if('normalize' not in kwargs or kwargs['normalize']):
         input_mean, input_max, input_min, output_scale = get_norm_info("scale")
         data.set_norm_info(input_mean, input_max, input_min, output_scale)
     return(data)

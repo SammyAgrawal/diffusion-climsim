@@ -52,7 +52,7 @@ class DataConfig:
     dataset_type: str = "XBatchDataset"
     climsim_type: str = "expanded-low-res"
     source: str = "gcsfs"
-    data_dir: str = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/" # only if source is local
+    data_dir: str = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/"
     train_test_split: List[int] = field(default_factory=lambda: [1.0, 0.0])
     dataloader_params: TrainLoaderParams = field(default_factory=lambda: TrainLoaderParams())
     xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)
@@ -122,7 +122,6 @@ class SchedulerParams:
     clip_sample: bool = False
     clip_sample_range: float = 4.0
 
-
 @dataclass
 class ModelConfig:
     model_type: str = "diffusion"
@@ -141,7 +140,6 @@ class ModelConfig:
             self.unet = UNetParams(**self.unet)
         if isinstance(self.scheduler, dict):
             self.scheduler = SchedulerParams(**self.scheduler)  
-
 
 
 def load_config(fname, expid, base_dir="experiments/"):

@@ -49,15 +49,18 @@ def load_dataset(dconfig, log=False):
     return(datasets, indices)
 
 def load_dataloader(dconfig, log=False):
-    dataset, indices = load_dataset(dconfig, log)
+    datasets, indices = load_dataset(dconfig, log)
     params = asdict(dconfig.dataloader_params)
-    match dconfig.dataset_type.lower():
-        case ds if "xbatch" in ds or "image" in ds:
-            # batch size is already set via xbatcher in dataset sample; dataloader should just return one item
-            params['batch_size'] = 1
-            return(DataLoader(dataset, collate_fn=collate_test_fn, **params))
-        case _:
-            return(DataLoader(dataset, **params))
+    dataloaders = []
+    for dataset in datasets:
+        match dconfig.dataset_type.lower():
+            case ds if "xbatch" in ds or "image" in ds:
+                # batch size is already set via xbatcher in dataset sample; dataloader should just return one item
+                params['batch_size'] = 1
+                dataloaders.append(DataLoader(dataset, collate_fn=collate_test_fn, **params))
+            case _:
+                dataloaders.append(DataLoader(dataset, **params))
+    return(dataloaders)
 
 def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr'):
     datasets, indices = [], []
