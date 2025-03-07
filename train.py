@@ -24,7 +24,7 @@ if __name__ == "__main__":
     #typer.run(main)
     #typer.run(test_args)
     exp_id = "empire_testrun"
-    run_id = "trial_1"
+    run_id = "trial_2"
     exp_dir = "/mnt/home/ssa2206/diffusion-climsim/experiments"
     tconfig, mconfig, dconfig = tru.load_config(run_id, exp_id, exp_dir)
     run_start_time = data.log_event("run start", 

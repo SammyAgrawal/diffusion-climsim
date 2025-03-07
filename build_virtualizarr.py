@@ -1,7 +1,7 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join('diffusionsim')))
-#import diffusers
+sys.path.append('/diffusionsim')
+import diffusers
 import diffusionsim as diff
 import diffusionsim.training_utils as tru
 from diffusionsim import mydatasets as data
@@ -13,8 +13,6 @@ import icechunk
 import time 
 import numpy as np
 path = lambda fname : os.path.join(os.path.expanduser("~/diffusion-climsim/"), fname)
-
-
 
 def iterate_months():
     for year in range(1,10):
@@ -30,6 +28,8 @@ dconfig = tru.DataConfig()
 dconfig.source = "huggingface"
 dconfig.climsim_type = "low-res-expanded"
 
+print(f"Building virtualizarr manifest for Climsim {dconfig.climsim_type} using {dconfig.source} data")
+
 kwargs = {
     'base_dir' : "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/train",
     'normalize' : False,
@@ -41,55 +41,48 @@ dutils = cut.setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data
 manifest_dir = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/hf_manifests/"
 
 input_storage = icechunk.local_filesystem_storage(manifest_dir + dutils.mlivar)
-input_repo = icechunk.Repository.create(input_storage)
+input_repo = icechunk.Repository.open(input_storage)
 
 target_storage = icechunk.local_filesystem_storage(manifest_dir + "mlo")
-target_repo = icechunk.Repository.create(target_storage)
+target_repo = icechunk.Repository.open(target_storage)
 
+
+def fetch_virtual_datasets(year, month):
+    monthly_input_vds = []
+    monthly_target_vds = []
+    dutils.set_filelist_using_hfhub("train", year, month, stride_sample=1)
+    print(f"Virtualizing {len(dutils.get_filelist('train'))} files for {year}-{month}")
+    for fname in dutils.get_filelist('train'):
+        try:
+            monthly_input_vds.append(dutils.get_xrdata(fname, virtual=True))
+            monthly_target_vds.append(dutils.get_xrdata(fname.replace(f'.{dutils.mlivar}.','.mlo.'), virtual=True))
+        except Exception as e:
+            print(f"Error virtualizing {fname}: {e}")
+    vds_inputs = xr.combine_nested(monthly_input_vds, concat_dim=['time'])
+    vds_targets = xr.combine_nested(monthly_target_vds, concat_dim=['time'])
+    return vds_inputs, vds_targets
+
+
+def add_period(vds, commit_message, repo, appending=True):
+    session = repo.writable_session("main")
+    print(f"Saving ds of size {vds.sizes}")
+    if(appending):
+        vds.virtualize.to_icechunk(session.store, append_dim='time')
+    else:
+        vds.virtualize.to_icechunk(session.store)
+    msg = session.commit(commit_message)
+    print(f"Committed {commit_message}, period added {msg}")
 
 
 for year in range(1,10):
     for month in range(1,13):
-        if(year == 1 and month == 1):
+        if(year == 1 and month < 4): # months 2 and 3 already added
             continue
         if(year == 9 and month > 1):
             break
         start_time = time.time()
+        vds_inputs, vds_targets = fetch_virtual_datasets(year, month)
+        add_period(vds_inputs, f"Appended {year}-{month} for inputs", input_repo)
+        add_period(vds_targets, f"Appended {year}-{month} for targets", target_repo)
 
-        monthly_input_vds = [] # for safety, also store monthly vds
-        monthly_target_vds = []
-
-        dutils.set_filelist_using_hfhub("train", year, month, stride_sample=1)
-        print(f"Virtualizing {len(dutils.get_filelist('train'))} files for {year}-{month}")
-
-        for fname in dutils.get_filelist('train'):
-            try:
-                monthly_input_vds.append(dutils.get_xrdata(fname, virtual=True))
-                monthly_target_vds.append(dutils.get_xrdata(fname.replace(f'.{dutils.mlivar}.','.mlo.'), virtual=True))
-            except Exception as e:
-                print(f"Error opening {fname}: {e}")
-                continue
-        
-        try:
-            session = input_repo.writable_session("main")
-            virtual_inputs = xr.combine_nested(monthly_input_vds, concat_dim=['time'])
-            if(year == 1 and month == 1):
-                 virtual_inputs.virtualize.to_icechunk(session.store)
-            else:
-                 virtual_inputs.virtualize.to_icechunk(session.store, append_dim='time')
-            session.commit(f"Appended {year}-{month} for inputs")
-            
-            session = target_repo.writable_session("main")
-            virtual_targets = xr.combine_nested(monthly_target_vds, concat_dim=['time'])
-            if(year == 1 and month == 1):
-                virtual_targets.virtualize.to_icechunk(session.store)
-            else:
-                virtual_targets.virtualize.to_icechunk(session.store, append_dim='time')
-            session.commit(f"Appended {year}-{month} for targets")
-        except Exception as e:
-            print(f"Error virtualizing {year}-{month}: {e}")
-            continue
         print(f"Time taken for {year}-{month}: {(time.time() - start_time)/60} minutes")
-    
-
-
