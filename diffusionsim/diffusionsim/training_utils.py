@@ -83,6 +83,7 @@ class TrainingConfig:
     gradient_accumulation_steps = 1
     lr_warmup_steps = 500
     mixed_precision = "fp16"
+    max_T_sample: int = 100
     # logging params
     save_best_epoch: bool = True
     batch_logging_interval: int = 4
@@ -121,6 +122,8 @@ class SchedulerParams:
     beta_schedule: str = 'linear'
     clip_sample: bool = False
     clip_sample_range: float = 4.0
+    beta_end: float = 0.02
+    beta_schedule: str = 'linear'
 
 @dataclass
 class ModelConfig:

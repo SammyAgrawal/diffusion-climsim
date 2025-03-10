@@ -264,7 +264,7 @@ class DiffusionTrainer(AbstractTrainer):
                 tt0 = log_event("training start", batch=step)
                 # Given a batch from a dataloader on the dataset, return a noised sample
                 noises = torch.randn(images.shape, device=self.device)
-                timesteps = torch.randint(0, self.scheduler.config.num_train_timesteps, 
+                timesteps = torch.randint(0, self.training_config.max_T_sample, 
                                 size=(images.shape[0],), device=self.device, dtype=torch.int64)
                 images = self.scheduler.add_noise(images.to(self.device), noises, timesteps)
                 loss = self._run_batch(images, timesteps, noises, phase)
