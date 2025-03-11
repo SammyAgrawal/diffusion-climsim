@@ -34,13 +34,13 @@ def load_raw_dataset(dconfig, **kwargs):
 
     elif("vzarr" in dconfig.source):
         import icechunk
-        storage = icechunk.local_filesystem_storage(dconfig.data_dir + dutils.mlivar)
+        storage = icechunk.local_filesystem_storage(os.path.join(dconfig.data_dir, dutils.mlivar))
         repo = icechunk.Repository.open(storage)
         session = repo.writable_session("main")
         with session.allow_pickling():
             dsi = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})[dutils.input_vars]
         
-        storage = icechunk.local_filesystem_storage(dconfig.data_dir + "mlo")
+        storage = icechunk.local_filesystem_storage(os.path.join(dconfig.data_dir, dutils.target_vars))
         repo = icechunk.Repository.open(storage)
         session = repo.writable_session("main")
         with session.allow_pickling():

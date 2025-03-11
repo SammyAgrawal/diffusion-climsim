@@ -121,6 +121,83 @@ def noise_batch(scheduler, clean_images, device):
     timesteps = torch.randint(0, num_timesteps, size=(clean_images.shape[0],), device=device, dtype=torch.int64)
     noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
     return(noisy_images, timesteps, noise)
+    
+
+class ClimsimDataset(Dataset):
+    def __init__(self, dsi, dso, dconfig, log=False):
+        self.log = log
+        self.dsi, self.dso = dsi, dso
+        self.length = min(dsi.sizes['time'], dso.sizes['time']) * 384 
+        #assert self.dsi.sizes['time'] == self.dso.sizes['time'], "dsi and dso must have the same number of timesteps"
+
+        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+            self.mli = dsi.to_stacked_array(new_dim='mli', sample_dims=("time", "ncol")).mli
+            self.mlo = dso.to_stacked_array(new_dim='mlo', sample_dims=("time", "ncol")).mlo
+
+        self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='nc')
+        self.xm = self.X_mean[list(dsi.data_vars)].to_stacked_array(new_dim="mli", sample_dims=()).data 
+        self.xs = self.X_std[list(dsi.data_vars)].to_stacked_array(new_dim="mli", sample_dims=()).data 
+        self.ym = self.Y_mean[list(dso.data_vars)].to_stacked_array(new_dim="mlo", sample_dims=()).data 
+        self.ys = self.Y_std[list(dso.data_vars)].to_stacked_array(new_dim="mlo", sample_dims=()).data 
+
+
+        self.xgen = xbatcher.BatchGenerator(self.dsi, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
+        self.ygen = xbatcher.BatchGenerator(self.dso, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
+
+        dsi = dsi.to_stacked_array(new_dim="mli", sample_dims=("time", "ncol"))
+        self.X = dsi.stack(sample=("time", "ncol")).transpose("sample", "mli")
+        dso = dso.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
+        self.Y = dso.stack(sample=("time", "ncol")).transpose("sample", "mlo")
+
+    def __getitem__(self, idx):
+        if(self.log):
+            t0 = log_event("get-batch start", batch_idx=idx)
+        x, y = self.xgen[idx].load(), self.ygen[idx].load()
+        #x, y = self.normalize(x, y)
+        x, y = x.to_stacked_array(new_dim="mli", sample_dims=("time", "ncol")), y.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
+        x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
+        if(self.log):
+            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
+
+        return(self.X.isel(sample=idx), self.Y.isel(sample=idx))
+
+    def __getitem2__(self, idx):
+        if(self.log):
+            t0 = log_event("get-batch start", batch_idx=idx)
+        x, y = self.X[idx].load(), self.Y[idx].load()
+        #x, y = self.normalize(x, y)
+        x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
+        if(self.log):
+            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
+
+        return(self.dsi.isel(sample=idx), self.dso.isel(sample=idx))
+    
+    def __len__(self):
+        return(self.length)
+
+    def normalize(self, x, y):
+        x = (x - self.X_mean) / self.X_std
+        y = (y - self.Y_mean) / self.Y_std
+        return(x, y)
+
+
+    def index_var(self, var, level):
+        mli, mlo = list(self.mli.values), list(self.mlo.values)
+        if((var, level) in mli):
+            return(mli.index((var, level)))
+        elif((var, level) in mlo):
+            return(mlo.index((var, level)))
+        return(-1)
+
+    def reconstruct_X(self, X_norm):
+        X_rec = (X_norm * self.X_std) + self.X_mean
+        return(X_rec)
+    
+    def reconstruct_Y(self, Y_norm):
+        Y_rec = (Y_norm * self.Y_std) + self.Y_mean
+        return(Y_rec)
+    
+
 
 class ClimsimDatasetOld(Dataset):
     def __init__(self, X, Y, normalize=True):
@@ -146,22 +223,6 @@ class ClimsimDatasetOld(Dataset):
         X_norm = (X - self.X_mean) / self.X_std
         Y_norm = (Y - self.Y_mean) / self.Y_std
         return(X_norm, Y_norm)
-
-    def index_var(self, var, level):
-        mli, mli = list(self.mli.values), list(self.mlo.values)
-        if((var, level) in mli):
-            return(mli.index((var, level)))
-        elif((var, level) in mlo):
-            return(mlo.index((var, level)))
-        return(-1)
-
-    def reconstruct_X(self, X_norm):
-        X_rec = (X_norm * self.X_std) + self.X_mean
-        return(X_rec)
-    
-    def reconstruct_Y(self, Y_norm):
-        Y_rec = (Y_norm * self.Y_std) + self.Y_mean
-        return(Y_rec)
         
     def __len__(self):
         return(self.Y.shape[0])
