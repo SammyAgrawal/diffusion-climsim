@@ -140,9 +140,3 @@ delayed_list = [fetch_file(fname) for fname in list_of_fnames_per_monthyear] # e
 
 loaded_filelist = client.compute(delayed_list)
 vds_of_one_month = xr.combine_nested(loaded_filelist, concat_dim=['time']) # 2000 files, all virtual. 
-
-icechunk_store = #open one
-
-# append to it, commit
-
-for month, year in list_of_monthyears:
