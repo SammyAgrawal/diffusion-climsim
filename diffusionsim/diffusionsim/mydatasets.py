@@ -122,7 +122,7 @@ def noise_batch(scheduler, clean_images, device):
     noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
     return(noisy_images, timesteps, noise)
 
-class ClimsimDataset(Dataset):
+class ClimsimDatasetOld(Dataset):
     def __init__(self, X, Y, normalize=True):
         self.device = device
         self.mli, self.mlo = X.mli, Y.mlo
@@ -168,6 +168,8 @@ class ClimsimDataset(Dataset):
 
     def __getitem__(self, idx):
         return(self.X[idx], self.Y[idx])
+
+
 
 class ClimsimImageDataset(Dataset):
     def __init__(self, dsi, dso, dconfig, log=False):

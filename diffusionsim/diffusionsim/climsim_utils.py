@@ -31,22 +31,29 @@ def load_raw_dataset(dconfig, **kwargs):
         dsi = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
         mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
         dso = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
-    
+
+    elif("vzarr" in dconfig.source):
+        import icechunk
+        storage = icechunk.local_filesystem_storage(dconfig.data_dir + dutils.mlivar)
+        repo = icechunk.Repository.open(storage)
+        session = repo.writable_session("main")
+        with session.allow_pickling():
+            dsi = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})[dutils.input_vars]
+        
+        storage = icechunk.local_filesystem_storage(dconfig.data_dir + "mlo")
+        repo = icechunk.Repository.open(storage)
+        session = repo.writable_session("main")
+        with session.allow_pickling():
+            dso = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})[dutils.target_vars]
+        
+
+
     elif(dconfig.source == "huggingface" or dconfig.source == "local"):
         year = int(input("Input year: "))
         month = int(input("Input month: "))
         stride = int(input("Enter stride: "))
         dutils.set_filelist_using_hfhub('train', year, month, stride_sample=stride)
         dsi, dso = dutils.aggregate_file("train")
-    
-    elif("vzarr" in dconfig.source):
-        import icechunk
-        storage = icechunk.local_filesystem_storage(dconfig.data_dir)
-        repo = icechunk.Repository.open(storage)
-        session = repo.writable_session("main")
-        with session.allow_pickling():
-            ds = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})
-            dsi = dso = ds[dutils.target_vars]
     
     elif(dconfig.source == "numpy"):
         X, Y = load_numpy_arrays(dconfig)
@@ -663,15 +670,14 @@ class data_utils:
         return cftime.DatetimeNoLeap(year, month, day, hour, minute)
     
     def add_time(self, ds, time):
-        time = np.array([time])
-        ds = ds.expand_dims(time=time)
-        assert 'time' in ds.dims
-        ds["time"] = xr.CFTimeIndex(ds["time"].values)
-        """ds.time.encoding = {
+        ds = ds.expand_dims(time=xr.CFTimeIndex([time]))
+        ds.time.encoding = {
             # xref: https://cfconventions.org/Data/cf-conventions/cf-conventions-1.10/cf-conventions.html#time-coordinate
             "units": "minutes since 0001-02-01 00:00:00",
             "calendar": "noleap",
-        }"""
+            "dtype": "float64",  # Specify numeric dtype for time
+            "_FillValue": None,  # Prevent fill values for coordinate
+        }
         return(ds)
 
     def process_ds(self, ds, data_vars = None):

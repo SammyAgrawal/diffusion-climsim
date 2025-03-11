@@ -1,6 +1,8 @@
 import sys
 import os
 sys.path.append('/diffusionsim')
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
 import diffusionsim as diff
 import diffusionsim.training_utils as tru
 from diffusionsim import climsim_utils as cut
@@ -33,7 +35,7 @@ dconfig = tru.DataConfig()
 dconfig.source = "huggingface"
 dconfig.climsim_type = "low-res-expanded"
 
-print(f"Building virtualizarr manifest for Climsim {dconfig.climsim_type} using {dconfig.source} data")
+print(f"Building virtualizarr manifest for Climsim {dconfig.climsim_type} using {dconfig.source} data", flush=True)
 
 kwargs = {
     'base_dir' : "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/train",
@@ -54,7 +56,7 @@ target_repo = icechunk.Repository.open(target_storage)
 
 desired_chunksizes = {'time': 1024, 'ncol': 384, 'lev': 60}
 
-
+"""
 def write_timestamp(*, itime: int, session: Session) -> Session:
     # pass a list to isel to preserve the time dimension
     ds = xr.tutorial.open_dataset("rasm").isel(time=[itime])
@@ -71,6 +73,7 @@ with ThreadPoolExecutor() as executor:
     wait(futures)
 
 print(session.commit("finished writes"))
+"""
 
 
 
@@ -87,7 +90,7 @@ def fetch_virtual_datasets(year, month):
     monthly_input_vds = []
     monthly_target_vds = []
     dutils.set_filelist_using_hfhub("train", year, month, stride_sample=1)
-    print(f"Virtualizing {len(dutils.get_filelist('train'))} files for {year}-{month}")
+    print(f"Virtualizing {len(dutils.get_filelist('train'))} files for {year}-{month}", flush=True)
     for fname in dutils.get_filelist('train'):
         try:
             monthly_input_vds.append(fetch_file(fname))
@@ -101,13 +104,13 @@ def fetch_virtual_datasets(year, month):
 
 def add_period(vds, commit_message, repo, appending=True):
     session = repo.writable_session("main")
-    print(f"Saving ds of size {vds.sizes}")
+    print(f"Saving ds of size {vds.sizes}", flush=True)
     if(appending):
         vds.virtualize.to_icechunk(session.store, append_dim='time')
     else:
         vds.virtualize.to_icechunk(session.store)
     msg = session.commit(commit_message)
-    print(f"Committed {commit_message}, period added {msg}")
+    print(f"Committed {commit_message}, period added {msg}", flush=True)
 
 
 for year in range(6,10):
@@ -121,28 +124,4 @@ for year in range(6,10):
         add_period(vds_inputs, f"Appended {year}-{month} for inputs", input_repo)
         add_period(vds_targets, f"Appended {year}-{month} for targets", target_repo)
 
-        print(f"Time taken for {year}-{month}: {(time.time() - start_time)/60} minutes")
-
-
-
-
-import dask
-
-list_of_fnames_per_monthyear = [...]
-
-client = dask.distributed.Client(n_workers=20)
-
-@dask.delayed
-def fetch_file(fname):
-    return open_virtual_dataset(fname)
-
-delayed_list = [fetch_file(fname) for fname in list_of_fnames_per_monthyear] # every file in a month, like ~2000
-
-loaded_filelist = client.compute(delayed_list)
-vds_of_one_month = xr.combine_nested(loaded_filelist, concat_dim=['time']) # 2000 files, all virtual. 
-
-icechunk_store = #open one
-
-# append to it, commit
-
-for month, year in list_of_monthyears:
+        print(f"Time taken for {year}-{month}: {(time.time() - start_time)/60} minutes", flush=True)
