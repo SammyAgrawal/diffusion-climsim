@@ -56,26 +56,6 @@ target_repo = icechunk.Repository.open(target_storage)
 
 desired_chunksizes = {'time': 1024, 'ncol': 384, 'lev': 60}
 
-"""
-def write_timestamp(*, itime: int, session: Session) -> Session:
-    # pass a list to isel to preserve the time dimension
-    ds = xr.tutorial.open_dataset("rasm").isel(time=[itime])
-    # region="auto" tells Xarray to infer which "region" of the output arrays to write to.
-    ds.to_zarr(session.store, region="auto", consolidated=False)
-    return session
-
-from concurrent.futures import ThreadPoolExecutor, wait
-
-session = repo.writable_session("main")
-with ThreadPoolExecutor() as executor:
-    # submit the writes
-    futures = [executor.submit(write_timestamp, itime=i, session=session) for i in range(ds.sizes["time"])]
-    wait(futures)
-
-print(session.commit("finished writes"))
-"""
-
-
 
 def fetch_file(fname, dutils=dutils):
     path = os.path.join(dutils.data_path, fname)
@@ -124,4 +104,43 @@ for year in range(6,10):
         add_period(vds_inputs, f"Appended {year}-{month} for inputs", input_repo)
         add_period(vds_targets, f"Appended {year}-{month} for targets", target_repo)
 
-        print(f"Time taken for {year}-{month}: {(time.time() - start_time)/60} minutes", flush=True)
+        print(f"Time taken for {year}-{month}: {(time.time() - start_time)/60} minutes")
+
+
+"""
+
+import dask
+
+list_of_fnames_per_monthyear = [...]
+
+client = dask.distributed.Client(n_workers=20)
+
+@dask.delayed
+def fetch_file(fname):
+    return open_virtual_dataset(fname)
+
+delayed_list = [fetch_file(fname) for fname in list_of_fnames_per_monthyear] # every file in a month, like ~2000
+
+loaded_filelist = client.compute(delayed_list)
+vds_of_one_month = xr.combine_nested(loaded_filelist, concat_dim=['time']) # 2000 files, all virtual. 
+"""
+
+
+"""
+def write_timestamp(*, itime: int, session: Session) -> Session:
+    # pass a list to isel to preserve the time dimension
+    ds = xr.tutorial.open_dataset("rasm").isel(time=[itime])
+    # region="auto" tells Xarray to infer which "region" of the output arrays to write to.
+    ds.to_zarr(session.store, region="auto", consolidated=False)
+    return session
+
+from concurrent.futures import ThreadPoolExecutor, wait
+
+session = repo.writable_session("main")
+with ThreadPoolExecutor() as executor:
+    # submit the writes
+    futures = [executor.submit(write_timestamp, itime=i, session=session) for i in range(ds.sizes["time"])]
+    wait(futures)
+
+print(session.commit("finished writes"))
+"""
