@@ -8,7 +8,6 @@ import json
 import diffusers
 import diffusionsim as diff
 import diffusionsim.training_utils as tru
-from diffusionsim import mydatasets as data
 import torch
 from typing import Optional
 import typer
@@ -27,10 +26,10 @@ if __name__ == "__main__":
     run_id = "trial_2"
     exp_dir = "/mnt/home/ssa2206/diffusion-climsim/experiments"
     tconfig, mconfig, dconfig = tru.load_config(run_id, exp_id, exp_dir)
-    run_start_time = data.log_event("run start", 
+    run_start_time = tru.log_event("run start", 
         data_params = asdict(dconfig.dataloader_params),
     )
-    t0 = data.log_event("setup start", run_id=run_id)
+    t0 =  tru.log_event("setup start", run_id=run_id)
     pprint.pprint(asdict(tconfig))
     print("\n\n")
     pprint.pprint(asdict(mconfig))
@@ -38,7 +37,7 @@ if __name__ == "__main__":
     pprint.pprint(asdict(dconfig))
     print("\n\n", )
     trainer = tru.setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, exp_dir)
-    data.log_event("setup end", duration=time.time() - t0)
+    tru.log_event("setup end", duration=time.time() - t0)
     trainer.train(num_epochs=20, log=True, run_id=run_id)
     print("Done!")
-    data.log_event("run end", duration = time.time() - run_start_time)
+    tru.log_event("run end", duration = time.time() - run_start_time)

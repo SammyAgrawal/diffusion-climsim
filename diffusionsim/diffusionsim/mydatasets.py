@@ -50,7 +50,7 @@ def load_dataset(dconfig, log=False):
                 return(dsets, indices)
     return(datasets, indices)
 
-def load_dataloader(dconfig, log=False):
+def load_dataloaders(dconfig, log=False):
     datasets, indices = load_dataset(dconfig, log)
     params = asdict(dconfig.dataloader_params)
     dataloaders = []
