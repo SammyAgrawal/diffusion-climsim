@@ -164,6 +164,7 @@ class ClimsimDataset(Dataset):
     
     def __len__(self):
         return(self.length)
+
     def index_var(self, var, level):
         mli, mlo = list(self.mli.values), list(self.mlo.values)
         if((var, level) in mli):

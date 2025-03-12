@@ -5,15 +5,11 @@ from pathlib import Path
 import time
 import json
 #import diffusers
-import diffusionsim as diff
+
 import diffusionsim.training_utils as tru
-from diffusionsim import mydatasets as data
 import torch
 import torch.nn as nn
-from typing import Optional
-import typer
 from dataclasses import dataclass, asdict, field
-from typing_extensions import Annotated
 import pprint
 os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 
@@ -40,7 +36,7 @@ def define_configs():
     dconfig.data_dir = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/hf_manifests/"
     dconfig.train_test_split = [0.70, 0.30]
 
-    tconfig = diff.TrainingConfig()
+    tconfig = tru.TrainingConfig()
     tconfig.exp_id = 'climsim_training'
     tconfig.num_epochs = 5
     tconfig.phases = ['train']

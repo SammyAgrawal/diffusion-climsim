@@ -28,12 +28,12 @@ def setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, exp_dir="./experime
     model = load_model(mconfig)
     dataloaders, indices = load_dataloaders(dconfig)
     optimizer = create_optimizer(model, tconfig)
-    next(iter(dataloader[0])) # just to finish setting up
+    next(iter(dataloaders[0])) # just to finish setting up
     match mconfig.model_type:
         case mtype if "diffusion" in mtype:
             loss_fn = torch.nn.MSELoss()
             scheduler = load_scheduler(mconfig)
-            trainer = DiffusionTrainer(model, scheduler, dataloader, loss_fn, optimizer, tconfig, rank=0, base_dir=base_dir)
+            trainer = DiffusionTrainer(model, scheduler, dataloaders, loss_fn, optimizer, tconfig, rank=0, base_dir=base_dir)
 
     return(trainer)
 

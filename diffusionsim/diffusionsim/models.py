@@ -2,10 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass, asdict, field
-try:
-    import diffusers
-except:
-    print("Diffusers not in workspace, not all models can be loaded")
+from . import DIFFUSERS_AVAILABLE
+
+if DIFFUSERS_AVAILABLE:
+    from . import diffusers
 
 def move_device(model, new_device):
     print("Moving model to ", new_device)

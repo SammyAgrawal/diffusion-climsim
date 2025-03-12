@@ -32,6 +32,7 @@ def create_optimizer(model, tconfig):
 
 class AbstractTrainer(ABC):
     def __init__(self, model, dataloaders, loss_fn, optim, tconfig, base_dir, rank):
+        print(f"Initializing trainer with rank: {rank}")
         self.exp_id = tconfig.exp_id
         self.training_config = tconfig
         self.device, self.rank = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu', rank
