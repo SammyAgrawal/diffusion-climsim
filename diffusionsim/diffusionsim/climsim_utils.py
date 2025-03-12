@@ -28,9 +28,9 @@ def load_raw_dataset(dconfig, **kwargs):
     if(dconfig.source == "gcsfs"):
         fs = gcsfs.GCSFileSystem()
         mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr')
-        dsi = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
+        dsi = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)[dutils.input_vars].rename({"sample" : "time"})
         mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
-        dso = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)
+        dso = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)[dutils.target_vars].rename({"sample" : "time"})
 
     elif("vzarr" in dconfig.source):
         import icechunk

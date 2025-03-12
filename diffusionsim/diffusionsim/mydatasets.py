@@ -44,6 +44,8 @@ def load_dataset(dconfig, log=False):
                 datasets.append(XBatchDataset(dso, dconfig, log=log))
             case ds if "image" in ds:
                 datasets.append(ClimsimImageDataset(dsi, dso, dconfig, log))
+            case ds if "climsim" in ds:
+                datasets.append(ClimsimDataset(dsi, dso, dconfig, log))
             case _:
                 return(dsets, indices)
     return(datasets, indices)
@@ -88,17 +90,17 @@ def get_norm_info(style='image'):
     if(style=='image'):    
         X_mean = xr.open_dataset(get_path("image_xmean.nc"))
         X_std = xr.open_dataset(get_path("image_xstd.nc"))
-        Y_mean = xr.open_dataset(get_path("output_mean.nc"))
-        Y_std = xr.open_dataset(get_path("output_std.nc"))
+        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
+        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
         Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
         return(X_mean, X_std, Y_mean, Y_std)
     elif(style=='nc'):
         input_mean = xr.open_dataset(get_path('input_mean.nc'))
-        input_std = xr.open_dataset(get_path('input_std.nc'))
-        output_mean = xr.open_dataset(get_path('output_mean.nc'))
-        output_std = xr.open_dataset(get_path('output_std.nc'))
-        output_std['cam_out_PRECSC'] = output_std.cam_out_PRECSC.mean()
-        return(input_mean, input_std, output_mean, output_std)
+        input_max = xr.open_dataset(get_path('input_max.nc'))
+        input_min = xr.open_dataset(get_path('input_min.nc'))
+        output_scale = xr.open_dataset(get_path('output_scale.nc'))
+        #output_std['cam_out_PRECSC'] = output_std.cam_out_PRECSC.mean()
+        return(input_mean, input_max, input_min, output_scale)
 
 def load_scheduler(mconfig):
     def pass_config(func, data_class):
@@ -127,60 +129,40 @@ class ClimsimDataset(Dataset):
     def __init__(self, dsi, dso, dconfig, log=False):
         self.log = log
         self.dsi, self.dso = dsi, dso
-        self.length = min(dsi.sizes['time'], dso.sizes['time']) * 384 
         #assert self.dsi.sizes['time'] == self.dso.sizes['time'], "dsi and dso must have the same number of timesteps"
 
-        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-            self.mli = dsi.to_stacked_array(new_dim='mli', sample_dims=("time", "ncol")).mli
-            self.mlo = dso.to_stacked_array(new_dim='mlo', sample_dims=("time", "ncol")).mlo
+        input_vars, target_vars = list(dsi.data_vars), list(dso.data_vars) 
+        self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='image')
+        self.xm = self.X_mean[input_vars].mean(dim=['ncol']).to_stacked_array(new_dim='mli', sample_dims=())
+        self.xs = self.X_std[input_vars].mean(dim=['ncol']).to_stacked_array(new_dim='mli', sample_dims=())
+        self.ym = self.Y_mean[target_vars].mean(dim=['ncol']).to_stacked_array(new_dim='mlo', sample_dims=())
+        self.ys = self.Y_std[target_vars].mean(dim=['ncol']).to_stacked_array(new_dim='mlo', sample_dims=())
 
-        self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='nc')
-        self.xm = self.X_mean[list(dsi.data_vars)].to_stacked_array(new_dim="mli", sample_dims=()).data 
-        self.xs = self.X_std[list(dsi.data_vars)].to_stacked_array(new_dim="mli", sample_dims=()).data 
-        self.ym = self.Y_mean[list(dso.data_vars)].to_stacked_array(new_dim="mlo", sample_dims=()).data 
-        self.ys = self.Y_std[list(dso.data_vars)].to_stacked_array(new_dim="mlo", sample_dims=()).data 
-
-
-        self.xgen = xbatcher.BatchGenerator(self.dsi, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
-        self.ygen = xbatcher.BatchGenerator(self.dso, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
+        self.mli, self.mlo = self.xm.mli, self.ym.mlo
+        
+        #self.xgen = xbatcher.BatchGenerator(self.dsi, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
+        #self.ygen = xbatcher.BatchGenerator(self.dso, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
 
         dsi = dsi.to_stacked_array(new_dim="mli", sample_dims=("time", "ncol"))
         self.X = dsi.stack(sample=("time", "ncol")).transpose("sample", "mli")
         dso = dso.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
         self.Y = dso.stack(sample=("time", "ncol")).transpose("sample", "mlo")
+        self.length = min(self.X.shape[0], self.Y.shape[1])
 
     def __getitem__(self, idx):
         if(self.log):
             t0 = log_event("get-batch start", batch_idx=idx)
-        x, y = self.xgen[idx].load(), self.ygen[idx].load()
-        #x, y = self.normalize(x, y)
-        x, y = x.to_stacked_array(new_dim="mli", sample_dims=("time", "ncol")), y.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
-        x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
-        if(self.log):
-            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
-
-        return(self.X.isel(sample=idx), self.Y.isel(sample=idx))
-
-    def __getitem2__(self, idx):
-        if(self.log):
-            t0 = log_event("get-batch start", batch_idx=idx)
         x, y = self.X[idx].load(), self.Y[idx].load()
-        #x, y = self.normalize(x, y)
+        x = (x - self.xm) / self.xs
+        y = (y - self.ym) / self.ys
         x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
         if(self.log):
             log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
 
-        return(self.dsi.isel(sample=idx), self.dso.isel(sample=idx))
+        return(x, y)
     
     def __len__(self):
         return(self.length)
-
-    def normalize(self, x, y):
-        x = (x - self.X_mean) / self.X_std
-        y = (y - self.Y_mean) / self.Y_std
-        return(x, y)
-
-
     def index_var(self, var, level):
         mli, mlo = list(self.mli.values), list(self.mlo.values)
         if((var, level) in mli):
