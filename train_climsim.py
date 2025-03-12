@@ -99,7 +99,7 @@ if __name__ == "__main__":
     run_start_time = tru.log_event("run start", 
         data_params = asdict(dconfig.dataloader_params),
     )
-    t0 = data.log_event("setup start", run_id=run_id)
+    t0 = tru.log_event("setup start", run_id=run_id)
     pprint.pprint(asdict(tconfig))
     print("\n\n")
     pprint.pprint(asdict(mconfig))
@@ -126,7 +126,7 @@ if __name__ == "__main__":
                    tconfig, base_dir, use_distribution_loss, use_diffusion_loss, rank=0)
 
 
-    data.log_event("setup end", duration=time.time() - t0)
+    tru.log_event("setup end", duration=time.time() - t0)
     trainer.train(num_epochs=5, log=True, run_id=run_id)
     print("Done!")
-    data.log_event("run end", duration = time.time() - run_start_time)
+    tru.log_event("run end", duration = time.time() - run_start_time)
