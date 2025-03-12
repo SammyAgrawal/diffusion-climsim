@@ -46,8 +46,6 @@ def load_raw_dataset(dconfig, **kwargs):
         with session.allow_pickling():
             dso = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})[dutils.target_vars]
         
-
-
     elif(dconfig.source == "huggingface" or dconfig.source == "local"):
         year = int(input("Input year: "))
         month = int(input("Input month: "))

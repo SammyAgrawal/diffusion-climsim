@@ -5,6 +5,7 @@ try:
     import diffusers
     DIFFUSERS_AVAILABLE = True
 except ImportError:
+    print("this is __init__.py and DIFFUSERS_AVAILABLE is ", DIFFUSERS_AVAILABLE)
     print("Diffusers not in workspace, not all models can be loaded")
 
 # If you need to expose diffusers to other modules
