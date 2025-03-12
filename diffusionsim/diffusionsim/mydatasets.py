@@ -150,10 +150,13 @@ class ClimsimDataset(Dataset):
         self.Y = dso.stack(sample=("time", "ncol")).transpose("sample", "mlo")
         self.length = min(self.X.shape[0], self.Y.shape[1])
 
+        self.xgen = xbatcher.BatchGenerator(self.X, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mli=124), preload_batch=False,)
+        self.ygen = xbatcher.BatchGenerator(self.Y, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mlo=128), preload_batch=False,)
+
     def __getitem__(self, idx):
         if(self.log):
             t0 = log_event("get-batch start", batch_idx=idx)
-        x, y = self.X[idx].load(), self.Y[idx].load()
+        x, y = self.xgen[idx].load(), self.ygen[idx].load()
         x = (x - self.xm) / self.xs
         y = (y - self.ym) / self.ys
         x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)

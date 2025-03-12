@@ -177,7 +177,7 @@ class ClimsimTrainer(AbstractTrainer):
                 batch_losses = self._run_batch(X, Y, phase)
                 epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step)
                 log_event("training end", batch=step, duration= time.time() - tt0)
-                if(step % 50 == 0):
+                if(step % 2 == 0):
                     print(f"Currently at epoch {epoch}, step {step}")
         return(epoch_losses)
 
