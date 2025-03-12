@@ -56,7 +56,7 @@ def load_dataloaders(dconfig, log=False):
     dataloaders = []
     for dataset in datasets:
         match dconfig.dataset_type.lower():
-            case ds if "xbatch" in ds or "image" in ds:
+            case ds if "xbatch" in ds or "image" in ds or "climsim" in ds:
                 # batch size is already set via xbatcher in dataset sample; dataloader should just return one item
                 params['batch_size'] = 1
                 dataloaders.append(DataLoader(dataset, collate_fn=collate_test_fn, **params))
