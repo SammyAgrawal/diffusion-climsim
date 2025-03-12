@@ -5,7 +5,6 @@ from pathlib import Path
 import time
 import json
 #import diffusers
-
 import diffusionsim.training_utils as tru
 import torch
 import torch.nn as nn
@@ -21,10 +20,10 @@ print(f"Using device: {device}")
 
 def define_configs():
     dl_params = tru.TrainLoaderParams()
-    dl_params.batch_size = 64
+    dl_params.batch_size = 128
     dl_params.shuffle = False
-    dl_params.num_workers = 8
-    dl_params.prefetch_factor = 6
+    dl_params.num_workers = 4
+    dl_params.prefetch_factor = 3
     dl_params.persistent_workers = True
     dl_params.multiprocessing_context = "forkserver"
 
@@ -120,6 +119,10 @@ if __name__ == "__main__":
 
     loss_fn = nn.MSELoss()
     optimizer = tru.create_optimizer(model, tconfig)
+    print("Testing batch fetch")
+    print(dataloaders[0].dataset.X)
+    print(dataloaders[0].dataset.X[0])
+    print(dataloaders[0].dataset.X[0].load())
     next(iter(dataloaders[0])) # just to finish setting up
 
     trainer = tru.ClimsimTrainer(model, dataloaders, loss_fn, optimizer, 
