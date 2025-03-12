@@ -9,8 +9,8 @@ import json
 import torch
 
 from .models import load_model
-from .mydatasets import load_dataset, load_dataloader, load_scheduler
-from .trainers import VAETrainer, DiffusionTrainer, create_optimizer
+from .mydatasets import load_dataset, load_dataloaders, load_scheduler, log_event
+from .trainers import VAETrainer, ClimsimTrainer, DiffusionTrainer, create_optimizer
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Tuple
 
@@ -26,7 +26,7 @@ def setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, exp_dir="./experime
             data_config=asdict(dconfig),
         ), f)
     model = load_model(mconfig)
-    dataloader = load_dataloader(dconfig)
+    dataloader = load_dataloaders(dconfig)
     optimizer = create_optimizer(model, tconfig)
     next(iter(dataloader)) # just to finish setting up
     match mconfig.model_type:
@@ -78,7 +78,7 @@ class TrainingConfig:
     betas: Tuple[float, float] = (0.9, 0.999)
     lr_scheduler: str = None
     learning_rate: float = 1e-4
-    beta: float = 0.2 # VAE Kl div beta
+    loss_weights: Dict = field(default_factory=lambda: {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2})
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
     lr_warmup_steps = 500
@@ -94,6 +94,7 @@ class TrainingConfig:
     
     def __post_init__(self):
         self.shuffle_data = {'train':False, 'eval':False}
+
 @dataclass
 class UNetParams:
     sample_size: Tuple[int, int] = field(default_factory=lambda: (16, 24))

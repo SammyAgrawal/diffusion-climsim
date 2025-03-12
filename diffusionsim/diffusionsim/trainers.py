@@ -31,15 +31,20 @@ def create_optimizer(model, tconfig):
     return(optim)
 
 class AbstractTrainer(ABC):
-    def __init__(self, model, dataloaders, loss_fn, optim, tconfig, rank=0, base_dir=''):
+    def __init__(self, model, dataloaders, loss_fn, optim, tconfig, rank=0, base_dir):
         self.exp_id = tconfig.exp_id
         self.training_config = tconfig
         self.device, self.rank = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu', rank
         print(f"Using device: {self.device}")
         self.distributed = bool(tconfig.distributed_training)
+        self.dataloaders = {}
         if(type(dataloaders) == list):
-            dataloaders = dataloaders[0]
-        self.dataloaders = dict(train=dataloaders)
+            phases = ['train', 'eval']
+            for i in range(len(dataloaders)):
+                self.dataloaders[phases[i]] = dataloaders[i]
+        else:
+            self.dataloaders['train'] = dataloaders
+
         self.model, self.loss_fn, self.optimizer = model, loss_fn, optim
         self._set_directories(base_dir=base_dir)
         self.current_run_id = ""
@@ -49,9 +54,7 @@ class AbstractTrainer(ABC):
             self.exp_id = "dist_" + self.exp_id
             self.model = torch.nn.parallel.DistributedDataParallel(self.model.to(self.device), device_ids=[rank])
 
-    def _set_directories(self, directories='default', base_dir=''):
-        if(not base_dir):
-            base_dir = f"experiments/{self.exp_id}"
+    def _set_directories(self, base_dir, directories='default'):
         if(directories == 'default'):
             self.dirs = dict(
                 log_dir = base_dir,
@@ -84,7 +87,7 @@ class AbstractTrainer(ABC):
         pass
     
     def train(self, num_epochs, log=True, run_id='trialx'):
-        self.setup_training(num_epochs)
+        self.setup_training(num_epochs, run_id)
         for epoch in range(num_epochs):
             print(f"Epoch {epoch+1}/{num_epochs}")
             print("_" * 10)
@@ -104,6 +107,7 @@ class AbstractTrainer(ABC):
         if(self.training_config.log_gradients):
             self.gradients = []
         self.current_run_id = run_id
+        self.best_loss = 10000
 
     def finish_training(self, log, num_epochs):
         print(f"Finished training {num_epochs} epochs.")
@@ -121,7 +125,150 @@ class AbstractTrainer(ABC):
             with open(self.log_file, 'w') as f:
                 json.dump(log_dict, f)
             return(log_dict)
+
+class ClimsimTrainer(AbstractTrainer):
+    def __init__(self, model, dataloaders, loss_fn, optim, tconfig, rank=0, base_dir, use_dist_loss=False, use_diff_loss=False, **kwargs):
+        super().__init__(model, dataloaders, loss_fn, optim, tconfig, rank, base_dir)
+        self.use_dist_loss = use_dist_loss
+        self.use_diff_loss = use_diff_loss
+        self.lambda_0 = tconfig.loss_weights['mse']
+        self.tracked_losses = ["mse", "total"]
+
+        if(use_dist_loss):
+            self.lambda_1 = tconfig.loss_weights['distribution']
+            self.tracked_losses.append("distribution")
+
+        if(use_diff_loss):
+            assert 'unet' in kwargs, "Need to pass in diffusion model"
+            assert 'scheduler' in kwargs, "Need to pass in scheduler"
+            self.unet = kwargs['unet']
+            self.scheduler = kwargs['scheduler']
+            self.tracked_losses.append("diffusion")
+            self.lambda_2 = tconfig.loss_weights['diffusion']
+    
+    def setup_training(self, num_epochs, run_id):
+        super().setup_training(num_epochs, run_id)
+        self.losses = dict()
+        for loss_type in self.tracked_losses:
+            self.losses[loss_type] = []
+
+    def _run_epoch(self, epoch, phase='train'):
+        self.model.train(phase=='train')
+
+        """
+        Tracking 3 kinds of losses, which can be confusing: 
+        batch_losses: losses for a single batch. Because there might be many batches in an epoch, do not save every single batch loss
+        current_losses: instead, divide epoch into batch_logging_interval sized sections, and save the mean of the losses for each section
+        epoch_losses: the number of loss items saved for a single epoch is (batches_per_epoch / batch_logging_interval) 
+        """
+
+        epoch_losses = {}
+        current_losses = {}
+        for loss in self.tracked_losses:
+            epoch_losses[loss] = []
+            current_losses[loss] = 0.0
         
+        with torch.set_grad_enabled(phase=='train'):
+            if(self.distributed):
+                self.dataloaders[phase].sampler.set_epoch(epoch)
+            for step, (X, Y) in enumerate(self.dataloaders[phase]):
+                tt0 = log_event("training start", batch=step)
+                batch_losses = self._run_batch(X, Y, phase)
+                epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step)
+                log_event("training end", batch=step, duration= time.time() - tt0)
+                if(step % 50 == 0):
+                    print(f"Currently at epoch {epoch}, step {step}")
+        return(epoch_losses)
+
+    def log_step(self, epoch_losses, current_losses, batch_losses, epoch, step, phase='train'):
+        bli = self.training_config.batch_logging_interval
+        for loss_type in self.tracked_losses:
+            current_losses[loss_type] += batch_losses[loss_type]
+            if((step+1) % bli == 0):
+                # entering new batch logging section, save avg and reset total counter
+                epoch_losses[loss_type].append(current_losses[loss_type] / bli)
+                current_losses[loss_type] = 0.0
+            if(step + 1 == len(self.dataloaders[phase])):
+                # last batch of epoch
+                remainder_steps = len(self.dataloaders[phase]) % bli
+                epoch_losses[loss_type].append(current_losses[loss_type] / remainder_steps)
+                current_losses[loss_type] = 0.0
+
+        if ((step+1) % self.training_config.batch_checkpoint_interval == 0):
+            print(f"epoch {epoch}, step {step}: saving checkpoint")
+            self._save_checkpoint(epoch, cid='')
+        return(epoch_losses, current_losses)
+
+    def _log_epoch_info(self, epoch_num, epoch_stats):
+        logs_per_epoch = self.batches_per_epoch // self.training_config.batch_logging_interval + 1
+        for loss_type in self.tracked_losses:
+            avg_loss_value = sum(epoch_stats[loss_type]) / len(epoch_stats[loss_type])
+            self.losses[loss_type] = self.losses[loss_type] + epoch_stats[loss_type]
+            print(f"avg {loss_type} loss for epoch {epoch_num}: {avg_loss_value}")
+            if(loss_type == 'total' and avg_loss_value < self.best_loss and self.rank == 0 and phase == 'train'):
+                print(f"saving new checkpoint at epoch {epoch_num}")
+                self.best_loss = avg_loss_value
+                self._save_checkpoint(epoch_num, cid='best') # TODO: I dont think this is running
+
+    def _run_batch(self, x, y, phase):
+        t0 = log_event("run-batch start")
+        y_hat = self.model(x)
+        mse_loss = self.loss_fn(y_hat, y)
+        batch_losses = dict(mse=mse_loss.item())
+        total_loss = self.lambda_0 * mse_loss
+        if(self.use_dist_loss):
+            dist_loss = self.distribution_loss(y, y_hat)
+            total_loss += self.lambda_1 * dist_loss
+            batch_losses['distribution'] = dist_loss.item()
+        
+        if(self.use_diff_loss):
+            diff_loss = self.diffusion_loss(y, y_hat, T)
+            total_loss += self.lambda_2 * diff_loss
+            batch_losses['diffusion'] = diff_loss.item()
+
+        batch_losses['total'] = total_loss.item()
+        
+        if(phase == 'train'):
+            self.optimizer.zero_grad()
+            total_loss.backward()
+            if(self.training_config.clip_gradients):
+                total_grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.optimizer.step()
+        log_event("run-batch end", duration=time.time() - t0)
+        return(batch_losses)
+    
+    def distribution_loss(self, y, yhat):
+        raise NotImplementedError("Distribution loss not implemented")
+    
+    def diffusion_loss(self, y, yhat, T: int):
+        raise NotImplementedError("Diffusion loss not implemented")
+        # TODO: y and yhat are of size (B, 128) and somehow need to convert into images for diffusion loss
+        y, yhat = construct_image(y), construct_image(yhat)
+        def encode(sample):
+            eps = torch.randn(sample.shape, device=device) # BS x C x H x W
+            xt = self.scheduler.add_noise(sample, eps, torch.LongTensor([T])) # noisy image
+            return(xt)
+        def decode(xt):
+            for t in range(T, 0, -1):
+                with torch.no_grad():
+                    eps_theta = self.unet(xt, t).sample
+                xt = self.scheduler.step(eps_theta, t, xt).prev_sample
+            return(xt)
+        yhat = decode(encode(yhat))
+        return(self.loss_fn(y, yhat))
+
+
+
+        if(phase == 'train'):
+            self.optimizer.zero_grad()
+            loss.backward()
+            if(self.training_config.clip_gradients):
+                total_grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.optimizer.step()
+        return(loss)
+    
+
+
 class VAETrainer(AbstractTrainer):
     def __init__(self, model, dataloader, loss_fn, optim, tconfig, rank=0, base_dir=''):
         """
