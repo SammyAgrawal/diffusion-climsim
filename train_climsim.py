@@ -22,11 +22,61 @@ device = f"cuda:{rank}" if torch.cuda.is_available() else 'cpu'
 print(f"Using device: {device}")
 
 
+
+def define_configs():
+    dl_params = tru.TrainLoaderParams()
+    dl_params.batch_size = 64
+    dl_params.shuffle = False
+    dl_params.num_workers = 8
+    dl_params.prefetch_factor = 6
+    dl_params.persistent_workers = True
+    dl_params.multiprocessing_context = "forkserver"
+
+    dconfig = tru.DataConfig()
+    dconfig.dataloader_params = dl_params
+    dconfig.source = "gcsfs" # specify from raw cloud bucket
+    dconfig.climsim_type = "low-res-expanded"
+    dconfig.dataset_type = "climsim"
+    dconfig.data_dir = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/hf_manifests/"
+    dconfig.train_test_split = [0.70, 0.30]
+
+    tconfig = diff.TrainingConfig()
+    tconfig.exp_id = 'climsim_training'
+    tconfig.num_epochs = 5
+    tconfig.phases = ['train']
+
+    #tconfig.lr_scheduler = 'get_cosine_schedule_with_warmup'
+    #tconfig.lr_warmup_steps = 100
+    tconfig.learning_rate = 3e-5
+    tconfig.batch_logging_interval = 32
+    tconfig.batch_checkpoint_interval = 50
+    tconfig.save_best_epoch = True
+    tconfig.log_gradients = False
+    tconfig.loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0}
+
+
+    unet = tru.UNetParams()
+    unet.block_out_channels = (128, 256, 512)
+    unet.down_block_types = ("DownBlock2D", "DownBlock2D", "DownBlock2D")
+    unet.up_block_types = ("UpBlock2D", "UpBlock2D", "UpBlock2D")
+    unet.layers_per_block = 1
+    unet.norm_num_groups = 2
+
+    mconfig = tru.ModelConfig()
+    mconfig.model_type = "ddpm_diffusion"
+    mconfig.unet = unet
+    mconfig.scheduler =  tru.SchedulerParams()
+    # define baseline model
+    mconfig.bl_hidden_dims = [256, 256]
+    mconfig.bl_num_layers = 2
+
+    return(tconfig, mconfig, dconfig)
+
 def setup_configs(exp_id, run_id, exp_dir, use_distribution_loss, use_diffusion_loss):
     from pathlib import Path
     base_dir = os.path.join(exp_dir, exp_id)
     Path(base_dir).mkdir(parents=True, exist_ok=True)
-    tconfig, mconfig, dconfig = tru.load_config(run_id, exp_id, exp_dir)
+    tconfig, mconfig, dconfig = define_configs()
     tconfig.exp_id = exp_id
     with open(os.path.join(base_dir, f'{run_id}.json'), "w") as f:
         json.dump(dict(
@@ -37,6 +87,8 @@ def setup_configs(exp_id, run_id, exp_dir, use_distribution_loss, use_diffusion_
             use_diffusion_loss=use_diffusion_loss,
         ), f)
     return(base_dir, tconfig, mconfig, dconfig)
+
+
 
 
 if __name__ == "__main__":
@@ -75,7 +127,7 @@ if __name__ == "__main__":
 
     loss_fn = nn.MSELoss()
     optimizer = tru.create_optimizer(model, tconfig)
-    next(iter(dataloader)) # just to finish setting up
+    #next(iter(dataloader)) # just to finish setting up
 
     trainer = tru.ClimsimTrainer(model, dataloaders, loss_fn, optimizer, tconfig, rank, base_dir, use_distribution_loss, use_diffusion_loss)
 

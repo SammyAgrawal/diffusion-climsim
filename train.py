@@ -36,7 +36,15 @@ if __name__ == "__main__":
     print("\n\n" )
     pprint.pprint(asdict(dconfig))
     print("\n\n", )
-    trainer = tru.setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, exp_dir)
+    
+    unet = tru.load_model(mconfig)
+    dataloaders = tru.load_dataloaders(dconfig)
+
+    model = 
+
+
+
+
     tru.log_event("setup end", duration=time.time() - t0)
     trainer.train(num_epochs=20, log=True, run_id=run_id)
     print("Done!")
