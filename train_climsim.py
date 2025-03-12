@@ -120,9 +120,6 @@ if __name__ == "__main__":
     loss_fn = nn.MSELoss()
     optimizer = tru.create_optimizer(model, tconfig)
     print("Testing batch fetch")
-    print(dataloaders[0].dataset.X)
-    print(dataloaders[0].dataset.X[0])
-    print(dataloaders[0].dataset.X[0].load())
     next(iter(dataloaders[0])) # just to finish setting up
 
     trainer = tru.ClimsimTrainer(model, dataloaders, loss_fn, optimizer, 
