@@ -114,21 +114,14 @@ def get_norm_info(style='image'):
     if(style=='image'):    
         X_mean = xr.open_dataset(get_path("image_xmean.nc"))
         X_std = xr.open_dataset(get_path("image_xstd.nc"))
-        Y_mean = xr.open_dataset(get_path("output_mean.nc"))
-        Y_std = xr.open_dataset(get_path("output_std.nc"))
+        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
+        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
         Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
         return(X_mean, X_std, Y_mean, Y_std)
-    elif(style=='nc'):
-        input_mean = xr.open_dataset(get_path('input_mean.nc'))
-        input_std = xr.open_dataset(get_path('input_std.nc'))
-        output_mean = xr.open_dataset(get_path('output_mean.nc'))
-        output_std = xr.open_dataset(get_path('output_std.nc'))
-        output_std['cam_out_PRECSC'] = output_std.cam_out_PRECSC.mean()
-        return(input_mean, input_std, output_mean, output_std)
     elif(style=='scale'):
         input_mean = xr.open_dataset(get_path('input_mean.nc'))
         input_max = xr.open_dataset(get_path('input_max.nc'))
-        input_min = xr.open_dataset(get_path('input_max.nc'))
+        input_min = xr.open_dataset(get_path('input_min.nc'))
         output_scale = xr.open_dataset(get_path('output_scale.nc'))
         return(input_mean, input_max, input_min, output_scale)
 
