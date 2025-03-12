@@ -108,7 +108,7 @@ if __name__ == "__main__":
     
     #unet = tru.load_model(mconfig)
     #scheduler = tru.load_scheduler(mconfig)
-    dataloaders, indices = tru.load_dataloaders(dconfig)
+    dataloaders, indices = tru.load_dataloaders(dconfig, log=True)
     with open(os.path.join(base_dir, f'{run_id}.json'), "r") as f:
         log = json.load(f)
     log['test_indices'] = indices[1].tolist()
@@ -119,8 +119,8 @@ if __name__ == "__main__":
 
     loss_fn = nn.MSELoss()
     optimizer = tru.create_optimizer(model, tconfig)
-    print("Testing batch fetch")
-    next(iter(dataloaders[0])) # just to finish setting up
+    #print("Testing batch fetch")
+    #next(iter(dataloaders[0])) # just to finish setting up
 
     trainer = tru.ClimsimTrainer(model, dataloaders, loss_fn, optimizer, 
                    tconfig, base_dir, use_distribution_loss, use_diffusion_loss, rank=0)
