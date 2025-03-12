@@ -8,7 +8,7 @@ import gcsfs
 import json
 import torch
 
-from .models import load_model
+from .models import load_model, build_baseline_model
 from .mydatasets import load_dataset, load_dataloaders, load_scheduler, log_event
 from .trainers import VAETrainer, ClimsimTrainer, DiffusionTrainer, create_optimizer
 from dataclasses import dataclass, asdict, field
@@ -26,9 +26,9 @@ def setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, exp_dir="./experime
             data_config=asdict(dconfig),
         ), f)
     model = load_model(mconfig)
-    dataloader = load_dataloaders(dconfig)
+    dataloaders, indices = load_dataloaders(dconfig)
     optimizer = create_optimizer(model, tconfig)
-    next(iter(dataloader)) # just to finish setting up
+    next(iter(dataloader[0])) # just to finish setting up
     match mconfig.model_type:
         case mtype if "diffusion" in mtype:
             loss_fn = torch.nn.MSELoss()
@@ -91,6 +91,7 @@ class TrainingConfig:
     log_gradients: bool = True
     #save_image_epochs: int = 2
     push_to_hub: bool = False
+    diffusion_loss_noise_level: int = 10; 
     
     def __post_init__(self):
         self.shuffle_data = {'train':False, 'eval':False}
@@ -139,6 +140,11 @@ class ModelConfig:
     latent_dims: int = 16
     ae_hidden_dims: List[int] = field(default_factory=lambda: [64, 32, 16])
     disable_enc_logstd_bias: bool = True
+    # Baseline Model Params
+    bl_input_size: int = 124
+    bl_output_size: int = 128
+    bl_num_layers: int = 3
+    bl_hidden_dims: List[int] = field(default_factory=lambda: [256, 256, 256]) 
     def __post_init__(self):
         if isinstance(self.unet, dict):
             self.unet = UNetParams(**self.unet)

@@ -36,7 +36,7 @@ def log_event(event_name, **kwargs):
 
 def load_dataset(dconfig, log=False):
     dsi, dso = cut.load_raw_dataset(dconfig)
-    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split)
+    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, shuffle=dconfig.dataloader_params.shuffle)
     datasets = []
     for (dsi, dso) in dsets:
         match dconfig.dataset_type.lower():
@@ -62,16 +62,17 @@ def load_dataloaders(dconfig, log=False):
                 dataloaders.append(DataLoader(dataset, collate_fn=collate_test_fn, **params))
             case _:
                 dataloaders.append(DataLoader(dataset, **params))
-    return(dataloaders)
+    return(dataloaders, indices)
 
-def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr'):
+def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr', shuffle=True):
     datasets, indices = [], []
     if(typ == 'np'):
         num_timesteps = dsi.sizes['state']
     else:
         num_timesteps = dsi.sizes['time']
     times = np.arange(num_timesteps)
-    np.random.shuffle(times)
+    if(shuffle):
+        np.random.shuffle(times)
     counter = 0
     for frac in split_frac:
         # Calculate the split index

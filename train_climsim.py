@@ -39,10 +39,13 @@ def setup_configs(exp_id, run_id, exp_dir, use_distribution_loss, use_diffusion_
     return(base_dir, tconfig, mconfig, dconfig)
 
 
+
+
+
 if __name__ == "__main__":
     #typer.run(main)
     #typer.run(test_args)
-    exp_dir = "/mnt/home/ssa2206/diffusion-climsim/experiments"
+    exp_dir = "/home/jovyan/Samarth/ClimsimProjectWork/diffusion-climsim/experiments"
     exp_id = "climsim_training"
     run_id = "trial_1_just_mse"
 
@@ -50,7 +53,7 @@ if __name__ == "__main__":
     use_diffusion_loss = False
 
     base_dir, tconfig, mconfig, dconfig = setup_configs(exp_id, run_id, exp_dir, use_distribution_loss, use_diffusion_loss)
-    run_start_time = data.log_event("run start", 
+    run_start_time = tru.log_event("run start", 
         data_params = asdict(dconfig.dataloader_params),
     )
     t0 = data.log_event("setup start", run_id=run_id)
@@ -63,23 +66,24 @@ if __name__ == "__main__":
     
     #unet = tru.load_model(mconfig)
     #scheduler = tru.load_scheduler(mconfig)
-    dataloaders = tru.load_dataloaders(dconfig)
-
-    model = nn.Sequential(
-        nn.Linear(in_features=124, out_features=256),
-        nn.ReLU(),
-        nn.Linear(in_features=256, out_features=256),
-        nn.ReLU(),
-        nn.Linear(in_features=256, out_features=128),
-    ).to(device)
+    dataloaders, indices = tru.load_dataloaders(dconfig)
+    with open(os.path.join(base_dir, f'{run_id}.json'), "r") as f:
+        log = json.load(f)
+    log['test_indices'] = indices[1].tolist()
+    with open(os.path.join(base_dir, f'{run_id}.json'), "w") as f:
+        json.dump(log, f)
+    
+    model = tru.build_baseline_model(mconfig)
 
     loss_fn = nn.MSELoss()
     optimizer = tru.create_optimizer(model, tconfig)
-    next(iter(dataloader)) # just to finish setting up
+    next(iter(dataloaders[0])) # just to finish setting up
 
-    trainer = tru.ClimsimTrainer(model, dataloaders, loss_fn, optimizer, tconfig, rank, base_dir, use_distribution_loss, use_diffusion_loss)
+    trainer = tru.ClimsimTrainer(model, dataloaders, loss_fn, optimizer, 
+                   tconfig, base_dir, use_distribution_loss, use_diffusion_loss, rank=0)
+
 
     data.log_event("setup end", duration=time.time() - t0)
-    trainer.train(num_epochs=20, log=True, run_id=run_id)
+    trainer.train(num_epochs=5, log=True, run_id=run_id)
     print("Done!")
     data.log_event("run end", duration = time.time() - run_start_time)

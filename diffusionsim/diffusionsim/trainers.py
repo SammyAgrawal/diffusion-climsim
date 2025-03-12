@@ -31,7 +31,7 @@ def create_optimizer(model, tconfig):
     return(optim)
 
 class AbstractTrainer(ABC):
-    def __init__(self, model, dataloaders, loss_fn, optim, tconfig, rank=0, base_dir):
+    def __init__(self, model, dataloaders, loss_fn, optim, tconfig, base_dir, rank):
         self.exp_id = tconfig.exp_id
         self.training_config = tconfig
         self.device, self.rank = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu', rank
@@ -127,8 +127,8 @@ class AbstractTrainer(ABC):
             return(log_dict)
 
 class ClimsimTrainer(AbstractTrainer):
-    def __init__(self, model, dataloaders, loss_fn, optim, tconfig, rank=0, base_dir, use_dist_loss=False, use_diff_loss=False, **kwargs):
-        super().__init__(model, dataloaders, loss_fn, optim, tconfig, rank, base_dir)
+    def __init__(self, model, dataloaders, loss_fn, optim, tconfig, base_dir, use_dist_loss=False, use_diff_loss=False, rank=0, **kwargs):
+        super().__init__(model, dataloaders, loss_fn, optim, tconfig, base_dir, rank)
         self.use_dist_loss = use_dist_loss
         self.use_diff_loss = use_diff_loss
         self.lambda_0 = tconfig.loss_weights['mse']
@@ -196,7 +196,7 @@ class ClimsimTrainer(AbstractTrainer):
 
         if ((step+1) % self.training_config.batch_checkpoint_interval == 0):
             print(f"epoch {epoch}, step {step}: saving checkpoint")
-            self._save_checkpoint(epoch, cid='')
+            self._save_checkpoint(epoch, cid=self.run)
         return(epoch_losses, current_losses)
 
     def _log_epoch_info(self, epoch_num, epoch_stats):

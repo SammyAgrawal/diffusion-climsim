@@ -39,6 +39,20 @@ def load_model(config):
         
     return(-1)
 
+def build_baseline_model(config) -> nn.Sequential:
+    layers = []
+    in_dim = config.bl_input_size
+
+    for i in range(config.bl_num_layers):
+        out_dim = config.bl_hidden_dims[i] if i < len(config.bl_hidden_dims) else config.bl_output_size
+        layers.append(nn.Linear(in_dim, out_dim))
+        layers.append(nn.ReLU())
+        in_dim = out_dim  # Update input size for the next layer
+
+    layers.append(nn.Linear(in_dim, config.bl_output_size))  # Final output layer (no activation)
+    
+    return nn.Sequential(*layers)
+
 
 class TestCNN(torch.nn.Module):
     def __init__(self):
