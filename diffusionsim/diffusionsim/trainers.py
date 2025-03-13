@@ -172,13 +172,14 @@ class ClimsimTrainer(AbstractTrainer):
         with torch.set_grad_enabled(phase=='train'):
             if(self.distributed):
                 self.dataloaders[phase].sampler.set_epoch(epoch)
+            steps_per_epoch = len(self.dataloaders[phase])
             for step, (X, Y) in enumerate(self.dataloaders[phase]):
                 tt0 = log_event("training start", batch=step)
                 batch_losses = self._run_batch(X, Y, phase)
                 epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step)
                 log_event("training end", batch=step, duration= time.time() - tt0)
                 if(step % 2 == 0):
-                    print(f"Currently at epoch {epoch}, step {step}")
+                    print(f"Currently at epoch {epoch}, step {step}/{steps_per_epoch}")
         return(epoch_losses)
 
     def log_step(self, epoch_losses, current_losses, batch_losses, epoch, step, phase='train'):
