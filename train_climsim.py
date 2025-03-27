@@ -48,7 +48,7 @@ def define_configs():
     tconfig.save_best_epoch = True
     tconfig.log_gradients = False
     tconfig.loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0}
-
+    tconfig.max_T_sample = 50
 
     unet = tru.UNetParams()
     unet.block_out_channels = (128, 256, 512)

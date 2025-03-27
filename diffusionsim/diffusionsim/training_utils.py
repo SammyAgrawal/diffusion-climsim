@@ -14,21 +14,11 @@ from .trainers import VAETrainer, ClimsimTrainer, DiffusionTrainer, create_optim
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Tuple
 
-def setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, exp_dir="./experiments"):
-    from pathlib import Path
-    base_dir = os.path.join(exp_dir, exp_id)
-    Path(base_dir).mkdir(parents=True, exist_ok=True)
-    tconfig.exp_id = exp_id
-    with open(os.path.join(base_dir, f'{run_id}.json'), "w") as f:
-        json.dump(dict(
-            training_config=asdict(tconfig),
-            model_config=asdict(mconfig),
-            data_config=asdict(dconfig),
-        ), f)
+def setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, base_dir):
     model = load_model(mconfig)
     dataloaders, indices = load_dataloaders(dconfig)
     optimizer = create_optimizer(model, tconfig)
-    next(iter(dataloaders[0])) # just to finish setting up
+    #next(iter(dataloaders[0])) # just to finish setting up
     match mconfig.model_type:
         case mtype if "diffusion" in mtype:
             loss_fn = torch.nn.MSELoss()
@@ -175,7 +165,7 @@ def load_config(fname, expid, base_dir="experiments/"):
 
     return(tconfig, mconfig, dconfig)
 
-def load_model_from_ckpt(ckpt_fname, mconfig, expid, base_dir="experiments/"):
+def load_model_from_ckpt(ckpt_fname, mconfig, expid, base_dir):
     if(isinstance(mconfig, dict)):
         mconfig = ModelConfig(**mconfig)
     model = load_model(mconfig)

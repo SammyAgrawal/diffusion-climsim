@@ -15,6 +15,7 @@ import torch.distributed as dist
 import xarray as xr
 from dataclasses import dataclass, asdict, field
 from .mydatasets import log_event
+from collections import defaultdict
 
 
 def create_optimizer(model, tconfig):
@@ -40,9 +41,8 @@ class AbstractTrainer(ABC):
         self.distributed = bool(tconfig.distributed_training)
         self.dataloaders = {}
         if(type(dataloaders) == list):
-            phases = ['train', 'eval']
             for i in range(len(dataloaders)):
-                self.dataloaders[phases[i]] = dataloaders[i]
+                self.dataloaders[tconfig.phases[i]] = dataloaders[i]
         else:
             self.dataloaders['train'] = dataloaders
 
@@ -80,11 +80,11 @@ class AbstractTrainer(ABC):
         return(output, loss)
 
     @abstractmethod
-    def _run_epoch(self, epoch):
+    def _run_epoch(self, epoch, phase):
         pass
 
     @abstractmethod
-    def _log_epoch_info(self, epoch_num, epoch_stats):
+    def _log_epoch_info(self, epoch_num, epoch_stats, phase):
         pass
     
     def train(self, num_epochs, log=True, run_id='trialx'):
@@ -93,7 +93,7 @@ class AbstractTrainer(ABC):
             print(f"Epoch {epoch+1}/{num_epochs}")
             print("_" * 10)
             stats = self._run_epoch(epoch)
-            self._log_epoch_info(epoch, stats)
+            self._log_epoch_info(epoch, stats, phase="train")
         
         self.finish_training(log, run_id, num_epochs)
 
@@ -110,7 +110,7 @@ class AbstractTrainer(ABC):
         self.current_run_id = run_id
         self.best_loss = 10000
 
-    def finish_training(self, log, num_epochs):
+    def finish_training(self, log, num_epochs, **kwargs):
         print(f"Finished training {num_epochs} epochs.")
         self.current_run_id = ""
         if(log):
@@ -120,6 +120,9 @@ class AbstractTrainer(ABC):
             
             for phase, loss in self.losses.items():
                 log_dict[f'{phase}_loss'] = loss
+            
+            for key, value in kwargs.items():
+                log_dict[key] = value
                 
             if(self.training_config.log_gradients):
                 log_dict['gradients'] = self.gradients
@@ -176,13 +179,13 @@ class ClimsimTrainer(AbstractTrainer):
             for step, (X, Y) in enumerate(self.dataloaders[phase]):
                 tt0 = log_event("training start", batch=step)
                 batch_losses = self._run_batch(X, Y, phase)
-                epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step)
+                epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step, phase)
                 log_event("training end", batch=step, duration= time.time() - tt0)
-                if(step % 2 == 0):
+                if(step % 10 == 0):
                     print(f"Currently at epoch {epoch}, step {step}/{steps_per_epoch}")
         return(epoch_losses)
 
-    def log_step(self, epoch_losses, current_losses, batch_losses, epoch, step, phase='train'):
+    def log_step(self, epoch_losses, current_losses, batch_losses, epoch, step, phase):
         bli = self.training_config.batch_logging_interval
         for loss_type in self.tracked_losses:
             current_losses[loss_type] += batch_losses[loss_type]
@@ -196,12 +199,12 @@ class ClimsimTrainer(AbstractTrainer):
                 epoch_losses[loss_type].append(current_losses[loss_type] / remainder_steps)
                 current_losses[loss_type] = 0.0
 
-        if ((step+1) % self.training_config.batch_checkpoint_interval == 0):
+        if ((step+1) % self.training_config.batch_checkpoint_interval == 0 and phase == 'train'):
             print(f"epoch {epoch}, step {step}: saving checkpoint")
             self._save_checkpoint(epoch, cid=self.run)
         return(epoch_losses, current_losses)
 
-    def _log_epoch_info(self, epoch_num, epoch_stats):
+    def _log_epoch_info(self, epoch_num, epoch_stats, phase='train'):
         logs_per_epoch = self.batches_per_epoch // self.training_config.batch_logging_interval + 1
         for loss_type in self.tracked_losses:
             avg_loss_value = sum(epoch_stats[loss_type]) / len(epoch_stats[loss_type])
@@ -260,7 +263,6 @@ class ClimsimTrainer(AbstractTrainer):
         return(self.loss_fn(y, yhat))
 
 
-
         if(phase == 'train'):
             self.optimizer.zero_grad()
             loss.backward()
@@ -270,18 +272,17 @@ class ClimsimTrainer(AbstractTrainer):
         return(loss)
     
 
-
 class VAETrainer(AbstractTrainer):
-    def __init__(self, model, dataloader, loss_fn, optim, tconfig, rank=0, base_dir=''):
+    def __init__(self, model, dataloader, loss_fn, optim, tconfig, base_dir, rank=0):
         """
         Trainer Class for VAE Training
         """
-        super().__init__(model, dataloader, loss_fn, optim, tconfig, rank=0, base_dir='')
+        super().__init__(model, dataloader, loss_fn, optim, tconfig, base_dir, rank)
 
     def setup_training(self, num_epochs):
         super().setup_training(num_epochs)
         self.losses = {}
-        for phase in self.phases:
+        for phase in self.training_config.phases:
             self.losses[phase] = {'mse':[], 'kl':[]}
         self.best_loss = 10
         if(self.training_config.log_gradients):
@@ -356,7 +357,7 @@ class VAETrainer(AbstractTrainer):
         self.eval_losses['kl'].append( kl_div / num_batches )
         return(0)
  
-    def _log_epoch_info(self, epoch_num, epoch_stats):
+    def _log_epoch_info(self, epoch_num, epoch_stats, phase='train'):
         logs_per_epoch = self.batches_per_epoch // self.training_config.batch_logging_interval + 1
         for phase, loss_dict in self.losses.items():
             epoch_mse = sum(loss_dict['mse'][-logs_per_epoch:]) / logs_per_epoch
@@ -378,15 +379,16 @@ class VAETrainer(AbstractTrainer):
                 gnorm = torch.linalg.norm(p.grad)
                 self.gradients[name].append(gnorm.detach().item())
 
-    def _run_epoch(self, epoch):
-        self._run_train_epoch(epoch)
-        if(epoch % 2 == 0):
+    def _run_epoch(self, epoch, phase='train'):
+        if(phase == 'train'):
+            self._run_train_epoch(epoch)
+        else:
             self._run_eval_epoch(epoch)
         print(f"Eval Loss on epoch {epoch}: [mse : {self.eval_losses['mse'][-1]}, kl {self.eval_losses['kl'][-1]}]")
 
 class DiffusionTrainer(AbstractTrainer):
-    def __init__(self, model, scheduler, dataloader, loss_fn, optim, tconfig, rank=0, base_dir=''):
-        super().__init__(model, dataloader, loss_fn, optim, tconfig, rank, base_dir)
+    def __init__(self, model, scheduler, dataloader, loss_fn, optim, tconfig, base_dir, rank=0):
+        super().__init__(model, dataloader, loss_fn, optim, tconfig, base_dir, rank)
         self.scheduler = scheduler
     
     def _run_batch(self, images, timesteps, noises, phase='train'):
@@ -399,7 +401,7 @@ class DiffusionTrainer(AbstractTrainer):
             if(self.training_config.clip_gradients):
                 total_grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
-        log_event("run-batch end", duration=time.time() - t0)
+        log_event("run-batch end", duration=time.time() - t0, loss=loss.item())
         return(loss)
 
     def _run_epoch(self, epoch, phase='train'):
@@ -410,16 +412,19 @@ class DiffusionTrainer(AbstractTrainer):
             if(self.distributed):
                 self.dataloaders[phase].sampler.set_epoch(epoch)
             for step, images in enumerate(self.dataloaders[phase]):
-                tt0 = log_event("training start", batch=step)
+                tt0 = log_event(f"batch-{step} start", batch=step)
                 # Given a batch from a dataloader on the dataset, return a noised sample
                 noises = torch.randn(images.shape, device=self.device)
                 timesteps = torch.randint(0, self.training_config.max_T_sample, 
                                 size=(images.shape[0],), device=self.device, dtype=torch.int64)
+                # Vectorized timestep counting
+                self.noise_timesteps += torch.bincount(timesteps, minlength=self.training_config.max_T_sample)
+                
                 images = self.scheduler.add_noise(images.to(self.device), noises, timesteps)
                 loss = self._run_batch(images, timesteps, noises, phase)
                 total_loss += loss.item()
                 total_loss = self.log_step(epoch, step, total_loss, phase)
-                log_event("training end", batch=step, duration= time.time() - tt0)
+                log_event(f"batch-{step} end", batch=step, duration= time.time() - tt0)
                 if(step % 50 == 0):
                     print(f"Currently at epoch {epoch}, step {step}")
 
@@ -442,7 +447,7 @@ class DiffusionTrainer(AbstractTrainer):
             total_loss = 0.0
         return(total_loss)
     
-    def _log_epoch_info(self, epoch_num, loss):
+    def _log_epoch_info(self, epoch_num, loss, phase='train'):
         #self.losses['train'].append(loss)
         #if(epoch_num % self.training_config.epoch_logging_interval == 0):
         #    print(f"epoch {epoch_num}: [{loss}]")
@@ -459,10 +464,10 @@ class DiffusionTrainer(AbstractTrainer):
         self.setup_training(num_epochs, run_id)
         print(f"Training for {self.training_config.num_epochs} epochs")
         try: 
-            for epoch in range(self.training_config.num_epochs):
+            for epoch in range(self.training_config.num_epochs): # set in setup_training
                 e0 = log_event("epoch start", epoch=epoch)
                 loss = self._run_epoch(epoch)
-                self._log_epoch_info(epoch, loss)
+                self._log_epoch_info(epoch, loss, phase='train')
                 log_event("epoch end", epoch=epoch, duration=time.time() - e0, epoch_loss=loss)
         except Exception as e:
             print(f"Some error occurred during training: {e}")
@@ -474,10 +479,12 @@ class DiffusionTrainer(AbstractTrainer):
         self.best_loss = 100
         self.model = self.model.to(self.device)
         self.event_file = 0 #open(os.path.join(self.dirs['output_dir'], "event_log.txt"), "a")
+        self.noise_timesteps = torch.zeros(self.training_config.max_T_sample, device=self.device, dtype=torch.long)
 
 
     def finish_training(self, log, num_epochs):
         # to do: add github hash as well so can reproduce code base at time of training run
-        super().finish_training(log, num_epochs)
+        noise_timesteps = self.noise_timesteps.cpu().numpy().tolist()
+        super().finish_training(log, num_epochs, sampled_timesteps=noise_timesteps)
         #if(self.event_file):
         #    self.event_file.close()

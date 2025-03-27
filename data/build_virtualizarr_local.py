@@ -36,10 +36,10 @@ dutils = cut.setup_data_utils(dconfig.climsim_type, dconfig.source,
 manifest_dir = os.path.join("/mnt/home/ssa2206", "Climsim", "diffusion-climsim/data", "local_manifests")
 print(f"saving manifests to {manifest_dir}")
 input_storage = icechunk.local_filesystem_storage(os.path.join(manifest_dir, dutils.mlivar))
-input_repo = icechunk.Repository.create(input_storage)
+input_repo = icechunk.Repository.open(input_storage)
 
 target_storage = icechunk.local_filesystem_storage(os.path.join(manifest_dir, "mlo"))
-target_repo = icechunk.Repository.create(target_storage)
+target_repo = icechunk.Repository.open(target_storage)
 
 
 desired_chunksizes = {'time': 1024, 'ncol': 384, 'lev': 60}
@@ -81,18 +81,17 @@ def add_period(vds, commit_message, repo, appending=True):
     print(f"Committed {commit_message}, period added {msg}", flush=True)
 
 
-for year in range(1,10):
+for year in range(4,10):
     for month in range(1,13):
-        if(year == 1 and month == 1):
+        if(year == 4 and month < 6):
             continue
         if(year == 9 and month > 1):
             break
-        appending = False if year == 1 and month == 2 else True
+        #appending = True#False if year == 1 and month == 2 else True
         start_time = time.time()
         vds_inputs, vds_targets = fetch_virtual_datasets(year, month)
-        add_period(vds_inputs, f"Appended {year}-{month} for inputs", input_repo, appending)
-        add_period(vds_targets, f"Appended {year}-{month} for targets", target_repo, appending)
-
-        print(f"Time taken for {year}-{month}: {(time.time() - start_time)/60} minutes")
-
-
+        print(f"time taken to fetch {year}-{month}: {(time.time() - start_time)/60} minutes")
+        add_period(vds_inputs, f"Appended {year}-{month} for inputs", input_repo)
+        print(f"time taken to store inputs in icechunk: {(time.time() - start_time)/60} minutes")
+        add_period(vds_targets, f"Appended {year}-{month} for targets", target_repo)
+        print(f"Time taken to store outputs in icehunk: {(time.time() - start_time)/60} minutes")

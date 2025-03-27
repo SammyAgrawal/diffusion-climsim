@@ -21,7 +21,7 @@ _ROOT = os.path.abspath(os.path.dirname(__file__))
 def get_path(file):
     return os.path.join(_ROOT, 'climsim_data', file)
 
-def load_raw_dataset(dconfig, **kwargs):
+def load_raw_dataset(dconfig, return_dutils=False, **kwargs):
     dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, 
                               use_tendencies=dconfig.use_tendencies, data_dir=dconfig.data_dir, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
@@ -40,7 +40,7 @@ def load_raw_dataset(dconfig, **kwargs):
         with session.allow_pickling():
             dsi = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})[dutils.input_vars]
         
-        storage = icechunk.local_filesystem_storage(os.path.join(dconfig.data_dir, dutils.target_vars))
+        storage = icechunk.local_filesystem_storage(os.path.join(dconfig.data_dir, "mlo"))
         repo = icechunk.Repository.open(storage)
         session = repo.writable_session("main")
         with session.allow_pickling():
@@ -77,6 +77,8 @@ def load_raw_dataset(dconfig, **kwargs):
     
     dsi = add_space(dsi, ds_grid=dutils.grid_info)
     dso = add_space(dso, ds_grid=dutils.grid_info)
+    if(return_dutils):
+        return(dsi, dso, dutils)
     return(dsi, dso)
 
 def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
@@ -112,6 +114,7 @@ def get_norm_info(style='image'):
     if(style=='image'):    
         X_mean = xr.open_dataset(get_path("image_xmean.nc"))
         X_std = xr.open_dataset(get_path("image_xstd.nc"))
+        X_std['state_q0002'].data = X_std.state_q0002.mean().item() * np.ones_like(X_std.state_q0002.data) 
         Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
         Y_std = xr.open_dataset(get_path("image_ystd.nc"))
         Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
