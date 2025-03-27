@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 import json
 #import diffusers
+sys.path.append(os.path.abspath("diffusionsim"))
 import diffusionsim.training_utils as tru
 import torch
 import torch.nn as nn
@@ -20,10 +21,10 @@ print(f"Using device: {device}")
 
 def define_configs():
     dl_params = tru.TrainLoaderParams()
-    dl_params.batch_size = 128
+    dl_params.batch_size = 384 * 128
     dl_params.shuffle = False
-    dl_params.num_workers = 4
-    dl_params.prefetch_factor = 3
+    dl_params.num_workers = 2
+    dl_params.prefetch_factor = 1
     dl_params.persistent_workers = True
     dl_params.multiprocessing_context = "forkserver"
 
@@ -44,7 +45,7 @@ def define_configs():
     #tconfig.lr_warmup_steps = 100
     tconfig.learning_rate = 3e-5
     tconfig.batch_logging_interval = 32
-    tconfig.batch_checkpoint_interval = 50
+    tconfig.batch_checkpoint_interval = 100
     tconfig.save_best_epoch = True
     tconfig.log_gradients = False
     tconfig.loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0}
@@ -58,12 +59,12 @@ def define_configs():
     unet.norm_num_groups = 2
 
     mconfig = tru.ModelConfig()
-    mconfig.model_type = "ddpm_diffusion"
-    mconfig.unet = unet
-    mconfig.scheduler =  tru.SchedulerParams()
     # define baseline model
     mconfig.bl_hidden_dims = [256, 256]
     mconfig.bl_num_layers = 2
+    mconfig.model_type = "ddpm_diffusion"
+    mconfig.unet = unet
+    mconfig.scheduler =  tru.SchedulerParams()
 
     return(tconfig, mconfig, dconfig)
 
@@ -116,7 +117,8 @@ if __name__ == "__main__":
         json.dump(log, f)
     
     model = tru.build_baseline_model(mconfig)
-
+    cpath = os.path.join(base_dir, "trial_1_just_mse-ckpt.pt")
+    model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu')))
     loss_fn = nn.MSELoss()
     optimizer = tru.create_optimizer(model, tconfig)
     #print("Testing batch fetch")
@@ -127,6 +129,6 @@ if __name__ == "__main__":
 
 
     tru.log_event("setup end", duration=time.time() - t0)
-    trainer.train(num_epochs=5, log=True, run_id=run_id)
+    trainer.train(num_epochs=4, log=True, run_id=run_id)
     print("Done!")
     tru.log_event("run end", duration = time.time() - run_start_time)

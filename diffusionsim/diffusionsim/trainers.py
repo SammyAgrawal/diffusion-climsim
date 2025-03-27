@@ -152,15 +152,15 @@ class ClimsimTrainer(AbstractTrainer):
         self.losses = dict()
         for loss_type in self.tracked_losses:
             self.losses[loss_type] = []
-
+        print(f"Trainer setup run {self.current_run_id}") 
     def _run_epoch(self, epoch, phase='train'):
         self.model.train(phase=='train')
 
         """
         Tracking 3 kinds of losses, which can be confusing: 
         batch_losses: losses for a single batch. Because there might be many batches in an epoch, do not save every single batch loss
-        current_losses: instead, divide epoch into batch_logging_interval sized sections, and save the mean of the losses for each section
-        epoch_losses: the number of loss items saved for a single epoch is (batches_per_epoch / batch_logging_interval) 
+        int current_losses: instead, divide epoch into batch_logging_interval sized sections, and save the mean of the losses for each section
+        int[] epoch_losses: the number of loss items saved for a single epoch is (batches_per_epoch / batch_logging_interval) 
         """
 
         epoch_losses = {}
@@ -178,8 +178,10 @@ class ClimsimTrainer(AbstractTrainer):
                 batch_losses = self._run_batch(X, Y, phase)
                 epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step)
                 log_event("training end", batch=step, duration= time.time() - tt0)
-                if(step % 2 == 0):
+                if(step % 50 == 1):
                     print(f"Currently at epoch {epoch}, step {step}/{steps_per_epoch}")
+                    print(f"{batch_losses}\n")
+                    
         return(epoch_losses)
 
     def log_step(self, epoch_losses, current_losses, batch_losses, epoch, step, phase='train'):
@@ -198,7 +200,7 @@ class ClimsimTrainer(AbstractTrainer):
 
         if ((step+1) % self.training_config.batch_checkpoint_interval == 0):
             print(f"epoch {epoch}, step {step}: saving checkpoint")
-            self._save_checkpoint(epoch, cid=self.run)
+            self._save_checkpoint(epoch, cid="")
         return(epoch_losses, current_losses)
 
     def _log_epoch_info(self, epoch_num, epoch_stats):
@@ -258,8 +260,6 @@ class ClimsimTrainer(AbstractTrainer):
             return(xt)
         yhat = decode(encode(yhat))
         return(self.loss_fn(y, yhat))
-
-
 
         if(phase == 'train'):
             self.optimizer.zero_grad()
