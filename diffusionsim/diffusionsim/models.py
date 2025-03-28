@@ -39,13 +39,15 @@ def load_model(config):
         
     return(-1)
 
-def build_baseline_model(config):
-    layers = []
-    in_dim = config.bl_input_size
+def build_baseline_model(config, from_ckpt=False, **kwargs):
     if(config.bl_load_model_name):
         mpath = os.path.join(config.bl_model_dir, config.bl_load_model_name)
         model = torch.jit.load(mpath).original_model
         return(model)
+    
+    layers = []
+    in_dim = config.bl_input_size
+
     for i in range(config.bl_num_layers):
         out_dim = config.bl_hidden_dims[i] if i < len(config.bl_hidden_dims) else config.bl_output_size
         layers.append(nn.Linear(in_dim, out_dim))
@@ -53,8 +55,11 @@ def build_baseline_model(config):
         in_dim = out_dim  # Update input size for the next layer
 
     layers.append(nn.Linear(in_dim, config.bl_output_size))  # Final output layer (no activation)
-    
-    return nn.Sequential(*layers)
+    model = nn.Sequential(*layers)
+    if(from_ckpt):
+        assert "ckpt_path" in kwargs, "ckpt_path must be provided if from_ckpt is True"
+        model.load_state_dict(torch.load(kwargs["ckpt_path"], map_location=torch.device('cpu')))
+    return model
 
 
 class TestCNN(torch.nn.Module):

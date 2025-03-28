@@ -129,8 +129,8 @@ class AbstractTrainer(ABC):
             with open(self.log_file, 'w') as f:
                 json.dump(log_dict, f)
             return(log_dict)
-        
-        print("Finished training successfully!")
+
+
 
 class ClimsimTrainer(AbstractTrainer):
     def __init__(self, model, dataloaders, loss_fn, optim, tconfig, base_dir, use_dist_loss=False, use_diff_loss=False, rank=0, **kwargs):
@@ -167,7 +167,7 @@ class ClimsimTrainer(AbstractTrainer):
         current_losses: instead, divide epoch into batch_logging_interval sized sections, and save the mean of the losses for each section
         epoch_losses: the number of loss items saved for a single epoch is (batches_per_epoch / batch_logging_interval) 
         """
-
+        log_event(f"epoch-{epoch} start")
         epoch_losses = {}
         current_losses = {}
         for loss in self.tracked_losses:
@@ -179,12 +179,11 @@ class ClimsimTrainer(AbstractTrainer):
                 self.dataloaders[phase].sampler.set_epoch(epoch)
             steps_per_epoch = len(self.dataloaders[phase])
             for step, (X, Y) in enumerate(self.dataloaders[phase]):
-                tt0 = log_event("epoch start", batch=step)
                 if(step % 10 == 0):
-                    print(f"Currently at epoch {epoch}, step {step}/{steps_per_epoch}")
+                    print(f"Currently at epoch {epoch}, step {step}/{steps_per_epoch}")                
                 batch_losses = self._run_batch(X.to(self.device), Y.to(self.device), phase)
                 epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step, phase)
-                log_event("epoch end", batch=step, duration= time.time() - tt0)
+        log_event(f"epoch-{epoch} end")
         return(epoch_losses)
 
     def log_step(self, epoch_losses, current_losses, batch_losses, epoch, step, phase):
@@ -241,7 +240,7 @@ class ClimsimTrainer(AbstractTrainer):
             if(self.training_config.clip_gradients):
                 total_grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
-        log_event("run-batch end", duration=time.time() - t0)
+        log_event("run-batch end", duration=time.time() - t0, loss=batch_losses['total'])
         return(batch_losses)
     
     def distribution_loss(self, y, yhat):
@@ -271,8 +270,7 @@ class ClimsimTrainer(AbstractTrainer):
             if(self.training_config.clip_gradients):
                 total_grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             self.optimizer.step()
-        return(loss)
-    
+        return(loss)  
 
 class VAETrainer(AbstractTrainer):
     def __init__(self, model, dataloader, loss_fn, optim, tconfig, base_dir, rank=0):

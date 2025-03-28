@@ -87,17 +87,32 @@ def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr', shuffle=True):
             counter += split
     return(datasets, indices)
 
-def get_norm_info(style='image'):
+def get_norm_info(style='image', sanitize=True):
+
+    def sanitize_xvars(xm, xs):
+        xm['state_q0002'].data = xm['state_q0002'].mean().item() * np.ones_like(xm['state_q0002'].data)
+        xs['state_q0002'].data = xs['state_q0002'].mean().item() * np.ones_like(xs['state_q0002'].data)  
+        return(xm, xs)
+
+    def sanitize_yvars(ym, ys):
+        ys['state_q0002'].data = ys['state_q0002'].mean().item() * np.ones_like(ys['state_q0002'].data)
+        ys['cam_out_PRECSC'].data = ys.cam_out_PRECSC.mean().item() * np.ones_like(ys.cam_out_PRECSC.data) 
+        return(ym, ys)
+
+
     if(style=='image'):    
         X_mean = xr.open_dataset(get_path("image_xmean.nc"))
-        X_mean['state_q0002'].data = X_mean['state_q0002'].mean().item() * np.ones_like(X_mean['state_q0002'].data) 
         X_std = xr.open_dataset(get_path("image_xstd.nc"))
-        X_std['state_q0002'].data = X_std['state_q0002'].mean().item() * np.ones_like(X_std['state_q0002'].data) 
         Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
         Y_std = xr.open_dataset(get_path("image_ystd.nc"))
-        Y_std['state_q0002'].data = Y_std['state_q0002'].mean().item() * np.ones_like(Y_std['state_q0002'].data) 
-        Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
+
+        if(sanitize):
+            X_mean, X_std = sanitize_xvars(X_mean, X_std)
+            Y_mean, Y_std = sanitize_yvars(Y_mean, Y_std)
         return(X_mean, X_std, Y_mean, Y_std)
+    
+    
+    
     elif(style=='nc'):
         input_mean = xr.open_dataset(get_path('input_mean.nc'))
         input_max = xr.open_dataset(get_path('input_max.nc'))

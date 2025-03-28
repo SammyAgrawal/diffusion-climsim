@@ -167,11 +167,11 @@ def load_config(fname, expid, base_dir="experiments/"):
 
     return(tconfig, mconfig, dconfig)
 
-def load_model_from_ckpt(ckpt_fname, mconfig, expid, base_dir):
+def load_model_from_ckpt(ckpt_fname, mconfig, expid, exp_dir):
     if(isinstance(mconfig, dict)):
         mconfig = ModelConfig(**mconfig)
     model = load_model(mconfig)
-    cpath = os.path.join(base_dir, expid, ckpt_fname)
+    cpath = os.path.join(exp_dir, expid, ckpt_fname)
     model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu')))
     return(model)
 

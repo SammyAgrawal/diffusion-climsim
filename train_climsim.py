@@ -46,7 +46,8 @@ def define_configs(exp_id, climsim_training=True, in_notebook=False, lr=3e-5):
     tconfig.phases = ['train', 'eval']
     #tconfig.lr_scheduler = 'get_cosine_schedule_with_warmup'
     #tconfig.lr_warmup_steps = 100
-    tconfig.learning_rate = lr
+    ref_batch_size = 128*384 if climsim_training else 128
+    tconfig.learning_rate = lr * dconfig.dataloader_params.batch_size / ref_batch_size
     tconfig.batch_logging_interval = 32
     tconfig.batch_checkpoint_interval = 50
     tconfig.save_best_epoch = True
