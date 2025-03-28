@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass, asdict, field
 from . import DIFFUSERS_AVAILABLE
-
+import os
 if DIFFUSERS_AVAILABLE:
     from . import diffusers
 
@@ -39,10 +39,13 @@ def load_model(config):
         
     return(-1)
 
-def build_baseline_model(config) -> nn.Sequential:
+def build_baseline_model(config):
     layers = []
     in_dim = config.bl_input_size
-
+    if(config.bl_load_model_name):
+        mpath = os.path.join(config.bl_model_dir, config.bl_load_model_name)
+        model = torch.jit.load(mpath).original_model
+        return(model)
     for i in range(config.bl_num_layers):
         out_dim = config.bl_hidden_dims[i] if i < len(config.bl_hidden_dims) else config.bl_output_size
         layers.append(nn.Linear(in_dim, out_dim))

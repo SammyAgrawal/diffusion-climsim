@@ -42,7 +42,7 @@ class DataConfig:
     dataset_type: str = "XBatchDataset"
     climsim_type: str = "expanded-low-res"
     source: str = "gcsfs"
-    data_dir: str = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/"
+    data_dir: str = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
     train_test_split: List[int] = field(default_factory=lambda: [1.0, 0.0])
     dataloader_params: TrainLoaderParams = field(default_factory=lambda: TrainLoaderParams())
     xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)
@@ -131,6 +131,8 @@ class ModelConfig:
     ae_hidden_dims: List[int] = field(default_factory=lambda: [64, 32, 16])
     disable_enc_logstd_bias: bool = True
     # Baseline Model Params
+    bl_model_dir: str = "/mnt/home/ssa2206/Climsim/saved_models/"
+    bl_load_model_name: str = None
     bl_input_size: int = 124
     bl_output_size: int = 128
     bl_num_layers: int = 3

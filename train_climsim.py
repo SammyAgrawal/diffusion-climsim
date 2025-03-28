@@ -18,60 +18,68 @@ print(f"Using device: {device}")
 
 
 
-def define_configs():
+def define_configs(exp_id, climsim_training=True, in_notebook=False, lr=3e-5):
     dl_params = tru.TrainLoaderParams()
     dl_params.batch_size = 128
-    dl_params.shuffle = False
-    dl_params.num_workers = 4
-    dl_params.prefetch_factor = 3
-    dl_params.persistent_workers = True
-    dl_params.multiprocessing_context = "forkserver"
-
+    if(climsim_training):
+        dl_params.batch_size *= 384
+    dl_params.shuffle = True
+    dl_params.pin_memory = True
+    if(not in_notebook):
+        dl_params.num_workers = 4
+        dl_params.prefetch_factor = 3
+        dl_params.persistent_workers = True
+        dl_params.multiprocessing_context = "forkserver"
+    
     dconfig = tru.DataConfig()
     dconfig.dataloader_params = dl_params
-    dconfig.source = "gcsfs" # specify from raw cloud bucket
-    dconfig.climsim_type = "low-res-expanded"
-    dconfig.dataset_type = "climsim"
-    dconfig.data_dir = "/mnt/lustre/columbia/ssa2206/data/ClimSim_low-res-expanded/hf_manifests/"
-    dconfig.train_test_split = [0.70, 0.30]
+    dconfig.source = "local-vzarr" # specify from raw cloud bucket
+    dconfig.climsim_type = "low-res-expanded" 
+    dconfig.dataset_type = "climsim" if climsim_training else "xbatch"
+    dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
+    dconfig.train_test_split = [1.0]
+    dconfig.data_vars = "v1"
 
     tconfig = tru.TrainingConfig()
-    tconfig.exp_id = 'climsim_training'
+    tconfig.exp_id = exp_id
     tconfig.num_epochs = 5
-    tconfig.phases = ['train']
-
+    tconfig.phases = ['train', 'eval']
     #tconfig.lr_scheduler = 'get_cosine_schedule_with_warmup'
     #tconfig.lr_warmup_steps = 100
-    tconfig.learning_rate = 3e-5
+    tconfig.learning_rate = lr
     tconfig.batch_logging_interval = 32
     tconfig.batch_checkpoint_interval = 50
     tconfig.save_best_epoch = True
     tconfig.log_gradients = False
     tconfig.loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0}
-    tconfig.max_T_sample = 50
+    tconfig.max_T_sample = 51
 
     unet = tru.UNetParams()
-    unet.block_out_channels = (128, 256, 512)
+    unet.block_out_channels = (128, 256, 512) if dconfig.data_vars == "v1" else (256, 512, 1024)
     unet.down_block_types = ("DownBlock2D", "DownBlock2D", "DownBlock2D")
     unet.up_block_types = ("UpBlock2D", "UpBlock2D", "UpBlock2D")
     unet.layers_per_block = 1
     unet.norm_num_groups = 2
+    unet.in_channels = 128 if dconfig.data_vars == "v1" else 368
+    unet.out_channels = unet.in_channels
 
     mconfig = tru.ModelConfig()
     mconfig.model_type = "ddpm_diffusion"
     mconfig.unet = unet
-    mconfig.scheduler =  tru.SchedulerParams()
+    mconfig.scheduler = tru.SchedulerParams()
     # define baseline model
     mconfig.bl_hidden_dims = [256, 256]
     mconfig.bl_num_layers = 2
 
     return(tconfig, mconfig, dconfig)
 
-def setup_configs(exp_id, run_id, exp_dir, use_distribution_loss, use_diffusion_loss):
+
+def setup_configs(exp_id, run_id, exp_dir, 
+                  tconfig, mconfig, dconfig, 
+                  use_distribution_loss, use_diffusion_loss, **kwargs):
     from pathlib import Path
     base_dir = os.path.join(exp_dir, exp_id)
     Path(base_dir).mkdir(parents=True, exist_ok=True)
-    tconfig, mconfig, dconfig = define_configs()
     tconfig.exp_id = exp_id
     with open(os.path.join(base_dir, f'{run_id}.json'), "w") as f:
         json.dump(dict(
@@ -80,6 +88,7 @@ def setup_configs(exp_id, run_id, exp_dir, use_distribution_loss, use_diffusion_
             data_config=asdict(dconfig),
             use_distribution_loss=use_distribution_loss,
             use_diffusion_loss=use_diffusion_loss,
+            **kwargs
         ), f)
     return(base_dir, tconfig, mconfig, dconfig)
 
@@ -87,18 +96,22 @@ def setup_configs(exp_id, run_id, exp_dir, use_distribution_loss, use_diffusion_
 if __name__ == "__main__":
     #typer.run(main)
     #typer.run(test_args)
-    exp_dir = "/home/jovyan/Samarth/ClimsimProjectWork/diffusion-climsim/experiments"
-    exp_id = "climsim_training"
+    exp_dir = "/mnt/home/ssa2206/Climsim/experiments"
+    exp_id = "JointTraining"
     run_id = "trial_1_just_mse"
-
+    lr = 1e-4
+    tconfig, mconfig, dconfig = define_configs(exp_id, climsim_training=True, in_notebook=False, lr=lr)
     use_distribution_loss = False
     use_diffusion_loss = False
-
-    base_dir, tconfig, mconfig, dconfig = setup_configs(exp_id, run_id, exp_dir, use_distribution_loss, use_diffusion_loss)
+    t0 = tru.log_event("setup start", run_id=run_id)
+    dataloaders, indices = tru.load_dataloaders(dconfig, log=True, shuffle_indices=False)
+    base_dir, tconfig, mconfig, dconfig = setup_configs(exp_id, run_id, exp_dir, 
+                                                        tconfig, mconfig, dconfig, 
+                                                        use_distribution_loss, use_diffusion_loss, 
+                                                        test_indices=indices[1].tolist())
     run_start_time = tru.log_event("run start", 
         data_params = asdict(dconfig.dataloader_params),
     )
-    t0 = tru.log_event("setup start", run_id=run_id)
     pprint.pprint(asdict(tconfig))
     print("\n\n")
     pprint.pprint(asdict(mconfig))
@@ -108,12 +121,6 @@ if __name__ == "__main__":
     
     #unet = tru.load_model(mconfig)
     #scheduler = tru.load_scheduler(mconfig)
-    dataloaders, indices = tru.load_dataloaders(dconfig, log=True)
-    with open(os.path.join(base_dir, f'{run_id}.json'), "r") as f:
-        log = json.load(f)
-    log['test_indices'] = indices[1].tolist()
-    with open(os.path.join(base_dir, f'{run_id}.json'), "w") as f:
-        json.dump(log, f)
     
     model = tru.build_baseline_model(mconfig)
 

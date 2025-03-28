@@ -21,40 +21,45 @@ os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 #print(f"Using device: {device}")
 
 
-def define_configs():
-    dl_params = tru.TrainLoaderParams()
-    dl_params.batch_size = 512
-    dl_params.shuffle = True
-    dl_params.num_workers = 4
-    dl_params.prefetch_factor = 3
-    dl_params.persistent_workers = True
-    dl_params.multiprocessing_context = "forkserver"
 
+def define_configs(exp_id, climsim_training=False, in_notebook=False, lr=3e-5):
+    dl_params = tru.TrainLoaderParams()
+    dl_params.batch_size = 256
+    if(climsim_training):
+        dl_params.batch_size *= 384
+    dl_params.shuffle = True
+    dl_params.pin_memory = True
+    if(not in_notebook):
+        dl_params.num_workers = 4
+        dl_params.prefetch_factor = 3
+        dl_params.persistent_workers = True
+        dl_params.multiprocessing_context = "forkserver"
+    
     dconfig = tru.DataConfig()
     dconfig.dataloader_params = dl_params
     dconfig.source = "local-vzarr" # specify from raw cloud bucket
     dconfig.climsim_type = "low-res-expanded" 
-    dconfig.dataset_type = "xbatch"
+    dconfig.dataset_type = "climsim" if climsim_training else "xbatch"
     dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
     dconfig.train_test_split = [1.0]
-    dconfig.data_vars = "v1"
+    dconfig.data_vars = "v2"
 
     tconfig = tru.TrainingConfig()
-    tconfig.exp_id = 'climsim_training'
+    tconfig.exp_id = exp_id
     tconfig.num_epochs = 5
-    tconfig.phases = ['train']
+    tconfig.phases = ['train', 'eval']
     #tconfig.lr_scheduler = 'get_cosine_schedule_with_warmup'
     #tconfig.lr_warmup_steps = 100
-    tconfig.learning_rate = 3e-5
+    tconfig.learning_rate = lr
     tconfig.batch_logging_interval = 32
     tconfig.batch_checkpoint_interval = 50
     tconfig.save_best_epoch = True
     tconfig.log_gradients = False
     tconfig.loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0}
-    tconfig.max_T_sample = 50
+    tconfig.max_T_sample = 51
 
     unet = tru.UNetParams()
-    unet.block_out_channels = (128, 256, 512)
+    unet.block_out_channels = (128, 256, 512) if dconfig.data_vars == "v1" else (256, 512, 1024)
     unet.down_block_types = ("DownBlock2D", "DownBlock2D", "DownBlock2D")
     unet.up_block_types = ("UpBlock2D", "UpBlock2D", "UpBlock2D")
     unet.layers_per_block = 1
@@ -66,16 +71,17 @@ def define_configs():
     mconfig.model_type = "ddpm_diffusion"
     mconfig.unet = unet
     mconfig.scheduler = tru.SchedulerParams()
-    mconfig.bl_hidden_dims = [256, 256]  # define baseline model
+    # define baseline model
+    mconfig.bl_hidden_dims = [256, 256]
     mconfig.bl_num_layers = 2
 
     return(tconfig, mconfig, dconfig)
 
-def setup_configs(exp_id, run_id, exp_dir):
+def setup_configs(exp_id, run_id, exp_dir, lr=3e-5):
     from pathlib import Path
     base_dir = os.path.join(exp_dir, exp_id)
     Path(base_dir).mkdir(parents=True, exist_ok=True)
-    tconfig, mconfig, dconfig = define_configs()
+    tconfig, mconfig, dconfig = define_configs(exp_id, climsim_training=False, in_notebook=False, lr=lr)
     tconfig.exp_id = exp_id
     with open(os.path.join(base_dir, f'{run_id}.json'), "w") as f:
         json.dump(dict(
@@ -89,8 +95,8 @@ if __name__ == "__main__":
     #typer.run(main)
     #typer.run(test_args)
     exp_id = "empire_fullrun"
-    run_id = "trial_1"
-    exp_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/experiments"
+    run_id = "trial_1b"
+    exp_dir = "/mnt/home/ssa2206/Climsim/experiments"
     base_dir, tconfig, mconfig, dconfig = setup_configs(exp_id, run_id, exp_dir)
     run_start_time = tru.log_event("run start", 
         data_params = asdict(dconfig.dataloader_params),
@@ -102,8 +108,8 @@ if __name__ == "__main__":
     print("\n\n" )
     pprint.pprint(asdict(dconfig))
     print("\n\n", )
-    
-    model = tru.load_model_from_ckpt("trial_1-ckpt.pt", mconfig, exp_id, exp_dir)
+    #model = tru.load_model_from_ckpt("trial_1-ckpt.pt", mconfig, exp_id, exp_dir)
+    model = tru.load_model(mconfig)
     dataloaders, indices = tru.load_dataloaders(dconfig)
     optimizer = tru.create_optimizer(model, tconfig)
     loss_fn = torch.nn.MSELoss()

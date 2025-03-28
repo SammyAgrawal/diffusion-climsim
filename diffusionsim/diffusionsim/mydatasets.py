@@ -34,24 +34,24 @@ def log_event(event_name, **kwargs):
     print(json.dumps(log), file=sys.stderr)
     return(t)
 
-def load_dataset(dconfig, log=False):
+def load_dataset(dconfig, log=False, shuffle_indices=False):
     dsi, dso, dutils = cut.load_raw_dataset(dconfig, return_dutils=True)
-    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, shuffle=dconfig.dataloader_params.shuffle)
+    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, shuffle=shuffle_indices)
     datasets = []
     for (dsi, dso) in dsets:
         match dconfig.dataset_type.lower():
             case ds if "xbatch" in ds:
-                datasets.append(XBatchDataset(dso, dutils, dconfig, log=log))
+                datasets.append(XBatchDataset(dso.unify_chunks(), dutils, dconfig, log=log))
             case ds if "image" in ds:
-                datasets.append(ClimsimImageDataset(dsi, dso, dutils, dconfig, log))
+                datasets.append(ClimsimImageDataset(dsi.unify_chunks(), dso.unify_chunks(), dutils, dconfig, log))
             case ds if "climsim" in ds:
-                datasets.append(ClimsimDataset(dsi, dso, dutils, dconfig, log))
+                datasets.append(ClimsimDataset(dsi.unify_chunks(), dso.unify_chunks(), dutils, dconfig, log))
             case _:
                 return(dsets, indices)
     return(datasets, indices)
 
-def load_dataloaders(dconfig, log=False):
-    datasets, indices = load_dataset(dconfig, log)
+def load_dataloaders(dconfig, log=False, shuffle_indices=False):
+    datasets, indices = load_dataset(dconfig, log, shuffle_indices)
     params = asdict(dconfig.dataloader_params)
     dataloaders = []
     for dataset in datasets:
@@ -90,10 +90,12 @@ def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr', shuffle=True):
 def get_norm_info(style='image'):
     if(style=='image'):    
         X_mean = xr.open_dataset(get_path("image_xmean.nc"))
+        X_mean['state_q0002'].data = X_mean['state_q0002'].mean().item() * np.ones_like(X_mean['state_q0002'].data) 
         X_std = xr.open_dataset(get_path("image_xstd.nc"))
         X_std['state_q0002'].data = X_std['state_q0002'].mean().item() * np.ones_like(X_std['state_q0002'].data) 
         Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
         Y_std = xr.open_dataset(get_path("image_ystd.nc"))
+        Y_std['state_q0002'].data = Y_std['state_q0002'].mean().item() * np.ones_like(Y_std['state_q0002'].data) 
         Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
         return(X_mean, X_std, Y_mean, Y_std)
     elif(style=='nc'):
@@ -276,7 +278,7 @@ class XBatchDataset(torch.utils.data.Dataset):
         if(self.normalize):
             self.data = (dso - self.Ymean) / self.Ystd
         else:
-            self.data = dso
+            self.data = dso.unify_chunks()
         self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(
             time=dconfig.dataloader_params.batch_size, lev=60, ncol=384
         ), preload_batch=False,)

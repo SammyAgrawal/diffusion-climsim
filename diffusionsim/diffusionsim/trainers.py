@@ -46,14 +46,14 @@ class AbstractTrainer(ABC):
         else:
             self.dataloaders['train'] = dataloaders
 
-        self.model, self.loss_fn, self.optimizer = model, loss_fn, optim
+        self.model, self.loss_fn, self.optimizer = model.to(self.device), loss_fn, optim
         self._set_directories(base_dir=base_dir)
         self.current_run_id = ""
         if(self.distributed):
             assert rank >= 0, "Need to pass in process rank"
             #self.distributed_backend = 'nccl' if self.device == 'cuda' else 'gloo'
             self.exp_id = "dist_" + self.exp_id
-            self.model = torch.nn.parallel.DistributedDataParallel(self.model.to(self.device), device_ids=[rank])
+            self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[rank])
 
     def _set_directories(self, base_dir, directories='default'):
         if(directories == 'default'):
@@ -95,7 +95,7 @@ class AbstractTrainer(ABC):
             stats = self._run_epoch(epoch)
             self._log_epoch_info(epoch, stats, phase="train")
         
-        self.finish_training(log, run_id, num_epochs)
+        self.finish_training(log, num_epochs)
 
     def setup_training(self, num_epochs, run_id):
         print(f"Getting ready to train model for {num_epochs} epochs")
@@ -109,10 +109,10 @@ class AbstractTrainer(ABC):
             self.gradients = []
         self.current_run_id = run_id
         self.best_loss = 10000
+        self.batches_per_epoch = len(self.dataloaders['train'])
 
     def finish_training(self, log, num_epochs, **kwargs):
         print(f"Finished training {num_epochs} epochs.")
-        self.current_run_id = ""
         if(log):
             with open(self.log_file, "r") as configs:
                 log_dict = json.load(configs)
@@ -129,6 +129,8 @@ class AbstractTrainer(ABC):
             with open(self.log_file, 'w') as f:
                 json.dump(log_dict, f)
             return(log_dict)
+        
+        print("Finished training successfully!")
 
 class ClimsimTrainer(AbstractTrainer):
     def __init__(self, model, dataloaders, loss_fn, optim, tconfig, base_dir, use_dist_loss=False, use_diff_loss=False, rank=0, **kwargs):
@@ -177,12 +179,12 @@ class ClimsimTrainer(AbstractTrainer):
                 self.dataloaders[phase].sampler.set_epoch(epoch)
             steps_per_epoch = len(self.dataloaders[phase])
             for step, (X, Y) in enumerate(self.dataloaders[phase]):
-                tt0 = log_event("training start", batch=step)
-                batch_losses = self._run_batch(X, Y, phase)
-                epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step, phase)
-                log_event("training end", batch=step, duration= time.time() - tt0)
+                tt0 = log_event("epoch start", batch=step)
                 if(step % 10 == 0):
                     print(f"Currently at epoch {epoch}, step {step}/{steps_per_epoch}")
+                batch_losses = self._run_batch(X.to(self.device), Y.to(self.device), phase)
+                epoch_losses, current_losses = self.log_step(epoch_losses, current_losses, batch_losses, epoch, step, phase)
+                log_event("epoch end", batch=step, duration= time.time() - tt0)
         return(epoch_losses)
 
     def log_step(self, epoch_losses, current_losses, batch_losses, epoch, step, phase):
@@ -477,7 +479,6 @@ class DiffusionTrainer(AbstractTrainer):
     def setup_training(self, num_epochs, run_id):
         super().setup_training(num_epochs, run_id)
         self.best_loss = 100
-        self.model = self.model.to(self.device)
         self.event_file = 0 #open(os.path.join(self.dirs['output_dir'], "event_log.txt"), "a")
         self.noise_timesteps = torch.zeros(self.training_config.max_T_sample, device=self.device, dtype=torch.long)
 
