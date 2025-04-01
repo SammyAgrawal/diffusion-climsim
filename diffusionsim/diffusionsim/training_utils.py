@@ -10,32 +10,20 @@ import torch
 
 from .models import load_model, build_baseline_model
 from .mydatasets import load_dataset, load_dataloaders, load_scheduler, log_event
-from .trainers import VAETrainer, ClimsimTrainer, DiffusionTrainer, create_optimizer
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Tuple
 
-def setup_trainer(exp_id, run_id, tconfig, mconfig, dconfig, base_dir):
-    model = load_model(mconfig)
-    dataloaders, indices = load_dataloaders(dconfig)
-    optimizer = create_optimizer(model, tconfig)
-    #next(iter(dataloaders[0])) # just to finish setting up
-    match mconfig.model_type:
-        case mtype if "diffusion" in mtype:
-            loss_fn = torch.nn.MSELoss()
-            scheduler = load_scheduler(mconfig)
-            trainer = DiffusionTrainer(model, scheduler, dataloaders, loss_fn, optimizer, tconfig, rank=0, base_dir=base_dir)
 
-    return(trainer)
 
 @dataclass
 class TrainLoaderParams:
     batch_size: int = 128
-    shuffle: bool = False
+    shuffle: bool = True
     num_workers: int = 0
     prefetch_factor: int = None
     persistent_workers: bool = False
     multiprocessing_context: str = None
-    pin_memory: bool = True
+    pin_memory: bool = False
 
 @dataclass
 class DataConfig:
@@ -55,10 +43,36 @@ class DataConfig:
     def __post_init__(self):
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
+
+def my_dconfig(data_vars='v1', in_notebook=False, climsim_training=True, batch_size=32):
+    dl_params = TrainLoaderParams()
+    dl_params.batch_size = batch_size
+    if(climsim_training):
+        dl_params.batch_size *= 384
+    dl_params.shuffle = True
+    if(torch.cuda.is_available() and batch_size > 16):
+        dl_params.pin_memory = True
+    if(not in_notebook):
+        dl_params.num_workers = 4
+        dl_params.prefetch_factor = 3
+        dl_params.persistent_workers = True
+        dl_params.multiprocessing_context = "forkserver"
+    
+    dconfig = DataConfig()
+
+    dconfig.dataloader_params = dl_params
+    dconfig.source = "local-vzarr" # specify from raw cloud bucket
+    dconfig.climsim_type = "low-res-expanded" 
+    dconfig.dataset_type = "climsim" if climsim_training else "xbatch"
+    dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
+    dconfig.train_test_split = [1.0]
+    dconfig.data_vars = data_vars
+    return(dconfig)
             
 @dataclass
 class TrainingConfig:
-    exp_id: str = "expName"
+    exp_id: str
+    run_id: str
     # data params
     num_epochs: int = 5
     phases: List[str] = field(default_factory=lambda: ['train', 'eval'])
@@ -76,15 +90,26 @@ class TrainingConfig:
     max_T_sample: int = 100
     # logging params
     save_best_epoch: bool = True
-    batch_logging_interval: int = 4
-    batch_checkpoint_interval: int = 100 # save checkpoint every 100 batches
-    log_gradients: bool = True
+    batch_logging_interval: int = 32
+    batch_checkpoint_interval: int = 50 # save checkpoint every 50 batches
+    log_gradients: bool = False
     #save_image_epochs: int = 2
     push_to_hub: bool = False
     diffusion_loss_noise_level: int = 10; 
     
     def __post_init__(self):
         self.shuffle_data = {'train':False, 'eval':False}
+
+def my_tconfig(climsim_training, batch_size, max_T_sample=51, lr=1e-4):
+    tconfig = TrainingConfig()
+    tconfig.exp_id = exp_id
+    tconfig.num_epochs = 10
+    #tconfig.lr_scheduler = 'get_cosine_schedule_with_warmup'
+    #tconfig.lr_warmup_steps = 100
+    ref_batch_size = 128
+    tconfig.learning_rate = lr * batch_size / ref_batch_size
+    tconfig.loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0}
+    tconfig.max_T_sample = max_T_sample
 
 @dataclass
 class UNetParams:
@@ -105,7 +130,7 @@ class UNetParams:
         "UpBlock2D",
     ))
     layers_per_block: int = 1
-    norm_num_groups: int = 4
+    norm_num_groups: int = 2
 
 # scheduler params
 @dataclass
@@ -119,7 +144,7 @@ class SchedulerParams:
 
 @dataclass
 class ModelConfig:
-    model_type: str = "diffusion"
+    model_type: str = "ddpm_diffusion"
     data_vars: str = "v1"
     scheduler_type: str = 'ddpm'
     unet: UNetParams = field(default_factory=lambda: UNetParams())
@@ -183,8 +208,18 @@ def load_model_from_ckpt(ckpt_fname, mconfig, expid, exp_dir):
 #    )
 #    return(lr)
  
+def create_optimizer(model, tconfig):
+    match tconfig.optimizer.lower():
+        case "adam":
+            try:
+                my_betas = tconfig.betas
+            except AttributeError:
+                my_betas = (0.9, 0.999) # default values
+            optim = torch.optim.Adam(model.parameters(), lr=tconfig.learning_rate, betas=my_betas)
 
-fs = gcsfs.GCSFileSystem()
+        case _: # defaults to SGD
+            optim = torch.optim.SGD(model.parameters(), lr=tconfig.learning_rate)
+    return(optim)
 
 def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
     inputs, outputs = load_vars(data_vars)

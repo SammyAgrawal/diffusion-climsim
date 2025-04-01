@@ -14,7 +14,7 @@ def move_device(model, new_device):
     return(model)
 
 import inspect
-def load_model(config):
+def load_model(config, **kwargs):
     registered = ['VAE', 'diffusion', 'latent_diffusion']
     def pass_config(func, data_class):
         # only pass model config params that function takes in
@@ -30,14 +30,23 @@ def load_model(config):
                 hidden_dims= config.ae_hidden_dims,
                 disable_logstd_bias = config.disable_enc_logstd_bias,
             )
-            return(model)
+            
         case model_type if "diffusion" in model_type:
             if 'latent' in model_type: # modify channels for VAE 
                 config.unet.in_channels = config.latent_dims 
                 config.unet.out_channels = config.latent_dims
-            return(pass_config(diffusers.UNet2DModel, config.unet))
-        
-    return(-1)
+            model = pass_config(diffusers.UNet2DModel, config.unet)
+        case "baseline":
+            model = build_baseline_model(config, **kwargs)
+        case _:
+            raise ValueError(f"Model type {config.model_type} not supported")
+    if(device in kwargs):
+        model = model.to(kwargs["device"])
+    if("distributed" in kwargs and kwargs["distributed"]):
+        assert "rank" in kwargs, "rank must be provided if distributed is True"
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[kwargs["rank"]])
+    
+    return(model)
 
 def build_baseline_model(config, from_ckpt=False, **kwargs):
     if(config.bl_load_model_name):
@@ -130,7 +139,6 @@ class Decoder(torch.nn.Module):
         mu = self.dec_mu(z)
         #sig = torch.exp(self.dec_std(z))
         return mu
-
 
 class VariationalAutoencoder(torch.nn.Module):
     def __init__(self, data_dims=128, label_dims=128,

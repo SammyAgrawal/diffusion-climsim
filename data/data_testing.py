@@ -23,6 +23,8 @@ fs = gcsfs.GCSFileSystem()
 os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 
 
+
+
 def log_event(event_name, **kwargs):
     t = time.time()
     log = {
