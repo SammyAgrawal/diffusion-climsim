@@ -40,7 +40,7 @@ def load_model(config, **kwargs):
             model = build_baseline_model(config, **kwargs)
         case _:
             raise ValueError(f"Model type {config.model_type} not supported")
-    if(device in kwargs):
+    if('device' in kwargs):
         model = model.to(kwargs["device"])
     if("distributed" in kwargs and kwargs["distributed"]):
         assert "rank" in kwargs, "rank must be provided if distributed is True"

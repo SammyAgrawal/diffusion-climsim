@@ -33,13 +33,13 @@ dutils = cut.setup_data_utils(dconfig.climsim_type, dconfig.source,
                               dconfig.data_vars, use_tendencies=dconfig.use_tendencies, 
                               grid_info=grid_info, base_dir=base_dir
                             )
-manifest_dir = os.path.join("/mnt/home/ssa2206", "Climsim", "diffusion-climsim/data", "local_manifests")
+manifest_dir = os.path.join("/mnt/home/ssa2206/Climsim/diffusion-climsim/data", "vlocal_manifests")
 print(f"saving manifests to {manifest_dir}")
 input_storage = icechunk.local_filesystem_storage(os.path.join(manifest_dir, dutils.mlivar))
-input_repo = icechunk.Repository.open(input_storage)
+input_repo = icechunk.Repository.open_or_create(input_storage)
 
 target_storage = icechunk.local_filesystem_storage(os.path.join(manifest_dir, "mlo"))
-target_repo = icechunk.Repository.open(target_storage)
+target_repo = icechunk.Repository.open_or_create(target_storage)
 
 
 desired_chunksizes = {'time': 1024, 'ncol': 384, 'lev': 60}

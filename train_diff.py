@@ -8,6 +8,7 @@ import json
 import diffusers
 import diffusionsim as diff
 import diffusionsim.training_utils as tru
+from diffusionsim.trainers import DiffusionTrainer
 import torch
 from typing import Optional
 import typer
@@ -21,23 +22,23 @@ os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 #print(f"Using device: {device}")
 
 REF_BATCH_SIZE = 128
-exp_dir = "/mnt/home/ssa2206/Climsim/experiments"
+EXP_DIR = "/mnt/home/ssa2206/Climsim/experiments"
 climsim_training = False
 in_notebook = False
 
-def setup_run(num_models, exp_id, base_run_id, exp_dir=exp_dir,
+def setup_run(num_models, exp_id, base_run_id,
               data_vars='v1', batch_size=128):
     dconfig = tru.my_dconfig(data_vars, in_notebook, climsim_training, batch_size)
+    dconfig.train_test_split = [1.0]
     tconfigs, mconfigs = [], []
-
-    learning_rates = []
+    learning_rates = [1e-5, 5e-5, 1e-4, 5e-4, 1e-3]
     unet_channel_dims = []
     unet_down_block_types = []
-
-
+    lettering = 'abcdefghijklmnopqrstuvwxyz'
     for i in range(num_models):
-        tconfig = tru.TrainingConfig(exp_id=exp_id, run_id=f"{base_run_id}_{i}")
+        tconfig = tru.TrainingConfig(exp_id=exp_id, run_id=f"{base_run_id}{lettering[i]}")
         tconfig.learning_rate = learning_rates[i] * batch_size / REF_BATCH_SIZE
+        tconfig.phases = ['train']
         tconfig.loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0}
         tconfig.max_T_sample = 51
         
@@ -65,23 +66,17 @@ if __name__ == "__main__":
     num_models_to_train = 5
     exp_id = "empire_fullrun"
     run_id = "lr-search"
-    base_dir = os.path.join(exp_dir, exp_id)
+    base_dir = os.path.join(EXP_DIR, exp_id)
     tconfigs, mconfigs, dconfig = setup_run(num_models_to_train, exp_id, run_id)
     run_start_time = tru.log_event("run start", 
         data_params = asdict(dconfig.dataloader_params),
     )
     t0 =  tru.log_event("setup start", run_id=run_id)
-    #model = tru.load_model_from_ckpt("trial_1-ckpt.pt", mconfig, exp_id, exp_dir)
-    dataloaders, indices = tru.load_dataloaders(dconfig)
-    dataloader_dict = {}
-    for i, phase in enumerate(tconfigs[0].phases):
-        dataloader_dict[phase] = dataloaders[i]
+    #model = tru.load_model_from_ckpt("trial_1-ckpt.pt", mconfig, exp_id, EXP_DIR)
     loss_fn = torch.nn.MSELoss()
-
-
-    trainer = tru.DiffusionTrainer(dataloader_dict, mconfigs, tconfigs, loss_fn, base_dir, rank=0)
+    trainer = DiffusionTrainer(dconfig, mconfigs, tconfigs, loss_fn, base_dir, rank=0)
 
     tru.log_event("setup end", duration=time.time() - t0)
-    trainer.train(num_epochs=20, log=True, run_id=run_id)
+    trainer.train(num_epochs=20, log=True)
     print("Done!")
     tru.log_event("run end", duration = time.time() - run_start_time)

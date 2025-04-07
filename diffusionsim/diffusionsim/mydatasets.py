@@ -147,9 +147,11 @@ class ClimsimDataset(Dataset):
     def __init__(self, dsi, dso, dutils, dconfig, log=False):
         self.log = log
         self.dsi, self.dso = dsi, dso
+        self.permute_indices = image_regridding(dsi)
         #assert self.dsi.sizes['time'] == self.dso.sizes['time'], "dsi and dso must have the same number of timesteps"
 
         self.input_vars, self.target_vars = dutils.input_vars, dutils.target_vars
+        self.input_len, self.target_len = dutils.input_feature_len, dutils.target_feature_len
         self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='image')
         xm = self.X_mean[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
         xs = self.X_std[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
@@ -196,25 +198,20 @@ class ClimsimDataset(Dataset):
         elif((var, level) in mlo):
             return(mlo.index((var, level)))
         return(-1)
-
-    def reconstruct_X(self, X_norm):
-        X_rec = (X_norm * self.X_std) + self.X_mean
-        return(X_rec)
     
-    def reconstruct_Y(self, Y_norm):
-        Y_rec = (Y_norm * self.Y_std) + self.Y_mean
-        return(Y_rec)
-    
-    def return_sample(self, x, y):
-        # Reshape first
-        x_rec = x.reshape(-1, 384, self.xm.shape[0])  # assuming this is dutils.input_feature_len
-        y_rec = y.reshape(-1, 384, self.ym.shape[0])  # assuming this is dutils.target_feature_len
-        
+    def make_image(self, x, y, denormalize=True):
         # Denormalize using tensors
-        x_rec = x_rec * self.xs + self.xm
-        y_rec = y_rec * self.ys + self.ym
+        if(denormalize):
+            x = x * self.xs + self.xm
+            y = y * self.ys + self.ym
+        # Reshape first
+        x_rec = x.reshape(-1, 384, self.input_len)  # assuming this is dutils.input_feature_len
+        y_rec = y.reshape(-1, 384, self.target_len)  # assuming this is dutils.target_feature_len
         
-        return x_rec, y_rec
+        ximg = x_rec[:, self.permute_indices, :].reshape(-1, 16, 24, 124)
+        yimg = y_rec[:, self.permute_indices, :].reshape(-1, 16, 24, 124)
+        
+        return ximg, yimg
 
 class ClimsimDatasetOld(Dataset):
     def __init__(self, X, Y, normalize=True):

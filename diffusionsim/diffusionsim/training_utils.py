@@ -96,6 +96,11 @@ class TrainingConfig:
     #save_image_epochs: int = 2
     push_to_hub: bool = False
     diffusion_loss_noise_level: int = 10; 
+
+    # distribution loss params
+    num_gaussians: int = 2
+    num_distloss_samples: int = 4
+    distloss_bs: int 
     
     def __post_init__(self):
         self.shuffle_data = {'train':False, 'eval':False}
@@ -232,3 +237,60 @@ def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
     Y = Y_norm / output_scale
     return(X,Y)
 
+
+def score_function(x, mu, var, pi):
+    log_probs = torch.log(pi) - 0.5 * torch.log(var * 2 * torch.pi) - (x[:,None] - mu) ** 2 / (2 * var)
+    qx = torch.exp(torch.logsumexp(log_probs, dim=1, keepdim=True))
+        # Compute weighted derivative terms: pi * N(x|mu, var) * (x - mu) / var
+    weighted_terms = torch.exp(log_probs) * (x[:,None] - mu) / var  # (N, K)
+    # Sum over components and divide by q(x)
+    score = -weighted_terms.sum(dim=1, keepdim=True) / qx    # (N, 1)
+    return score.squeeze()
+
+
+def u_q(x_1, x_2, mu, var, pi, h):
+    assert len(x_1.shape) == 1 and len(x_2.shape) == 1, "expected 1d input"
+    # x_1 and x_2 are samples from q(x), compared to knowledge distribution p(x) represented by mixture model. Thus, they are of shape (n_samples, d)
+    sq1 = score_function(x_1, mu, var, pi)
+    sq2 = score_function(x_2, mu, var, pi)
+
+    # Compute the final result based on bandwidth h
+    if h == float('inf'):
+        return torch.outer(sq1, sq2)
+    
+    diffs = x_1.unsqueeze(1) - x_2.unsqueeze(0)
+    kernel_matrix = torch.exp(- (diffs ** 2) / (2 * h ** 2))
+    
+    return(( torch.outer(sq1, sq2) + 
+            (sq1.reshape(-1,1) * diffs - sq2.reshape(1, -1) * diffs)/h**2 + 
+            (h**-2 - h**-4 * diffs ** 2)) * kernel_matrix)
+
+def distribution_loss(y_hat, y, tconfig):
+    def get_i(x, i):
+        return(x[i*bs : (i+1)*bs, VAR_IND])
+    GMM = GaussianMixture(n_components=tconfig.num_gaussians)
+    GMM.fit(y[:,VAR_IND].detach().cpu().numpy().reshape(-1, 1))
+    mu = torch.tensor(GMM.means_.flatten(), dtype=torch.float64, device=x_1.device)[None,:] # (n_components,) (nc, d=1 flattened)
+    pi = torch.tensor(GMM.weights_.flatten(), dtype=torch.float64, device=x_1.device)[None,:] # (n_components,)
+    var = torch.tensor(GMM.covariances_.flatten(), dtype=torch.float64, device=device)[None,:] # (n_components,) (technically (n_c, d,d) but flattened), 
+    epsilon = 1e-7 # Ensure pi and var are positive and non-zero for stability
+    pi = torch.clamp(pi, min=epsilon)
+    var = torch.clamp(var, min=epsilon)
+    
+    with torch.no_grad():
+        h = 2 * torch.max(var).item()
+
+    bs, n_samples = tconfig.distloss_bs, tconfig.num_distloss_samples
+    batch_num = y_hat.shape[0] // bs
+    ix, jx = torch.randint(0, batch_num, (n_samples,)), torch.randint(0, batch_num, (n_samples,))
+    mask = ix == jx
+    while mask.any():
+        ix[mask] = torch.randint(0, batch_num, (mask.sum(),))
+        jx[mask] = torch.randint(0, batch_num, (mask.sum(),))
+        mask = ix == jx
+    loss = 0
+    for i,j in zip(ix, jx):
+        y1 = get_i(y_hat, i)
+        y2 = get_i(y_hat, j)
+        loss += u_q(y1, y2, mu, var, pi, h).mean()
+    return(loss / n_samples)
