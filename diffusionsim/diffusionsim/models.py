@@ -14,7 +14,7 @@ def move_device(model, new_device):
     return(model)
 
 import inspect
-def load_model(config, **kwargs):
+def load_model(config, model_type,**kwargs):
     registered = ['VAE', 'diffusion', 'latent_diffusion']
     def pass_config(func, data_class):
         # only pass model config params that function takes in
@@ -22,7 +22,7 @@ def load_model(config, **kwargs):
         filtered_kwargs = {k: v for k, v in asdict(data_class).items() if k in accepted_params}
         return func(**filtered_kwargs)
         
-    match config.model_type.lower():
+    match model_type.lower():
         case "vae":
             model = VariationalAutoencoder(
                 data_dims= config.num_channels, 
@@ -37,7 +37,7 @@ def load_model(config, **kwargs):
                 config.unet.out_channels = config.latent_dims
             model = pass_config(diffusers.UNet2DModel, config.unet)
         case "baseline":
-            model = build_baseline_model(config, **kwargs)
+            model = build_baseline_model(config)
         case _:
             raise ValueError(f"Model type {config.model_type} not supported")
     if('device' in kwargs):
@@ -48,7 +48,7 @@ def load_model(config, **kwargs):
     
     return(model)
 
-def build_baseline_model(config, from_ckpt=False, **kwargs):
+def build_baseline_model(config, **kwargs):
     if(config.bl_load_model_name):
         mpath = os.path.join(config.bl_model_dir, config.bl_load_model_name)
         model = torch.jit.load(mpath).original_model
@@ -65,9 +65,6 @@ def build_baseline_model(config, from_ckpt=False, **kwargs):
 
     layers.append(nn.Linear(in_dim, config.bl_output_size))  # Final output layer (no activation)
     model = nn.Sequential(*layers)
-    if(from_ckpt):
-        assert "ckpt_path" in kwargs, "ckpt_path must be provided if from_ckpt is True"
-        model.load_state_dict(torch.load(kwargs["ckpt_path"], map_location=torch.device('cpu')))
     return model
 
 

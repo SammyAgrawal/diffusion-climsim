@@ -9,6 +9,8 @@ import torch
 import diffusionsim.training_utils as tru
 from collections import defaultdict
 import dataclasses
+from sklearn.mixture import GaussianMixture
+import scipy.stats as stats
 
 
 class AbstractTrainer(ABC):
@@ -18,7 +20,7 @@ class AbstractTrainer(ABC):
         self.phases = tconfigs[0].phases
         assert isinstance(mconfigs, list) and isinstance(tconfigs, list) and len(mconfigs) == len(tconfigs), "mconfigs and tconfigs must be lists of same length"
         self.dconfig = dconfig
-        dls, indices = tru.load_dataloaders(dconfig)
+        dls, self.indices = tru.load_dataloaders(dconfig, log=True)
         self.dataloaders = {}
         for i, phase in enumerate(self.phases):
             self.dataloaders[phase] = dls[i]
@@ -28,7 +30,7 @@ class AbstractTrainer(ABC):
         self.mconfigs = dict(zip(self.run_ids, mconfigs))
         self.training_configs = dict(zip(self.run_ids, tconfigs))
         self.distributed = bool(tconfigs[0].distributed_training)
-        self.models = dict(zip(self.run_ids, [tru.load_model(mconfig, device=self.device, distributed=self.distributed) for mconfig in mconfigs]))
+        self.models = dict(zip(self.run_ids, [tru.load_model(mconfig, model_type=mconfig.model_type, device=self.device, distributed=self.distributed) for mconfig in mconfigs]))
         optimizers = [tru.create_optimizer(model, tconfig) for model, tconfig in zip(self.models.values(), tconfigs)]
         self.optimizers = dict(zip(self.run_ids, optimizers))
         self.loss_fn = loss_fn
@@ -48,6 +50,7 @@ class AbstractTrainer(ABC):
     def _save_checkpoint(self, run_id, cid='', **kwargs):
         model = self.models[run_id]
         ckp = model.module.state_dict() if self.distributed else model.state_dict()
+        ckp = {k: v.detach().cpu() for k, v in ckp.items()}
         path = os.path.join(self.dirs['ckpt_dir'], f"{cid}{run_id}-ckpt.pt")
         torch.save(ckp, path)
         print(f"Model saved at {path}")
@@ -78,6 +81,7 @@ class AbstractTrainer(ABC):
     @abstractmethod
     def _log_epoch_info(self, epoch_num, epoch_stats, phase):
         pass
+
     
     def train(self, num_epochs, log=True):
         self.setup_training(num_epochs)
@@ -114,7 +118,7 @@ class AbstractTrainer(ABC):
 
     def finish_training(self, num_epochs, **kwargs):
         print(f"Finished training {self.number_of_models} model(s) for {num_epochs} epochs.")
-
+        losses = {}
         for i, run_id in enumerate(self.run_ids):
             log_file = os.path.join(self.dirs['log_dir'], f"{run_id}.json")
             with open(log_file, "r+") as f:
@@ -150,20 +154,16 @@ class AbstractTrainer(ABC):
 class ClimsimTrainer(AbstractTrainer):
     def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, rank=0, **kwargs):
         super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, rank)
-        self.loss_weights = {}
         self.tracked_losses = ["mse", "total"]
         for run_id in self.run_ids:
             loss_weights = self.training_configs[run_id].loss_weights
-            if(loss_weights['distribution'] > 0):
+            if(loss_weights['distribution'] > 0 and "distribution" not in self.tracked_losses):
                 self.tracked_losses.append("distribution")
-            if(loss_weights['diffusion'] > 0):
+            if(loss_weights['diffusion'] > 0 and "diffusion" not in self.tracked_losses):
                 self.tracked_losses.append("diffusion")
                 assert 'unet' in kwargs and 'scheduler' in kwargs, "Need to pass in diffusion model"
                 self.unet = kwargs['unet']
                 self.scheduler = kwargs['scheduler']
-            
-
-            self.loss_weights[run_id] = loss_weights
 
     
     def setup_training(self, num_epochs):
@@ -232,20 +232,23 @@ class ClimsimTrainer(AbstractTrainer):
         batch_losses = {}
         for run_id in self.run_ids:
             batch_losses[run_id] = {}
-            model, optimizer, loss_weights = self.models[run_id], self.optimizers[run_id], self.loss_weights[run_id]
+            model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
+            loss_weights = tconfig.loss_weights
             y_hat = model(x)
             mse_loss = self.loss_fn(y_hat, y)
-            total_loss = loss_weights['mse'] * mse_loss
+            total_loss = tconfig.loss_weights['mse'] * mse_loss
             batch_losses[run_id]['mse'] = mse_loss.item()
-            if(loss_weights['distribution'] > 0):
-                dist_loss = self.distribution_loss(y, y_hat)
-                total_loss += loss_weights['distribution'] * dist_loss
+            if('distribution' in self.tracked_losses):
+                dist_loss = self.distribution_loss(y_hat, y, tconfig)
                 batch_losses[run_id]['distribution'] = dist_loss.item()
-            if(loss_weights['diffusion'] > 0):
+                if(loss_weights['distribution'] > 0):
+                    total_loss += loss_weights['distribution'] * dist_loss
+                
+            if('diffusion' in self.tracked_losses):
                 diff_loss = self.diffusion_loss(y, y_hat)
-                total_loss += loss_weights['diffusion'] * diff_loss
                 batch_losses[run_id]['diffusion'] = diff_loss.item()
-
+                if(loss_weights['diffusion'] > 0):  
+                    total_loss += loss_weights['diffusion'] * diff_loss
             batch_losses[run_id]['total'] = total_loss.item()
         
             if(phase == 'train'):
@@ -254,26 +257,52 @@ class ClimsimTrainer(AbstractTrainer):
                 if(self.training_configs[run_id].clip_gradients):
                     total_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
-        
-        tru.log_event("run-batch end", duration=time.time() - t0, loss=batch_losses['total'])
+            tru.log_event("run-batch end", duration=time.time() - t0, loss=batch_losses[run_id]['total'], run_id=run_id)
         return(batch_losses)
     
-    def distribution_loss(self, y, yhat):
-        raise NotImplementedError("Distribution loss not implemented")
+    def distribution_loss(self, y_hat, y, tconfig):
+        def get_i(x, i):
+            return(x[i*bs : (i+1)*bs, tconfig.distloss_var_ind])
+        GMM = GaussianMixture(n_components=tconfig.num_gaussians)
+        GMM.fit(y[:,tconfig.distloss_var_ind].detach().cpu().numpy().reshape(-1, 1))
+        mu = torch.tensor(GMM.means_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:] # (1, K))
+        pi = torch.tensor(GMM.weights_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:] 
+        var = torch.tensor(GMM.covariances_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:] 
+        epsilon = 1e-7 # Ensure pi and var are positive and non-zero for stability
+        pi = torch.clamp(pi, min=epsilon)
+        var = torch.clamp(var, min=epsilon)
+        
+        with torch.no_grad():
+            h = 2 * torch.max(var).item()
+
+        bs, n_samples = tconfig.distloss_bs, tconfig.num_distloss_samples
+        batch_num = y_hat.shape[0] // bs
+        ix, jx = torch.randint(0, batch_num, (n_samples,)), torch.randint(0, batch_num, (n_samples,))
+        mask = ix == jx
+        while mask.any():
+            ix[mask] = torch.randint(0, batch_num, (mask.sum(),))
+            jx[mask] = torch.randint(0, batch_num, (mask.sum(),))
+            mask = ix == jx
+        loss = 0
+        for i,j in zip(ix, jx):
+            y1 = get_i(y_hat, i)
+            y2 = get_i(y_hat, j)
+            loss += u_q(y1, y2, mu, var, pi, h).mean()
+        return(loss / n_samples)
     
-    def diffusion_loss(self, y, yhat, T: int):
+    def diffusion_loss(self, y, yhat, T: int, unet, scheduler):
         #raise NotImplementedError("Diffusion loss not implemented")
         # TODO: y and yhat are of size (B, 128) and somehow need to convert into images for diffusion loss
         y, yhat = construct_image(y), construct_image(yhat)
         def encode(sample):
             eps = torch.randn(sample.shape, device=device) # BS x C x H x W
-            xt = self.scheduler.add_noise(sample, eps, torch.LongTensor([T])) # noisy image
+            xt = scheduler.add_noise(sample, eps, torch.LongTensor([T])) # noisy image
             return(xt)
         def decode(xt):
             for t in range(T, 0, -1):
                 with torch.no_grad():
-                    eps_theta = self.unet(xt, t).sample
-                xt = self.scheduler.step(eps_theta, t, xt).prev_sample
+                    eps_theta = unet(xt, t).sample
+                xt = scheduler.step(eps_theta, t, xt).prev_sample
             return(xt)
         yhat = decode(encode(yhat))
         return(self.image_loss_fn(y, yhat))
@@ -496,3 +525,33 @@ class DiffusionTrainer(AbstractTrainer):
         super().finish_training(num_epochs, sampled_timesteps=noise_timesteps)
         #if(self.event_file):
         #    self.event_file.close()
+
+
+
+
+def score_function(x, mu, var, pi):
+    log_probs = torch.log(pi) - 0.5 * torch.log(var * 2 * torch.pi) - (x[:,None] - mu) ** 2 / (2 * var)
+    qx = torch.exp(torch.logsumexp(log_probs, dim=1, keepdim=True))
+        # Compute weighted derivative terms: pi * N(x|mu, var) * (x - mu) / var
+    weighted_terms = torch.exp(log_probs) * (x[:,None] - mu) / var  # (N, K)
+    # Sum over components and divide by q(x)
+    score = -weighted_terms.sum(dim=1, keepdim=True) / qx    # (N, 1)
+    return score.squeeze()
+
+
+def u_q(x_1, x_2, mu, var, pi, h):
+    assert len(x_1.shape) == 1 and len(x_2.shape) == 1, "expected 1d input"
+    # x_1 and x_2 are samples from q(x), compared to knowledge distribution p(x) represented by mixture model. Thus, they are of shape (n_samples, d)
+    sq1 = score_function(x_1, mu, var, pi)
+    sq2 = score_function(x_2, mu, var, pi)
+
+    # Compute the final result based on bandwidth h
+    if h == float('inf'):
+        return torch.outer(sq1, sq2)
+    
+    diffs = x_1.unsqueeze(1) - x_2.unsqueeze(0)
+    kernel_matrix = torch.exp(- (diffs ** 2) / (2 * h ** 2))
+    
+    return(( torch.outer(sq1, sq2) + 
+            (sq1.reshape(-1,1) * diffs - sq2.reshape(1, -1) * diffs)/h**2 + 
+            (h**-2 - h**-4 * diffs ** 2)) * kernel_matrix)

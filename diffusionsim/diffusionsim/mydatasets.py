@@ -208,8 +208,8 @@ class ClimsimDataset(Dataset):
         x_rec = x.reshape(-1, 384, self.input_len)  # assuming this is dutils.input_feature_len
         y_rec = y.reshape(-1, 384, self.target_len)  # assuming this is dutils.target_feature_len
         
-        ximg = x_rec[:, self.permute_indices, :].reshape(-1, 16, 24, 124)
-        yimg = y_rec[:, self.permute_indices, :].reshape(-1, 16, 24, 124)
+        ximg = x_rec[:, self.permute_indices, :].reshape(-1, 16, 24, self.input_len)
+        yimg = y_rec[:, self.permute_indices, :].reshape(-1, 16, 24, self.target_len)
         
         return ximg, yimg
 

@@ -22,7 +22,6 @@ os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 #print(f"Using device: {device}")
 
 REF_BATCH_SIZE = 128
-EXP_DIR = "/mnt/home/ssa2206/Climsim/experiments"
 climsim_training = False
 in_notebook = False
 
@@ -68,9 +67,7 @@ if __name__ == "__main__":
     run_id = "lr-search"
     base_dir = os.path.join(EXP_DIR, exp_id)
     tconfigs, mconfigs, dconfig = setup_run(num_models_to_train, exp_id, run_id)
-    run_start_time = tru.log_event("run start", 
-        data_params = asdict(dconfig.dataloader_params),
-    )
+    run_start_time = tru.log_event("run start", data_params = asdict(dconfig.dataloader_params))
     t0 =  tru.log_event("setup start", run_id=run_id)
     #model = tru.load_model_from_ckpt("trial_1-ckpt.pt", mconfig, exp_id, EXP_DIR)
     loss_fn = torch.nn.MSELoss()

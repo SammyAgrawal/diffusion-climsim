@@ -35,6 +35,7 @@ dutils = cut.setup_data_utils(dconfig.climsim_type, dconfig.source,
                             )
 manifest_dir = os.path.join("/mnt/home/ssa2206/Climsim/diffusion-climsim/data", "vlocal_manifests")
 print(f"saving manifests to {manifest_dir}")
+## SETUP ICECHUNK REPOSITORIES
 input_storage = icechunk.local_filesystem_storage(os.path.join(manifest_dir, dutils.mlivar))
 input_repo = icechunk.Repository.open_or_create(input_storage)
 
@@ -48,7 +49,7 @@ desired_chunksizes = {'time': 1024, 'ncol': 384, 'lev': 60}
 def fetch_file(fname, dutils=dutils):
     path = os.path.join(dutils.data_path, fname)
     time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
-    ds = xr.open_dataset(path, engine='netcdf4')
+    ds = open_virtual_dataset(path)
     time = dutils.parse_time(fname)
     ds = dutils.add_time(ds, time)
     return ds
@@ -81,13 +82,13 @@ def add_period(vds, commit_message, repo, appending=True):
     print(f"Committed {commit_message}, period added {msg}", flush=True)
 
 
-for year in range(4,10):
+for year in range(1,10):
     for month in range(1,13):
-        if(year == 4 and month < 6):
-            continue
         if(year == 9 and month > 1):
             break
-        #appending = True#False if year == 1 and month == 2 else True
+        if(year == 1 and month == 1):
+            continue
+        appending = False if year == 1 and month == 2 else True
         start_time = time.time()
         vds_inputs, vds_targets = fetch_virtual_datasets(year, month)
         print(f"time taken to fetch {year}-{month}: {(time.time() - start_time)/60} minutes")
