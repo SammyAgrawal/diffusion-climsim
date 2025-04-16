@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass, asdict, field
 from . import DIFFUSERS_AVAILABLE
-
+import os
 if DIFFUSERS_AVAILABLE:
     from . import diffusers
 
@@ -14,7 +14,7 @@ def move_device(model, new_device):
     return(model)
 
 import inspect
-def load_model(config):
+def load_model(config, model_type,**kwargs):
     registered = ['VAE', 'diffusion', 'latent_diffusion']
     def pass_config(func, data_class):
         # only pass model config params that function takes in
@@ -22,7 +22,7 @@ def load_model(config):
         filtered_kwargs = {k: v for k, v in asdict(data_class).items() if k in accepted_params}
         return func(**filtered_kwargs)
         
-    match config.model_type.lower():
+    match model_type.lower():
         case "vae":
             model = VariationalAutoencoder(
                 data_dims= config.num_channels, 
@@ -30,16 +30,30 @@ def load_model(config):
                 hidden_dims= config.ae_hidden_dims,
                 disable_logstd_bias = config.disable_enc_logstd_bias,
             )
-            return(model)
+            
         case model_type if "diffusion" in model_type:
             if 'latent' in model_type: # modify channels for VAE 
                 config.unet.in_channels = config.latent_dims 
                 config.unet.out_channels = config.latent_dims
-            return(pass_config(diffusers.UNet2DModel, config.unet))
-        
-    return(-1)
+            model = pass_config(diffusers.UNet2DModel, config.unet)
+        case "baseline":
+            model = build_baseline_model(config)
+        case _:
+            raise ValueError(f"Model type {config.model_type} not supported")
+    if('device' in kwargs):
+        model = model.to(kwargs["device"])
+    if("distributed" in kwargs and kwargs["distributed"]):
+        assert "rank" in kwargs, "rank must be provided if distributed is True"
+        model = nn.parallel.DistributedDataParallel(model, device_ids=[kwargs["rank"]])
+    
+    return(model)
 
-def build_baseline_model(config) -> nn.Sequential:
+def build_baseline_model(config, **kwargs):
+    if(config.bl_load_model_name):
+        mpath = os.path.join(config.bl_model_dir, config.bl_load_model_name)
+        model = torch.jit.load(mpath).original_model
+        return(model)
+    
     layers = []
     in_dim = config.bl_input_size
 
@@ -50,8 +64,8 @@ def build_baseline_model(config) -> nn.Sequential:
         in_dim = out_dim  # Update input size for the next layer
 
     layers.append(nn.Linear(in_dim, config.bl_output_size))  # Final output layer (no activation)
-    
-    return nn.Sequential(*layers)
+    model = nn.Sequential(*layers)
+    return model
 
 
 class TestCNN(torch.nn.Module):
@@ -122,7 +136,6 @@ class Decoder(torch.nn.Module):
         mu = self.dec_mu(z)
         #sig = torch.exp(self.dec_std(z))
         return mu
-
 
 class VariationalAutoencoder(torch.nn.Module):
     def __init__(self, data_dims=128, label_dims=128,

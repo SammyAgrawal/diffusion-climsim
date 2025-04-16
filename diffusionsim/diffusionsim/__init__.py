@@ -12,3 +12,6 @@ if DIFFUSERS_AVAILABLE:
     __all__ = ['DIFFUSERS_AVAILABLE', 'diffusers']
 else:
     __all__ = ['DIFFUSERS_AVAILABLE']
+
+
+from .trainers import DiffusionTrainer, VAETrainer, ClimsimTrainer

@@ -34,24 +34,24 @@ def log_event(event_name, **kwargs):
     print(json.dumps(log), file=sys.stderr)
     return(t)
 
-def load_dataset(dconfig, log=False):
-    dsi, dso = cut.load_raw_dataset(dconfig)
-    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, shuffle=dconfig.dataloader_params.shuffle)
+def load_dataset(dconfig, log=False, shuffle_indices=False):
+    dsi, dso, dutils = cut.load_raw_dataset(dconfig, return_dutils=True)
+    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, shuffle=shuffle_indices)
     datasets = []
     for (dsi, dso) in dsets:
         match dconfig.dataset_type.lower():
             case ds if "xbatch" in ds:
-                datasets.append(XBatchDataset(dso, dconfig, log=log))
+                datasets.append(XBatchDataset(dso.unify_chunks(), dutils, dconfig, log=log))
             case ds if "image" in ds:
-                datasets.append(ClimsimImageDataset(dsi, dso, dconfig, log))
+                datasets.append(ClimsimImageDataset(dsi.unify_chunks(), dso.unify_chunks(), dutils, dconfig, log))
             case ds if "climsim" in ds:
-                datasets.append(ClimsimDataset(dsi, dso, dconfig, log))
+                datasets.append(ClimsimDataset(dsi.unify_chunks(), dso.unify_chunks(), dutils, dconfig, log))
             case _:
                 return(dsets, indices)
     return(datasets, indices)
 
-def load_dataloaders(dconfig, log=False):
-    datasets, indices = load_dataset(dconfig, log)
+def load_dataloaders(dconfig, log=False, shuffle_indices=False):
+    datasets, indices = load_dataset(dconfig, log, shuffle_indices)
     params = asdict(dconfig.dataloader_params)
     dataloaders = []
     for dataset in datasets:
@@ -87,14 +87,32 @@ def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr', shuffle=True):
             counter += split
     return(datasets, indices)
 
-def get_norm_info(style='image'):
+def get_norm_info(style='image', sanitize=True):
+
+    def sanitize_xvars(xm, xs):
+        xm['state_q0002'].data = xm['state_q0002'].mean().item() * np.ones_like(xm['state_q0002'].data)
+        xs['state_q0002'].data = xs['state_q0002'].mean().item() * np.ones_like(xs['state_q0002'].data)  
+        return(xm, xs)
+
+    def sanitize_yvars(ym, ys):
+        ys['state_q0002'].data = ys['state_q0002'].mean().item() * np.ones_like(ys['state_q0002'].data)
+        ys['cam_out_PRECSC'].data = ys.cam_out_PRECSC.mean().item() * np.ones_like(ys.cam_out_PRECSC.data) 
+        return(ym, ys)
+
+
     if(style=='image'):    
         X_mean = xr.open_dataset(get_path("image_xmean.nc"))
         X_std = xr.open_dataset(get_path("image_xstd.nc"))
         Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
         Y_std = xr.open_dataset(get_path("image_ystd.nc"))
-        Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
+
+        if(sanitize):
+            X_mean, X_std = sanitize_xvars(X_mean, X_std)
+            Y_mean, Y_std = sanitize_yvars(Y_mean, Y_std)
         return(X_mean, X_std, Y_mean, Y_std)
+    
+    
+    
     elif(style=='nc'):
         input_mean = xr.open_dataset(get_path('input_mean.nc'))
         input_max = xr.open_dataset(get_path('input_max.nc'))
@@ -125,22 +143,28 @@ def noise_batch(scheduler, clean_images, device):
     noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
     return(noisy_images, timesteps, noise)
     
-
 class ClimsimDataset(Dataset):
-    def __init__(self, dsi, dso, dconfig, log=False):
+    def __init__(self, dsi, dso, dutils, dconfig, log=False):
         self.log = log
         self.dsi, self.dso = dsi, dso
+        self.permute_indices = image_regridding(dsi)
         #assert self.dsi.sizes['time'] == self.dso.sizes['time'], "dsi and dso must have the same number of timesteps"
 
-        input_vars, target_vars = list(dsi.data_vars), list(dso.data_vars) 
+        self.input_vars, self.target_vars = dutils.input_vars, dutils.target_vars
+        self.input_len, self.target_len = dutils.input_feature_len, dutils.target_feature_len
         self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='image')
-        self.xm = self.X_mean[input_vars].mean(dim=['ncol']).to_stacked_array(new_dim='mli', sample_dims=())
-        self.xs = self.X_std[input_vars].mean(dim=['ncol']).to_stacked_array(new_dim='mli', sample_dims=())
-        self.ym = self.Y_mean[target_vars].mean(dim=['ncol']).to_stacked_array(new_dim='mlo', sample_dims=())
-        self.ys = self.Y_std[target_vars].mean(dim=['ncol']).to_stacked_array(new_dim='mlo', sample_dims=())
+        xm = self.X_mean[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
+        xs = self.X_std[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
+        ym = self.Y_mean[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+        ys = self.Y_std[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
 
-        self.mli, self.mlo = self.xm.mli, self.ym.mlo
-        
+        self.mli, self.mlo = xm.mli, ym.mlo
+
+        self.xm = torch.tensor(xm.data, dtype=torch.float32)
+        self.xs = torch.tensor(xs.data, dtype=torch.float32)
+        self.ym = torch.tensor(ym.data, dtype=torch.float32)
+        self.ys = torch.tensor(ys.data, dtype=torch.float32)
+    
         #self.xgen = xbatcher.BatchGenerator(self.dsi, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
         #self.ygen = xbatcher.BatchGenerator(self.dso, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
 
@@ -148,21 +172,20 @@ class ClimsimDataset(Dataset):
         self.X = dsi.stack(sample=("time", "ncol")).transpose("sample", "mli")
         dso = dso.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
         self.Y = dso.stack(sample=("time", "ncol")).transpose("sample", "mlo")
-        self.length = min(self.X.shape[0], self.Y.shape[0]) // dconfig.dataloader_params.batch_size + 1
+        self.length = min(self.X.shape[0], self.Y.shape[0]) // dconfig.dataloader_params.batch_size
 
-        self.xgen = xbatcher.BatchGenerator(self.X, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mli=124), preload_batch=False,)
-        self.ygen = xbatcher.BatchGenerator(self.Y, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mlo=128), preload_batch=False,)
+        self.xgen = xbatcher.BatchGenerator(self.X, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mli=dutils.input_feature_len), preload_batch=False,)
+        self.ygen = xbatcher.BatchGenerator(self.Y, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mlo=dutils.target_feature_len), preload_batch=False,)
 
     def __getitem__(self, idx):
         if(self.log):
             t0 = log_event("get-batch start", batch_idx=idx)
         x, y = self.xgen[idx].load(), self.ygen[idx].load()
+        x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
         x = (x - self.xm) / self.xs
         y = (y - self.ym) / self.ys
-        x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
         if(self.log):
             log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
-
         return(x, y)
     
     def __len__(self):
@@ -175,16 +198,20 @@ class ClimsimDataset(Dataset):
         elif((var, level) in mlo):
             return(mlo.index((var, level)))
         return(-1)
-
-    def reconstruct_X(self, X_norm):
-        X_rec = (X_norm * self.X_std) + self.X_mean
-        return(X_rec)
     
-    def reconstruct_Y(self, Y_norm):
-        Y_rec = (Y_norm * self.Y_std) + self.Y_mean
-        return(Y_rec)
-    
-
+    def make_image(self, x, y, denormalize=True):
+        # Denormalize using tensors
+        if(denormalize):
+            x = x * self.xs + self.xm
+            y = y * self.ys + self.ym
+        # Reshape first
+        x_rec = x.reshape(-1, 384, self.input_len)  # assuming this is dutils.input_feature_len
+        y_rec = y.reshape(-1, 384, self.target_len)  # assuming this is dutils.target_feature_len
+        
+        ximg = x_rec[:, self.permute_indices, :].reshape(-1, 16, 24, self.input_len)
+        yimg = y_rec[:, self.permute_indices, :].reshape(-1, 16, 24, self.target_len)
+        
+        return ximg, yimg
 
 class ClimsimDatasetOld(Dataset):
     def __init__(self, X, Y, normalize=True):
@@ -218,9 +245,8 @@ class ClimsimDatasetOld(Dataset):
         return(self.X[idx], self.Y[idx])
 
 
-
 class ClimsimImageDataset(Dataset):
-    def __init__(self, dsi, dso, dconfig, log=False):
+    def __init__(self, dsi, dso, dutils, dconfig, log=False):
         self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='nc')
         self.normalize = dconfig.prenormalize
         self.log = log
@@ -253,20 +279,21 @@ class ClimsimImageDataset(Dataset):
         return(len(self.xgen))
 
 class XBatchDataset(torch.utils.data.Dataset):
-    def __init__(self, dso, dconfig, log=False):
+    def __init__(self, dso, dutils, dconfig, log=False):
         self.Xmean, self.Xstd, self.Ymean, self.Ystd = get_norm_info("image")
         # snowfall has some zeros, so just take global mean to avoid dividing by zero
         self.height, self.width = (16, 24)
         self.normalize = dconfig.prenormalize
         self.log = log
         self.permute_indices = image_regridding(dso)
+        self.target_feature_len = dutils.target_feature_len
         if(self.normalize):
             self.data = (dso - self.Ymean) / self.Ystd
         else:
-            self.data = dso
-        self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384),
-                preload_batch=False,
-        )
+            self.data = dso.unify_chunks()
+        self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(
+            time=dconfig.dataloader_params.batch_size, lev=60, ncol=384
+        ), preload_batch=False,)
         with dask.config.set(**{'array.slicing.split_large_chunks': True}):
             self.mlo = dso.to_stacked_array(new_dim='mlo', sample_dims=("time", "ncol")).mlo
     
@@ -279,7 +306,7 @@ class XBatchDataset(torch.utils.data.Dataset):
         data = data.isel(ncol=self.permute_indices)
         data = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
         data = data.transpose("time", "mlo", "ncol")
-        data = torch.tensor(data.data.reshape(-1, 128, self.height, self.width), dtype=torch.float32)
+        data = torch.tensor(data.data.reshape(-1, self.target_feature_len, self.height, self.width), dtype=torch.float32)
         if(self.log):
             log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
         return data
