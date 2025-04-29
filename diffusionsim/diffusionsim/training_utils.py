@@ -43,10 +43,10 @@ class DataConfig:
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
 
-def my_dconfig(data_vars='v1', in_notebook=False, climsim_training=True, batch_size=128):
+def my_dconfig(data_vars='v1', in_notebook=False, dataset_type="climsim", batch_size=128):
     dl_params = TrainLoaderParams()
     dl_params.batch_size = batch_size
-    if(climsim_training):
+    if("climsim" in dataset_type):
         dl_params.batch_size *= 384
     dl_params.shuffle = True
     if(torch.cuda.is_available() and batch_size > 16):
@@ -62,9 +62,9 @@ def my_dconfig(data_vars='v1', in_notebook=False, climsim_training=True, batch_s
     dconfig.dataloader_params = dl_params
     dconfig.source = "local-vzarr" # specify from raw cloud bucket
     dconfig.climsim_type = "low-res-expanded" 
-    dconfig.dataset_type = "climsim" if climsim_training else "xbatch"
+    dconfig.dataset_type = dataset_type
     dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
-    dconfig.train_test_split = [0.35, 0.05] if climsim_training else [1.0]
+    dconfig.train_test_split = [0.35, 0.05] if "climsim" in dataset_type else [1.0]
     dconfig.data_vars = data_vars
     return(dconfig)
             
