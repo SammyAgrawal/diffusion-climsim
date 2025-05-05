@@ -548,8 +548,11 @@ def u_q(x_1, x_2, mu, var, pi, h):
         return torch.outer(sq1, sq2)
     
     diffs = x_1.unsqueeze(1) - x_2.unsqueeze(0)
-    kernel_matrix = torch.exp(- (diffs ** 2) / (2 * h ** 2))
+    res = torch.outer(sq1, sq2)
+    res += (sq1.reshape(-1,1) * diffs) / h**2
+    res -= (sq2.reshape(1, -1) * diffs)/h**2
+    res += (h**-2 - h**-4 * diffs ** 2)
+    res = res * torch.exp(- (diffs ** 2) / (2 * h ** 2)) # kernel matrix
+    return(res)
     
-    return(( torch.outer(sq1, sq2) + 
-            (sq1.reshape(-1,1) * diffs - sq2.reshape(1, -1) * diffs)/h**2 + 
-            (h**-2 - h**-4 * diffs ** 2)) * kernel_matrix)
+            

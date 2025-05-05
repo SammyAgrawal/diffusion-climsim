@@ -26,11 +26,10 @@ def load_raw_dataset(dconfig, return_dutils=False, **kwargs):
                               use_tendencies=dconfig.use_tendencies, data_dir=dconfig.data_dir, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
     if(dconfig.source == "gcsfs"):
-        fs = gcsfs.GCSFileSystem()
-        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr')
-        dsi = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)[dutils.input_vars].rename({"sample" : "time"})
-        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
-        dso = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)[dutils.target_vars].rename({"sample" : "time"})
+        input_path = 'gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr'
+        output_path = 'gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr'
+        dsi = xr.open_dataset(input_path, engine='zarr', chunks=dconfig.chunksize)[dutils.input_vars].rename({"sample" : "time"})
+        dso = xr.open_dataset(output_path, engine='zarr', chunks=dconfig.chunksize)[dutils.target_vars].rename({"sample" : "time"})
 
     elif("vzarr" in dconfig.source):
         import icechunk
@@ -172,6 +171,25 @@ def add_space(ds, ds_grid=False, lat=False, lon=False, res='low'):
     ds['lon'] = (('ncol'),lon.T)
     ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
     return(ds)
+
+
+def image_regridding(ds):
+    lat, lon = np.round(ds.lat.data), np.round(ds.lon.data)
+    array = np.column_stack([lon, lat])
+    # first sort by longitude, then by latitude (top is area of high longitude)
+    sorted_indices = np.lexsort((array[:, 0], -1*array[:, 1]))
+    arr = array[sorted_indices]
+    indices = np.array([], dtype=int)
+    for i in range(16):
+        start = i*24
+        indices = np.concatenate([indices, start + np.argsort(arr[start:start+24, 0])])
+
+    return(sorted_indices[indices])
+
+def imagify(x, feature_len, permute_indices):
+    ximg = x.reshape(-1, 384, feature_len)  # assuming this is dutils.input_feature_len
+    ximg = ximg[:, permute_indices, :].reshape(-1, 16, 24, feature_len) 
+    return(ximg)
 
 MLBackendType = Literal["tensorflow", "pytorch"]
 

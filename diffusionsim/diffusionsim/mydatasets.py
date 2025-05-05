@@ -147,7 +147,7 @@ class ClimsimDataset(Dataset):
     def __init__(self, dsi, dso, dutils, dconfig, log=False):
         self.log = log
         self.dsi, self.dso = dsi, dso
-        self.permute_indices = image_regridding(dsi)
+        self.permute_indices = cut.image_regridding(dsi)
         #assert self.dsi.sizes['time'] == self.dso.sizes['time'], "dsi and dso must have the same number of timesteps"
 
         self.input_vars, self.target_vars = dutils.input_vars, dutils.target_vars
@@ -204,13 +204,8 @@ class ClimsimDataset(Dataset):
         if(denormalize):
             x = x * self.xs + self.xm
             y = y * self.ys + self.ym
-        # Reshape first
-        x_rec = x.reshape(-1, 384, self.input_len)  # assuming this is dutils.input_feature_len
-        y_rec = y.reshape(-1, 384, self.target_len)  # assuming this is dutils.target_feature_len
-        
-        ximg = x_rec[:, self.permute_indices, :].reshape(-1, 16, 24, self.input_len)
-        yimg = y_rec[:, self.permute_indices, :].reshape(-1, 16, 24, self.target_len)
-        
+        ximg = cut.imagify(x, self.input_len, self.permute_indices)
+        yimg = cut.imagify(y, self.target_len, self.permute_indices)
         return ximg, yimg
 
 class ClimsimDatasetOld(Dataset):
@@ -250,7 +245,7 @@ class ClimsimImageDataset(Dataset):
         self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='nc')
         self.normalize = dconfig.prenormalize
         self.log = log
-        self.permute_indices = image_regridding(dsi)
+        self.permute_indices = cut.image_regridding(dsi)
         if(self.normalize):
             self.X = (dsi - self.X_mean) / self.X_std
             self.Y = (dso - self.Y_mean) / self.Y_std
@@ -285,7 +280,7 @@ class XBatchDataset(torch.utils.data.Dataset):
         self.height, self.width = (16, 24)
         self.normalize = dconfig.prenormalize
         self.log = log
-        self.permute_indices = image_regridding(dso)
+        self.permute_indices = cut.image_regridding(dso)
         self.target_feature_len = dutils.target_feature_len
         if(self.normalize):
             self.data = (dso - self.Ymean) / self.Ystd
@@ -344,19 +339,6 @@ def add_tendencies(ds_out, output_vars):
             ds_out[var] = (ds_out[v] - ds_out[v]) / 1200
 
     return(ds_out[output_vars])
-
-def image_regridding(ds):
-    lat, lon = np.round(ds.lat.data), np.round(ds.lon.data)
-    array = np.column_stack([lon, lat])
-    # first sort by longitude, then by latitude (top is area of high longitude)
-    sorted_indices = np.lexsort((array[:, 0], -1*array[:, 1]))
-    arr = array[sorted_indices]
-    indices = np.array([], dtype=int)
-    for i in range(16):
-        start = i*24
-        indices = np.concatenate([indices, start + np.argsort(arr[start:start+24, 0])])
-
-    return(sorted_indices[indices])
 
 
 

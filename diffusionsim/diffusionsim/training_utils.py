@@ -99,8 +99,8 @@ class TrainingConfig:
     # distribution loss params
     distloss_type: str = "ksd"
     num_gaussians: int = 2
-    num_distloss_samples: int = 5
-    distloss_bs: int = 3072 # 384 * 8
+    num_distloss_samples: int = 8
+    distloss_bs: int = 1152 # 384 * 8
     distloss_var_ind: int = 68
     def __post_init__(self):
         self.shuffle_data = {'train':False, 'eval':False}
@@ -203,7 +203,7 @@ def load_model_from_ckpt(ckpt_fname, mconfig, expid, exp_dir, baseline=False):
     model_type = "baseline" if baseline else mconfig.model_type
     model = load_model(mconfig, model_type)
     cpath = os.path.join(exp_dir, expid, ckpt_fname)
-    model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu')))
+    model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu'), weights_only=True))
     return(model)
 
 #def load_lr_scheduler(config, optim, dataloader):

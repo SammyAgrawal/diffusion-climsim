@@ -68,6 +68,8 @@ def build_baseline_model(config, **kwargs):
     return model
 
 
+
+
 class TestCNN(torch.nn.Module):
     def __init__(self):
         super(TestCNN, self).__init__()
@@ -85,6 +87,8 @@ class TestCNN(torch.nn.Module):
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
         return F.log_softmax(x)
+
+
 
 class VariationalEncoder(torch.nn.Module):
     """
