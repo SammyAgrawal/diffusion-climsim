@@ -34,9 +34,9 @@ def log_event(event_name, **kwargs):
     print(json.dumps(log), file=sys.stderr)
     return(t)
 
-def load_dataset(dconfig, log=False, shuffle_indices=False):
+def load_dataset(dconfig, log=False, shuffle_indices=False, indices=None):
     dsi, dso, dutils = cut.load_raw_dataset(dconfig, return_dutils=True)
-    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, shuffle=shuffle_indices)
+    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, indices, shuffle=shuffle_indices)
     datasets = []
     for (dsi, dso) in dsets:
         match dconfig.dataset_type.lower():
@@ -64,7 +64,13 @@ def load_dataloaders(dconfig, log=False, shuffle_indices=False):
                 dataloaders.append(DataLoader(dataset, **params))
     return(dataloaders, indices)
 
-def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr', shuffle=True):
+def train_test_split(dsi, dso, split_frac=[0.75, 0.25], indices=None, typ='xr', shuffle=True):
+    if(indices is not None):
+        datasets = []
+        assert isinstance(indices, list), "expect indices to be list of indices for each phase"
+        for phase_index in indices:
+            datasets.append((dsi.isel(time=phase_index), dso.isel(time=phase_index)))
+        return(datasets, indices)
     datasets, indices = [], []
     if(typ == 'np'):
         num_timesteps = dsi.sizes['state']
@@ -86,40 +92,6 @@ def train_test_split(dsi, dso, split_frac=[0.75, 0.25], typ='xr', shuffle=True):
                 datasets.append((dsi.isel(time=phase_indices), dso.isel(time=phase_indices)))
             counter += split
     return(datasets, indices)
-
-def get_norm_info(style='image', sanitize=True):
-
-    def sanitize_xvars(xm, xs):
-        xm['state_q0002'].data = xm['state_q0002'].mean().item() * np.ones_like(xm['state_q0002'].data)
-        xs['state_q0002'].data = xs['state_q0002'].mean().item() * np.ones_like(xs['state_q0002'].data)  
-        return(xm, xs)
-
-    def sanitize_yvars(ym, ys):
-        ys['state_q0002'].data = ys['state_q0002'].mean().item() * np.ones_like(ys['state_q0002'].data)
-        ys['cam_out_PRECSC'].data = ys.cam_out_PRECSC.mean().item() * np.ones_like(ys.cam_out_PRECSC.data) 
-        return(ym, ys)
-
-
-    if(style=='image'):    
-        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
-        X_std = xr.open_dataset(get_path("image_xstd.nc"))
-        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
-        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
-
-        if(sanitize):
-            X_mean, X_std = sanitize_xvars(X_mean, X_std)
-            Y_mean, Y_std = sanitize_yvars(Y_mean, Y_std)
-        return(X_mean, X_std, Y_mean, Y_std)
-    
-    
-    
-    elif(style=='nc'):
-        input_mean = xr.open_dataset(get_path('input_mean.nc'))
-        input_max = xr.open_dataset(get_path('input_max.nc'))
-        input_min = xr.open_dataset(get_path('input_min.nc'))
-        output_scale = xr.open_dataset(get_path('output_scale.nc'))
-        #output_std['cam_out_PRECSC'] = output_std.cam_out_PRECSC.mean()
-        return(input_mean, input_max, input_min, output_scale)
 
 def load_scheduler(mconfig):
     def pass_config(func, data_class):
@@ -152,7 +124,7 @@ class ClimsimDataset(Dataset):
 
         self.input_vars, self.target_vars = dutils.input_vars, dutils.target_vars
         self.input_len, self.target_len = dutils.input_feature_len, dutils.target_feature_len
-        self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='image')
+        self.X_mean, self.X_std, self.Y_mean, self.Y_std = cut.get_norm_info(style='image')
         xm = self.X_mean[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
         xs = self.X_std[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
         ym = self.Y_mean[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
@@ -242,7 +214,7 @@ class ClimsimDatasetOld(Dataset):
 
 class ClimsimImageDataset(Dataset):
     def __init__(self, dsi, dso, dutils, dconfig, log=False):
-        self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='nc')
+        self.X_mean, self.X_std, self.Y_mean, self.Y_std = cut.get_norm_info(style='nc')
         self.normalize = dconfig.prenormalize
         self.log = log
         self.permute_indices = cut.image_regridding(dsi)
@@ -275,7 +247,7 @@ class ClimsimImageDataset(Dataset):
 
 class XBatchDataset(torch.utils.data.Dataset):
     def __init__(self, dso, dutils, dconfig, log=False):
-        self.Xmean, self.Xstd, self.Ymean, self.Ystd = get_norm_info("image")
+        self.Xmean, self.Xstd, self.Ymean, self.Ystd = cut.get_norm_info("image")
         # snowfall has some zeros, so just take global mean to avoid dividing by zero
         self.height, self.width = (16, 24)
         self.normalize = dconfig.prenormalize

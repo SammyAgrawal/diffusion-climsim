@@ -101,7 +101,8 @@ class TrainingConfig:
     num_gaussians: int = 2
     num_distloss_samples: int = 8
     distloss_bs: int = 1152 # 384 * 8
-    distloss_var_ind: int = 68
+    distloss_var_inds: List[int] = field(default_factory=lambda: [68, 60, 73, 82])
+    distloss_var_sel: str = 'uniform'
     def __post_init__(self):
         self.shuffle_data = {'train':False, 'eval':False}
 
@@ -237,3 +238,60 @@ def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
     X = X_norm*(input_max - input_min) + input_mean
     Y = Y_norm / output_scale
     return(X,Y)
+
+
+
+
+REF_BATCH_SIZE = 128
+#exp_dir = "/mnt/home/ssa2206/Climsim/experiments"
+exp_dir = "/home/jovyan/Samarth/ClimsimProjectWork/diffusion-climsim/experiments"
+dataset_type = "climsim_train"
+climsim_training = True
+in_notebook = True
+diffusers_available = False
+def setup_run(num_models, exp_id, base_run_id, data_vars='v1', batch_size=128):
+    dconfig = tru.my_dconfig(data_vars, in_notebook, dataset_type, batch_size)
+    dconfig.train_test_split = [0.01, 0.002]
+    tconfigs, mconfigs = [], []
+
+    learning_rates = [1e-4, 1e-4, 1e-4, 1e-4]
+    distloss_weights = [1.0, 1.0, 1.0, 1.0]
+    diffloss_weights = [0.0, 0.0, 0.0, 0.0]
+    target_variables_distloss = [68, 60, 73, 82]
+    num_gaussians = [3, 2, 3, 2]
+    unet_channel_dims = []
+    unet_down_block_types = []
+
+    lettering = 'abcdefghijklmnopqrstuvwxyz'
+    for i in range(num_models):
+        tconfig = tru.TrainingConfig(exp_id=exp_id, run_id=f"{base_run_id}_{lettering[i]}")
+        tconfig.learning_rate = learning_rates[i] * batch_size / REF_BATCH_SIZE
+        tconfig.loss_weights = {'mse': 1.0, 'distribution': distloss_weights[i], 'diffusion': diffloss_weights[i]}
+        tconfig.distloss_var_inds = target_variables_distloss
+        tconfig.num_gaussians = num_gaussians[i]
+        tconfig.log_gradients = True
+
+        tconfig.max_T_sample = 51
+        tconfig.phases = ['train', 'eval']
+
+        unet = tru.UNetParams()
+        unet.block_out_channels = (128, 256, 512) if data_vars == "v1" else (256, 512, 1024)
+        unet.down_block_types = ("DownBlock2D", "DownBlock2D", "DownBlock2D")
+        unet.up_block_types = ("UpBlock2D", "UpBlock2D", "UpBlock2D")
+        unet.in_channels = 128 if data_vars == "v1" else 368
+        unet.out_channels = unet.in_channels
+
+        scheduler = tru.SchedulerParams()
+        mconfig = tru.ModelConfig(unet=unet, scheduler=scheduler)
+        if(climsim_training):
+            mconfig.model_type = "baseline"
+        # define baseline model
+        mconfig.bl_hidden_dims = [256, 256, 256] if data_vars == "v1" else [512, 256, 256]
+        mconfig.bl_num_layers = len(mconfig.bl_hidden_dims)
+        mconfig.bl_input_size = 124 if data_vars == "v1" else 557
+        mconfig.bl_output_size = 128 if data_vars == "v1" else 368
+
+        tconfigs.append(tconfig)
+        mconfigs.append(mconfig)
+
+    return(tconfigs, mconfigs, dconfig)

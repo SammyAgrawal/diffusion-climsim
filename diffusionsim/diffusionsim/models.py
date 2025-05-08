@@ -30,7 +30,6 @@ def load_model(config, model_type,**kwargs):
                 hidden_dims= config.ae_hidden_dims,
                 disable_logstd_bias = config.disable_enc_logstd_bias,
             )
-            
         case model_type if "diffusion" in model_type:
             if 'latent' in model_type: # modify channels for VAE 
                 config.unet.in_channels = config.latent_dims 
@@ -66,9 +65,6 @@ def build_baseline_model(config, **kwargs):
     layers.append(nn.Linear(in_dim, config.bl_output_size))  # Final output layer (no activation)
     model = nn.Sequential(*layers)
     return model
-
-
-
 
 class TestCNN(torch.nn.Module):
     def __init__(self):
