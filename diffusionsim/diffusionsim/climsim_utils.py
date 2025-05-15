@@ -16,6 +16,7 @@ import cftime
 import json
 import fsspec
 import time
+import torch
 
 _ROOT = os.path.abspath(os.path.dirname(__file__))
 def get_path(file):
@@ -26,11 +27,10 @@ def load_raw_dataset(dconfig, return_dutils=False, **kwargs):
                               use_tendencies=dconfig.use_tendencies, data_dir=dconfig.data_dir, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
     if(dconfig.source == "gcsfs"):
-        fs = gcsfs.GCSFileSystem()
-        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr')
-        dsi = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)[dutils.input_vars].rename({"sample" : "time"})
-        mapper = fs.get_mapper('leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr')
-        dso = xr.open_dataset(mapper, engine='zarr', chunks=dconfig.chunksize)[dutils.target_vars].rename({"sample" : "time"})
+        input_path = 'gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr'
+        output_path = 'gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr'
+        dsi = xr.open_dataset(input_path, engine='zarr', chunks=dconfig.chunksize)[dutils.input_vars].rename({"sample" : "time"})
+        dso = xr.open_dataset(output_path, engine='zarr', chunks=dconfig.chunksize)[dutils.target_vars].rename({"sample" : "time"})
 
     elif("vzarr" in dconfig.source):
         import icechunk
@@ -110,22 +110,6 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
         data.set_norm_info(input_mean, input_max, input_min, output_scale)
     return(data)
 
-def get_norm_info(style='image'):
-    if(style=='image'):    
-        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
-        X_std = xr.open_dataset(get_path("image_xstd.nc"))
-        X_std['state_q0002'].data = X_std.state_q0002.mean().item() * np.ones_like(X_std.state_q0002.data) 
-        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
-        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
-        Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
-        return(X_mean, X_std, Y_mean, Y_std)
-    elif(style=='scale'):
-        input_mean = xr.open_dataset(get_path('input_mean.nc'))
-        input_max = xr.open_dataset(get_path('input_max.nc'))
-        input_min = xr.open_dataset(get_path('input_min.nc'))
-        output_scale = xr.open_dataset(get_path('output_scale.nc'))
-        return(input_mean, input_max, input_min, output_scale)
-
 #print(os.path.dirname(__file__))
 
 def tocft(year=1, month=1, day=1):
@@ -172,6 +156,53 @@ def add_space(ds, ds_grid=False, lat=False, lon=False, res='low'):
     ds['lon'] = (('ncol'),lon.T)
     ds = ds.assign_coords({'lat' : ds.lat, 'lon' : ds.lon})
     return(ds)
+
+
+def image_regridding(ds):
+    lat, lon = np.round(ds.lat.data), np.round(ds.lon.data)
+    array = np.column_stack([lon, lat])
+    # first sort by longitude, then by latitude (top is area of high longitude)
+    sorted_indices = np.lexsort((array[:, 0], -1*array[:, 1]))
+    arr = array[sorted_indices]
+    indices = np.array([], dtype=int)
+    for i in range(16):
+        start = i*24
+        indices = np.concatenate([indices, start + np.argsort(arr[start:start+24, 0])])
+
+    return(sorted_indices[indices])
+
+def get_norm_info(style='image', sanitize=True):
+
+    if(style=='image'):    
+        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
+        X_std = xr.open_dataset(get_path("image_xstd.nc"))
+        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
+        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
+
+        if(sanitize):
+            X_mean['state_q0002'].data = X_mean['state_q0002'].mean().item() * np.ones_like(X_mean['state_q0002'].data)
+            X_std['state_q0002'].data = X_std['state_q0002'].mean().item() * np.ones_like(X_std['state_q0002'].data)
+            Y_std['state_q0002'].data = Y_std['state_q0002'].mean().item() * np.ones_like(Y_std['state_q0002'].data)
+            Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
+        return(X_mean, X_std, Y_mean, Y_std)
+    
+    elif(style=='nc' or style=='scale'):
+        input_mean = xr.open_dataset(get_path('input_mean.nc'))
+        input_max = xr.open_dataset(get_path('input_max.nc'))
+        input_min = xr.open_dataset(get_path('input_min.nc'))
+        output_scale = xr.open_dataset(get_path('output_scale.nc'))
+        if(sanitize):
+            input_max['pbuf_N2O'].data = input_max.pbuf_N2O.mean().item() * np.ones_like(input_max['pbuf_N2O'].data)
+            input_min['pbuf_N2O'].data = input_min.pbuf_N2O.mean().item() * np.ones_like(input_min['pbuf_N2O'].data)
+            input_max['pbuf_CH4'].data = input_max.pbuf_CH4.mean().item() * np.ones_like(input_max['pbuf_CH4'].data)
+            input_min['pbuf_CH4'].data = input_min.pbuf_CH4.mean().item() * np.ones_like(input_min['pbuf_CH4'].data)
+        return(input_mean, input_max, input_min, output_scale)
+    raise ValueError(f"Invalid Norm Style {style} provided")
+
+def imagify(x, feature_len, permute_indices):
+    ximg = x.reshape(-1, 384, feature_len)  # assuming this is dutils.input_feature_len
+    ximg = ximg[:, permute_indices, :].reshape(-1, 16, 24, feature_len) 
+    return(ximg)
 
 MLBackendType = Literal["tensorflow", "pytorch"]
 
@@ -307,7 +338,7 @@ class data_utils:
                           'cam_in_SNOWHLAND',
                           'pbuf_ozone',
                           'pbuf_CH4',
-                          'pbuf_N2O']  # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3 
+                          'pbuf_N2O']  # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3
         
         self.v2_outputs = ['ptend_t',
                            'ptend_q0001',
@@ -323,6 +354,7 @@ class data_utils:
                            'cam_out_SOLL',
                            'cam_out_SOLSD',
                            'cam_out_SOLLD']
+        
         if(not use_tendencies):
             self.v1_outputs = [var.replace("ptend", "state") if 'ptend' in var else var for var in self.v1_outputs]
             self.v2_outputs = [var.replace("ptend", "state") if 'ptend' in var else var for var in self.v2_outputs]
@@ -498,7 +530,7 @@ class data_utils:
         self.sort_lat_key = np.argsort(self.grid_info['lat'].values[np.sort(self.lats_indices)])
         self.sort_lon_key = np.argsort(self.grid_info['lon'].values[np.sort(self.lons_indices)])
         self.indextolatlon = {i: (self.grid_info['lat'].values[i%self.num_latlon], self.grid_info['lon'].values[i%self.num_latlon]) for i in range(self.num_latlon)}
-        
+        self.permute_indices = image_regridding(grid_info)
         
         indices_list = []
         for lat in self.lats:
@@ -507,50 +539,49 @@ class data_utils:
         indices_list.sort(key = lambda x: x[0])
         self.lat_indices_list = indices_list
         self.hybm = self.grid_info['hybm'].values
-
         self.var_lens = {#inputs
-                         'state_t':self.num_levels,
-                         'state_q0001':self.num_levels,
-                         'state_q0002':self.num_levels,
-                         'state_q0003':self.num_levels,
-                         'state_u':self.num_levels,
-                         'state_v':self.num_levels,
-                         'state_ps':1,
-                         'pbuf_SOLIN':1,
-                         'pbuf_LHFLX':1,
-                         'pbuf_SHFLX':1,
-                         'pbuf_TAUX':1,
-                         'pbuf_TAUY':1,
-                         'pbuf_COSZRS':1,
-                         'cam_in_ALDIF':1,
-                         'cam_in_ALDIR':1,
-                         'cam_in_ASDIF':1,
-                         'cam_in_ASDIR':1,
-                         'cam_in_LWUP':1,
-                         'cam_in_ICEFRAC':1,
-                         'cam_in_LANDFRAC':1,
-                         'cam_in_OCNFRAC':1,
-                         'cam_in_SNOWHICE':1,
-                         'cam_in_SNOWHLAND':1,
-                         'pbuf_ozone':self.num_levels,
-                         'pbuf_CH4':self.num_levels,
-                         'pbuf_N2O':self.num_levels,
-                         #outputs
-                         'ptend_t':self.num_levels,
-                         'ptend_q0001':self.num_levels,
-                         'ptend_q0002':self.num_levels,
-                         'ptend_q0003':self.num_levels,
-                         'ptend_u':self.num_levels,
-                         'ptend_v':self.num_levels,
-                         'cam_out_NETSW':1,
-                         'cam_out_FLWDS':1,
-                         'cam_out_PRECSC':1,
-                         'cam_out_PRECC':1,
-                         'cam_out_SOLS':1,
-                         'cam_out_SOLL':1,
-                         'cam_out_SOLSD':1,
-                         'cam_out_SOLLD':1
-                        }   
+                 'state_t':self.num_levels,
+                 'state_q0001':self.num_levels,
+                 'state_q0002':self.num_levels,
+                 'state_q0003':self.num_levels,
+                 'state_u':self.num_levels,
+                 'state_v':self.num_levels,
+                 'state_ps':1,
+                 'pbuf_SOLIN':1,
+                 'pbuf_LHFLX':1,
+                 'pbuf_SHFLX':1,
+                 'pbuf_TAUX':1,
+                 'pbuf_TAUY':1,
+                 'pbuf_COSZRS':1,
+                 'cam_in_ALDIF':1,
+                 'cam_in_ALDIR':1,
+                 'cam_in_ASDIF':1,
+                 'cam_in_ASDIR':1,
+                 'cam_in_LWUP':1,
+                 'cam_in_ICEFRAC':1,
+                 'cam_in_LANDFRAC':1,
+                 'cam_in_OCNFRAC':1,
+                 'cam_in_SNOWHICE':1,
+                 'cam_in_SNOWHLAND':1,
+                 'pbuf_ozone':self.num_levels,
+                 'pbuf_CH4':self.num_levels,
+                 'pbuf_N2O':self.num_levels,
+                 #outputs
+                 'ptend_t':self.num_levels,
+                 'ptend_q0001':self.num_levels,
+                 'ptend_q0002':self.num_levels,
+                 'ptend_q0003':self.num_levels,
+                 'ptend_u':self.num_levels,
+                 'ptend_v':self.num_levels,
+                 'cam_out_NETSW':1,
+                 'cam_out_FLWDS':1,
+                 'cam_out_PRECSC':1,
+                 'cam_out_PRECC':1,
+                 'cam_out_SOLS':1,
+                 'cam_out_SOLL':1,
+                 'cam_out_SOLSD':1,
+                 'cam_out_SOLLD':1
+                }
     
     def set_norm_info(self, input_mean, input_max, input_min, output_scale):
         self.input_mean = input_mean
@@ -566,6 +597,20 @@ class data_utils:
                 keys.append(key)
         return keys
     
+    def _make_index_map(self, var_list):
+        """
+        Given an ordered list of variable names and self.var_lens,
+        returns a dict mapping each var → (start_idx, end_idx)
+        in the flattened feature vector (end exclusive).
+        """
+        idx_map = {}
+        offset = 0
+        for v in var_list:
+            length = self.var_lens[v]
+            idx_map[v] = (offset, offset + length)
+            offset += length
+        return idx_map
+    
     def set_to_v1_vars(self):
         '''
         This function sets the inputs and outputs to the V1 subset.
@@ -577,6 +622,11 @@ class data_utils:
         self.input_feature_len = 124
         self.target_feature_len = 128
         self.full_vars = False
+        self.input_var_idx  = self._make_index_map(self.input_vars)
+        self.target_var_idx = self._make_index_map(self.target_vars)
+        self.level_variables = [v for v in self.input_vars + self.target_vars if self.var_lens[v] > 1]
+        self.normal_variables = [v for v in self.input_vars + self.target_vars if self.var_lens[v] == 1]
+        
 
     def set_to_v2_vars(self):
         '''
@@ -589,8 +639,12 @@ class data_utils:
         self.input_feature_len = 557
         self.target_feature_len = 368
         self.full_vars = True
-
-    def get_xrdata(self, file_name, virtual, file_vars = None):
+        self.input_var_idx  = self._make_index_map(self.input_vars)
+        self.target_var_idx = self._make_index_map(self.target_vars)
+        self.level_variables = [v for v in self.input_vars + self.target_vars if self.var_lens[v] > 1]
+        self.normal_variables = [v for v in self.input_vars + self.target_vars if self.var_lens[v] == 1]
+    
+    def get_xrdata(self, file_name, virtual=False, file_vars = None):
         '''
         This function reads in a file and returns an xarray dataset with the variables specified.
         file_vars must be a list of strings.
@@ -634,9 +688,9 @@ class data_utils:
         This function reads in a file and returns an xarray dataset with the target variables for the emulator.
         '''
         # read inputs
-        ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), virtual, self.target_vars)
         if(self.use_tendencies):
             ds_input = self.get_input(input_file)
+            ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), virtual)
             # each timestep is 20 minutes which corresponds to 1200 seconds
             ds_target['ptend_t'] = (ds_target['state_t'] - ds_input['state_t'])/1200 # T tendency [K/s]
             ds_target['ptend_q0001'] = (ds_target['state_q0001'] - ds_input['state_q0001'])/1200 # Q tendency [kg/kg/s]
@@ -644,7 +698,10 @@ class data_utils:
                 ds_target['ptend_q0002'] = (ds_target['state_q0002'] - ds_input['state_q0002'])/1200 # Q tendency [kg/kg/s]
                 ds_target['ptend_q0003'] = (ds_target['state_q0003'] - ds_input['state_q0003'])/1200 # Q tendency [kg/kg/s]
                 ds_target['ptend_u'] = (ds_target['state_u'] - ds_input['state_u'])/1200 # U tendency [m/s/s]
-                ds_target['ptend_v'] = (ds_target['state_v'] - ds_input['state_v'])/1200 # V tendency [m/s/s]   
+                ds_target['ptend_v'] = (ds_target['state_v'] - ds_input['state_v'])/1200 # V tendency [m/s/s] 
+            ds_target = ds_target[self.target_vars]
+        else:
+            ds_target = self.get_xrdata(input_file.replace(f'.{self.mlivar}.','.mlo.'), virtual, self.target_vars)
         return ds_target
     
     def parse_time(self, filename):
@@ -995,58 +1052,35 @@ class data_utils:
         hf = h5py.File(load_path, 'r')
         pred = np.array(hf.get('pred'))
         return pred
-    
+
+    def compute_dp(self, inp_data, undo_norm=False):
+        '''
+        This function sets the pressure weighting for metrics.
+        '''
+        assert len(inp_data.shape) == 2 and inp_data.shape[1] == self.input_feature_len, "Expecting (batch_size, mli) size array"
+        if(torch.is_tensor(inp_data)):
+            inp_data = inp_data.detach().cpu().numpy()
+
+        state_ps = inp_data[:,self.ps_index]
+        if undo_norm:
+            state_ps = state_ps*(self.input_max['state_ps'].values - self.input_min['state_ps'].values) + self.input_mean['state_ps'].values
+        state_ps = np.reshape(state_ps, (-1, self.num_latlon)) # (time, ncol)
+        pressure_grid_p1 = np.array(self.grid_info['P0']*self.grid_info['hyai'])[:,np.newaxis,np.newaxis]
+        pressure_grid_p2 = self.grid_info['hybi'].values[:, np.newaxis, np.newaxis] * state_ps[np.newaxis, :, :]
+        pressure_grid = pressure_grid_p1 + pressure_grid_p2
+        dp = pressure_grid[1:61,:,:] - pressure_grid[0:60,:,:]
+        dp = dp.transpose((1,2,0))
+        return(dp) # time_bs, 384, 60
+        
     def set_pressure_grid(self, data_split):
         '''
         This function sets the pressure weighting for metrics.
         '''
-        assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
-
-        if data_split == 'train':
-            assert self.input_train is not None
-            state_ps = self.input_train[:,self.ps_index]
-            if self.normalize:
-                # undo normalization
-                state_ps = state_ps*(self.input_max['state_ps'].values - self.input_min['state_ps'].values) + self.input_mean['state_ps'].values
-            state_ps = np.reshape(state_ps, (-1, self.num_latlon))
-            pressure_grid_p1 = np.array(self.grid_info['P0']*self.grid_info['hyai'])[:,np.newaxis,np.newaxis]
-            pressure_grid_p2 = self.grid_info['hybi'].values[:, np.newaxis, np.newaxis] * state_ps[np.newaxis, :, :]
-            self.pressure_grid_train = pressure_grid_p1 + pressure_grid_p2
-            self.dp_train = self.pressure_grid_train[1:61,:,:] - self.pressure_grid_train[0:60,:,:]
-            self.dp_train = self.dp_train.transpose((1,2,0))
-        elif data_split == 'val':
-            assert self.input_val is not None
-            state_ps = self.input_val[:,self.ps_index]
-            if self.normalize:
-                state_ps = state_ps*(self.input_max['state_ps'].values - self.input_min['state_ps'].values) + self.input_mean['state_ps'].values
-            state_ps = np.reshape(state_ps, (-1, self.num_latlon))
-            pressure_grid_p1 = np.array(self.grid_info['P0']*self.grid_info['hyai'])[:,np.newaxis,np.newaxis]
-            pressure_grid_p2 = self.grid_info['hybi'].values[:, np.newaxis, np.newaxis] * state_ps[np.newaxis, :, :]
-            self.pressure_grid_val = pressure_grid_p1 + pressure_grid_p2
-            self.dp_val = self.pressure_grid_val[1:61,:,:] - self.pressure_grid_val[0:60,:,:]
-            self.dp_val = self.dp_val.transpose((1,2,0))
-        elif data_split == 'scoring':
-            assert self.input_scoring is not None
-            state_ps = self.input_scoring[:,self.ps_index]
-            if self.normalize:
-                state_ps = state_ps*(self.input_max['state_ps'].values - self.input_min['state_ps'].values) + self.input_mean['state_ps'].values
-            state_ps = np.reshape(state_ps, (-1, self.num_latlon))
-            pressure_grid_p1 = np.array(self.grid_info['P0']*self.grid_info['hyai'])[:,np.newaxis,np.newaxis]
-            pressure_grid_p2 = self.grid_info['hybi'].values[:, np.newaxis, np.newaxis] * state_ps[np.newaxis, :, :]
-            self.pressure_grid_scoring = pressure_grid_p1 + pressure_grid_p2
-            self.dp_scoring = self.pressure_grid_scoring[1:61,:,:] - self.pressure_grid_scoring[0:60,:,:]
-            self.dp_scoring = self.dp_scoring.transpose((1,2,0))
-        elif data_split == 'test':
-            assert self.input_test is not None
-            state_ps = self.input_test[:,self.ps_index]
-            if self.normalize:
-                state_ps = state_ps*(self.input_max['state_ps'].values - self.input_min['state_ps'].values) + self.input_mean['state_ps'].values
-            state_ps = np.reshape(state_ps, (-1, self.num_latlon))
-            pressure_grid_p1 = np.array(self.grid_info['P0']*self.grid_info['hyai'])[:,np.newaxis,np.newaxis]
-            pressure_grid_p2 = self.grid_info['hybi'].values[:, np.newaxis, np.newaxis] * state_ps[np.newaxis, :, :]
-            self.pressure_grid_test = pressure_grid_p1 + pressure_grid_p2
-            self.dp_test = self.pressure_grid_test[1:61,:,:] - self.pressure_grid_test[0:60,:,:]
-            self.dp_test = self.dp_test.transpose((1,2,0))
+        assert data_split in ['train','val','scoring','test']
+        arr = getattr(self, f"input_{data_split}")
+        assert arr is not None, f"input_{data_split} is not set"
+        dp = self.compute_dp(arr)
+        setattr(self, f"dp_{data_split}", dp)
 
     def get_pressure_grid_plotting(self, data_split):
         '''
@@ -1054,7 +1088,7 @@ class data_utils:
         '''
         filelist = self.get_filelist(data_split)
         ps = np.concatenate(
-            [self.get_xrdata(file, ['state_ps'])['state_ps'].values[np.newaxis, :] for file in tqdm(filelist)],
+            [self.get_xrdata(file, file_vars=['state_ps'])['state_ps'].values[np.newaxis, :] for file in tqdm(filelist)],
             axis = 0)[:, :, np.newaxis]
         hyam_component = self.hyam[np.newaxis, np.newaxis, :]*self.p0
         hybm_component = self.hybm[np.newaxis, np.newaxis, :]*ps
@@ -1067,7 +1101,64 @@ class data_utils:
         pressure_grid_plotting = np.concatenate(pg_lats, axis = 1)
         return pressure_grid_plotting
 
-    def output_weighting(self, output, data_split, just_weights = False):
+    def denormalize(self, x, y, norm_method='nc'):
+        if(torch.is_tensor(x)):
+            x = x.detach().cpu().numpy()
+            y = y.detach().cpu().numpy()
+        if(norm_method == 'nc' or norm_method=='scale'):
+            mu = self.input_mean[self.input_vars].to_stacked_array(new_dim="mli", sample_dims=()).data
+            imax = self.input_max[self.input_vars].to_stacked_array(new_dim='mli', sample_dims=()).data
+            imin = self.input_min[self.input_vars].to_stacked_array(new_dim='mli', sample_dims=()).data
+            scale_stacked = (
+                self.output_scale[self.target_vars]
+                .to_stacked_array(new_dim="mlo", sample_dims=())   # convert all vars→DataArray with dim 'mlo'
+                .transpose("mlo",)                                 # shape: (368,)
+            )
+            return(x * (imax-imin) + mu, y / scale_stacked.values)
+        else:
+            X_mean, X_std, Y_mean, Y_std = get_norm_info(norm_method)
+            xm = X_mean[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
+            xs = X_std[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
+            ym = Y_mean[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+            ys = Y_std[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+            x = x * xs + xm
+            y = y * ys + ym
+            return(x, y)
+
+    def get_var_weights(self, output, dp, ret_type='dict'):
+        if(torch.is_tensor(output)):
+            output = output.detach().cpu().numpy()
+        num_samples = output.shape[0]
+        vert_levels_weight = dp / self.grav
+        weight_mat = np.ones(output.shape)
+        weightings = {}
+        if(self.full_vars):
+            ptend_u = output[:,240:300].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
+            ptend_v = output[:,300:360].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
+            state_wind = ((ptend_u**2) + (ptend_v**2))**.5
+            self.target_energy_conv['ptend_u'] = state_wind
+            self.target_energy_conv['ptend_v'] = state_wind
+        
+        for var_name, (start,stop) in self.target_var_idx.items():
+            if(var_name in self.level_variables):
+                w = np.ones((int(num_samples/self.num_latlon), self.num_latlon, 60))
+                w *= vert_levels_weight * self.area_wgt[np.newaxis, :, np.newaxis]
+            else:
+                w = np.ones((int(num_samples/self.num_latlon), self.num_latlon))
+                w *= self.area_wgt[np.newaxis, :]
+            
+            w = w * self.target_energy_conv[var_name]
+
+            weightings[var_name] = w
+            weight_mat[:, start:stop] = w.reshape(num_samples, -1)
+        
+        if(ret_type in ["dict", "map"]):
+            return weightings
+        else:
+            return(weight_mat)
+
+
+    def output_weighting(self, inp_data, output, undo_norm=True, norm_method='nc'):
         '''
         This function does four transformations, and assumes we are using V1 variables:
         [0] Undos the output scaling
@@ -1075,318 +1166,21 @@ class data_utils:
         [2] Weight horizontal area of each grid cell by a[x]/mean(a[x])
         [3] Unit conversion to a common energy unit
         '''
-        assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
-        num_samples = output.shape[0]
-        if just_weights:
-            weightings = np.ones(output.shape)
-
-        if not self.full_vars:
-            ptend_t = output[:,:60].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-            ptend_q0001 = output[:,60:120].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-            netsw = output[:,120].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            flwds = output[:,121].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            precsc = output[:,122].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            precc = output[:,123].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            sols = output[:,124].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            soll = output[:,125].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            solsd = output[:,126].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            solld = output[:,127].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            if just_weights:
-                ptend_t_weight = weightings[:,:60].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-                ptend_q0001_weight = weightings[:,60:120].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-                netsw_weight = weightings[:,120].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                flwds_weight = weightings[:,121].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                precsc_weight = weightings[:,122].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                precc_weight = weightings[:,123].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                sols_weight = weightings[:,124].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                soll_weight = weightings[:,125].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                solsd_weight = weightings[:,126].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                solld_weight = weightings[:,127].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-        else:
-            ptend_t = output[:,:60].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-            ptend_q0001 = output[:,60:120].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-            ptend_q0002 = output[:,120:180].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-            ptend_q0003 = output[:,180:240].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-            ptend_u = output[:,240:300].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-            ptend_v = output[:,300:360].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-            netsw = output[:,360].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            flwds = output[:,361].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            precsc = output[:,362].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            precc = output[:,363].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            sols = output[:,364].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            soll = output[:,365].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            solsd = output[:,366].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            solld = output[:,367].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            state_wind = ((ptend_u**2) + (ptend_v**2))**.5
-            self.target_energy_conv['ptend_wind'] = state_wind
-            if just_weights:
-                ptend_t_weight = weightings[:,:60].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-                ptend_q0001_weight = weightings[:,60:120].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-                ptend_q0002_weight = weightings[:,120:180].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-                ptend_q0003_weight = weightings[:,180:240].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-                ptend_u_weight = weightings[:,240:300].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-                ptend_v_weight = weightings[:,300:360].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
-                netsw_weight = weightings[:,360].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                flwds_weight = weightings[:,361].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                precsc_weight = weightings[:,362].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                precc_weight = weightings[:,363].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                sols_weight = weightings[:,364].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                soll_weight = weightings[:,365].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                solsd_weight = weightings[:,366].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-                solld_weight = weightings[:,367].reshape((int(num_samples/self.num_latlon), self.num_latlon))
-            
-        # ptend_t = ptend_t.transpose((2,0,1))
-        # ptend_q0001 = ptend_q0001.transpose((2,0,1))
-        # scalar_outputs = scalar_outputs.transpose((2,0,1))
-
-        # [0] Undo output scaling
-        if self.normalize:
-            ptend_t = ptend_t/self.output_scale['ptend_t'].values[np.newaxis, np.newaxis, :]
-            ptend_q0001 = ptend_q0001/self.output_scale['ptend_q0001'].values[np.newaxis, np.newaxis, :]
-            netsw = netsw/self.output_scale['cam_out_NETSW'].values
-            flwds = flwds/self.output_scale['cam_out_FLWDS'].values
-            precsc = precsc/self.output_scale['cam_out_PRECSC'].values
-            precc = precc/self.output_scale['cam_out_PRECC'].values
-            sols = sols/self.output_scale['cam_out_SOLS'].values
-            soll = soll/self.output_scale['cam_out_SOLL'].values
-            solsd = solsd/self.output_scale['cam_out_SOLSD'].values
-            solld = solld/self.output_scale['cam_out_SOLLD'].values
-            if just_weights:
-                ptend_t_weight = ptend_t_weight/self.output_scale['ptend_t'].values[np.newaxis, np.newaxis, :]
-                ptend_q0001_weight = ptend_q0001_weight/self.output_scale['ptend_q0001'].values[np.newaxis, np.newaxis, :]
-                netsw_weight = netsw_weight/self.output_scale['cam_out_NETSW'].values
-                flwds_weight = flwds_weight/self.output_scale['cam_out_FLWDS'].values
-                precsc_weight = precsc_weight/self.output_scale['cam_out_PRECSC'].values
-                precc_weight = precc_weight/self.output_scale['cam_out_PRECC'].values
-                sols_weight = sols_weight/self.output_scale['cam_out_SOLS'].values
-                soll_weight = soll_weight/self.output_scale['cam_out_SOLL'].values
-                solsd_weight = solsd_weight/self.output_scale['cam_out_SOLSD'].values
-                solld_weight = solld_weight/self.output_scale['cam_out_SOLLD'].values
-            if self.full_vars:
-                ptend_q0002 = ptend_q0002/self.output_scale['ptend_q0002'].values[np.newaxis, np.newaxis, :]
-                ptend_q0003 = ptend_q0003/self.output_scale['ptend_q0003'].values[np.newaxis, np.newaxis, :]
-                ptend_u = ptend_u/self.output_scale['ptend_u'].values[np.newaxis, np.newaxis, :]
-                ptend_v = ptend_v/self.output_scale['ptend_v'].values[np.newaxis, np.newaxis, :]
-                if just_weights:
-                    ptend_q0002_weight = ptend_q0002_weight/self.output_scale['ptend_q0002'].values[np.newaxis, np.newaxis, :]
-                    ptend_q0003_weight = ptend_q0003_weight/self.output_scale['ptend_q0003'].values[np.newaxis, np.newaxis, :]
-                    ptend_u_weight = ptend_u_weight/self.output_scale['ptend_u'].values[np.newaxis, np.newaxis, :]
-                    ptend_v_weight = ptend_v_weight/self.output_scale['ptend_v'].values[np.newaxis, np.newaxis, :]
-
-        # [1] Weight vertical levels by dp/g
-        # only for vertically-resolved variables, e.g. ptend_{t,q0001}
-        # dp/g = -\rho * dz
-
-        dp = None
-        if data_split == 'train':
-            dp = self.dp_train
-        elif data_split == 'val':
-            dp = self.dp_val
-        elif data_split == 'scoring':
-            dp = self.dp_scoring
-        elif data_split == 'test':
-            dp = self.dp_test
-        assert dp is not None
-        ptend_t = ptend_t * dp/self.grav
-        ptend_q0001 = ptend_q0001 * dp/self.grav
-        if just_weights:
-            ptend_t_weight = ptend_t_weight * dp/self.grav
-            ptend_q0001_weight = ptend_q0001_weight * dp/self.grav
-        if self.full_vars:
-            ptend_q0002 = ptend_q0002 * dp/self.grav
-            ptend_q0003 = ptend_q0003 * dp/self.grav
-            ptend_u = ptend_u * dp/self.grav
-            ptend_v = ptend_v * dp/self.grav
-            if just_weights:
-                ptend_q0002_weight = ptend_q0002_weight * dp/self.grav
-                ptend_q0003_weight = ptend_q0003_weight * dp/self.grav
-                ptend_u_weight = ptend_u_weight * dp/self.grav  
-                ptend_v_weight = ptend_v_weight * dp/self.grav
-
-        # [2] weight by area
-
-        ptend_t = ptend_t * self.area_wgt[np.newaxis, :, np.newaxis]
-        ptend_q0001 = ptend_q0001 * self.area_wgt[np.newaxis, :, np.newaxis]
-        netsw = netsw * self.area_wgt[np.newaxis, :]
-        flwds = flwds * self.area_wgt[np.newaxis, :]
-        precsc = precsc * self.area_wgt[np.newaxis, :]
-        precc = precc * self.area_wgt[np.newaxis, :]
-        sols = sols * self.area_wgt[np.newaxis, :]
-        soll = soll * self.area_wgt[np.newaxis, :]
-        solsd = solsd * self.area_wgt[np.newaxis, :]
-        solld = solld * self.area_wgt[np.newaxis, :]
-        if just_weights:
-            ptend_t_weight = ptend_t_weight * self.area_wgt[np.newaxis, :, np.newaxis]
-            ptend_q0001_weight = ptend_q0001_weight * self.area_wgt[np.newaxis, :, np.newaxis]
-            netsw_weight = netsw_weight * self.area_wgt[np.newaxis, :]
-            flwds_weight = flwds_weight * self.area_wgt[np.newaxis, :]
-            precsc_weight = precsc_weight * self.area_wgt[np.newaxis, :]
-            precc_weight = precc_weight * self.area_wgt[np.newaxis, :]
-            sols_weight = sols_weight * self.area_wgt[np.newaxis, :]
-            soll_weight = soll_weight * self.area_wgt[np.newaxis, :]
-            solsd_weight = solsd_weight * self.area_wgt[np.newaxis, :]
-            solld_weight = solld_weight * self.area_wgt[np.newaxis, :]
-        if self.full_vars:
-            ptend_q0002 = ptend_q0002 * self.area_wgt[np.newaxis, :, np.newaxis]
-            ptend_q0003 = ptend_q0003 * self.area_wgt[np.newaxis, :, np.newaxis]
-            ptend_u = ptend_u * self.area_wgt[np.newaxis, :, np.newaxis]
-            ptend_v = ptend_v * self.area_wgt[np.newaxis, :, np.newaxis]
-            if just_weights:
-                ptend_q0002_weight = ptend_q0002_weight * self.area_wgt[np.newaxis, :, np.newaxis]
-                ptend_q0003_weight = ptend_q0003_weight * self.area_wgt[np.newaxis, :, np.newaxis]
-                ptend_u_weight = ptend_u_weight * self.area_wgt[np.newaxis, :, np.newaxis]
-                ptend_v_weight = ptend_v_weight * self.area_wgt[np.newaxis, :, np.newaxis]
-
-        # [3] unit conversion
-
-        ptend_t = ptend_t * self.target_energy_conv['ptend_t']
-        ptend_q0001 = ptend_q0001 * self.target_energy_conv['ptend_q0001']
-        netsw = netsw * self.target_energy_conv['cam_out_NETSW']
-        flwds = flwds * self.target_energy_conv['cam_out_FLWDS']
-        precsc = precsc * self.target_energy_conv['cam_out_PRECSC']
-        precc = precc * self.target_energy_conv['cam_out_PRECC']
-        sols = sols * self.target_energy_conv['cam_out_SOLS']
-        soll = soll * self.target_energy_conv['cam_out_SOLL']
-        solsd = solsd * self.target_energy_conv['cam_out_SOLSD']
-        solld = solld * self.target_energy_conv['cam_out_SOLLD']
-        if just_weights:
-            ptend_t_weight = ptend_t_weight * self.target_energy_conv['ptend_t']
-            ptend_q0001_weight = ptend_q0001_weight * self.target_energy_conv['ptend_q0001']
-            netsw_weight = netsw_weight * self.target_energy_conv['cam_out_NETSW']
-            flwds_weight = flwds_weight * self.target_energy_conv['cam_out_FLWDS']
-            precsc_weight = precsc_weight * self.target_energy_conv['cam_out_PRECSC']
-            precc_weight = precc_weight * self.target_energy_conv['cam_out_PRECC']
-            sols_weight = sols_weight * self.target_energy_conv['cam_out_SOLS']
-            soll_weight = soll_weight * self.target_energy_conv['cam_out_SOLL']
-            solsd_weight = solsd_weight * self.target_energy_conv['cam_out_SOLSD']
-            solld_weight = solld_weight * self.target_energy_conv['cam_out_SOLLD']
-        if self.full_vars:
-            ptend_q0002 = ptend_q0002 * self.target_energy_conv['ptend_q0002']
-            ptend_q0003 = ptend_q0003 * self.target_energy_conv['ptend_q0003']
-            ptend_u = ptend_u * self.target_energy_conv['ptend_wind']
-            ptend_v = ptend_v * self.target_energy_conv['ptend_wind']
-            if just_weights:
-                ptend_q0002_weight = ptend_q0002_weight * self.target_energy_conv['ptend_q0002']
-                ptend_q0003_weight = ptend_q0003_weight * self.target_energy_conv['ptend_q0003']
-                ptend_u_weight = ptend_u_weight * self.target_energy_conv['ptend_wind']
-                ptend_v_weight = ptend_v_weight * self.target_energy_conv['ptend_wind']
-
-
-        if just_weights:
-            if self.full_vars:
-                weightings = np.concatenate([ptend_t_weight.reshape((num_samples, 60)), \
-                                             ptend_q0001_weight.reshape((num_samples, 60)), \
-                                             ptend_q0002_weight.reshape((num_samples, 60)), \
-                                             ptend_q0003_weight.reshape((num_samples, 60)), \
-                                             ptend_u_weight.reshape((num_samples, 60)), \
-                                             ptend_v_weight.reshape((num_samples, 60)), \
-                                             netsw_weight.reshape((num_samples))[:, np.newaxis], \
-                                             flwds_weight.reshape((num_samples))[:, np.newaxis], \
-                                             precsc_weight.reshape((num_samples))[:, np.newaxis], \
-                                             precc_weight.reshape((num_samples))[:, np.newaxis], \
-                                             sols_weight.reshape((num_samples))[:, np.newaxis], \
-                                             soll_weight.reshape((num_samples))[:, np.newaxis], \
-                                             solsd_weight.reshape((num_samples))[:, np.newaxis], \
-                                             solld_weight.reshape((num_samples))[:, np.newaxis]], axis = 1)
+        if(undo_norm):
+            inp_data, output = self.denormalize(inp_data, output, norm_method)
+        dp = self.compute_dp(inp_data, undo_norm=False)
+        var_weights = self.get_var_weights(output, dp, "dict")
+        var_dict = {}
+        for var_name, (start,stop) in self.target_var_idx.items():
+            assert (output[:, start:stop].shape == var_weights[var_name].reshape(-1, int(stop-start)).shape), f"Shapes for {var_name} are not matching"
+            if(var_name in self.level_variables):
+                output_val = output[:, start:stop].reshape(-1, self.num_latlon, 60)
             else:
-                weightings = np.concatenate([ptend_t_weight.reshape((num_samples, 60)), \
-                                             ptend_q0001_weight.reshape((num_samples, 60)), \
-                                             netsw_weight.reshape((num_samples))[:, np.newaxis], \
-                                             flwds_weight.reshape((num_samples))[:, np.newaxis], \
-                                             precsc_weight.reshape((num_samples))[:, np.newaxis], \
-                                             precc_weight.reshape((num_samples))[:, np.newaxis], \
-                                             sols_weight.reshape((num_samples))[:, np.newaxis], \
-                                             soll_weight.reshape((num_samples))[:, np.newaxis], \
-                                             solsd_weight.reshape((num_samples))[:, np.newaxis], \
-                                             solld_weight.reshape((num_samples))[:, np.newaxis]], axis = 1)
-            return weightings
-        else:
-            var_dict = {'ptend_t':ptend_t,
-                        'ptend_q0001':ptend_q0001,
-                        'cam_out_NETSW':netsw,
-                        'cam_out_FLWDS':flwds,
-                        'cam_out_PRECSC':precsc,
-                        'cam_out_PRECC':precc,
-                        'cam_out_SOLS':sols,
-                        'cam_out_SOLL':soll,
-                        'cam_out_SOLSD':solsd,
-                        'cam_out_SOLLD':solld}
-            if self.full_vars:
-                var_dict['ptend_q0002'] = ptend_q0002
-                var_dict['ptend_q0003'] = ptend_q0003
-                var_dict['ptend_u'] = ptend_u
-                var_dict['ptend_v'] = ptend_v
+                output_val = output[:, start:stop].reshape(-1, self.num_latlon)
+            var_dict[var_name] = output_val * var_weights[var_name]
+        return(var_dict)
 
-            return var_dict
-
-    def reweight_target(self, data_split):
-        '''
-        data_split should be train, val, scoring, or test
-        weights target variables assuming V1 outputs using the output_weighting function
-        '''
-        assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
-        if data_split == 'train':
-            assert self.target_train is not None
-            self.target_weighted_train = self.output_weighting(self.target_train, data_split)
-        elif data_split == 'val':
-            assert self.target_val is not None
-            self.target_weighted_val = self.output_weighting(self.target_val, data_split)
-        elif data_split == 'scoring':
-            assert self.target_scoring is not None
-            self.target_weighted_scoring = self.output_weighting(self.target_scoring, data_split)
-        elif data_split == 'test':
-            assert self.target_test is not None
-            self.target_weighted_test = self.output_weighting(self.target_test, data_split)
-
-    def reweight_preds(self, data_split):
-        '''
-        weights predictions assuming V1 outputs using the output_weighting function
-        '''
-        assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
-        assert self.model_names is not None
-
-        if data_split == 'train':
-            assert self.preds_train is not None
-            for model_name in self.model_names:
-                self.preds_weighted_train[model_name] = self.output_weighting(self.preds_train[model_name], data_split)
-        elif data_split == 'val':
-            assert self.preds_val is not None
-            for model_name in self.model_names:
-                self.preds_weighted_val[model_name] = self.output_weighting(self.preds_val[model_name], data_split)
-        elif data_split == 'scoring':
-            assert self.preds_scoring is not None
-            for model_name in self.model_names:
-                self.preds_weighted_scoring[model_name] = self.output_weighting(self.preds_scoring[model_name], data_split)
-        elif data_split == 'test':
-            assert self.preds_test is not None
-            for model_name in self.model_names:
-                self.preds_weighted_test[model_name] = self.output_weighting(self.preds_test[model_name], data_split)
-
-    def reweight_samplepreds(self, data_split):
-        '''
-        weights predictions assuming V1 outputs using the output_weighting function
-        need to edit to get it to work across samples
-        '''
-        assert data_split in ['train', 'val', 'scoring', 'test'], 'Provided data_split is not valid. Available options are train, val, scoring, and test.'
-        assert self.model_names is not None
-
-        if data_split == 'train':
-            assert self.samplepreds_train is not None
-            for model_name in self.model_names:
-                self.samplepreds_weighted_train[model_name] = self.output_weighting_CRPS(self.samplepreds_train[model_name], data_split)
-        elif data_split == 'val':
-            assert self.samplepreds_val is not None
-            for model_name in self.model_names:
-                self.samplepreds_weighted_val[model_name] = self.output_weighting_CRPS(self.samplepreds_val[model_name], data_split)
-        elif data_split == 'scoring':
-            assert self.samplepreds_scoring is not None
-            for model_name in self.model_names:
-                self.samplepreds_weighted_scoring[model_name] = self.output_weighting_CRPS(self.samplepreds_scoring[model_name], data_split)
-        elif data_split == 'test':
-            assert self.samplepreds_test is not None
-            for model_name in self.model_names:
-                self.samplepreds_weighted_test[model_name] = self.output_weighting_CRPS(self.samplepreds_test[model_name], data_split)
-
+        
     def calc_MAE(self, pred, target, avg_grid = True):
         '''
         calculate 'globally averaged' mean absolute error 
@@ -1481,88 +1275,41 @@ class data_utils:
         else:
             return crps
 
-    def create_metrics_df(self, data_split):
+    def create_metrics_df(self, x, y, predictions_dict, weighted=True):
         '''
         creates a dataframe of metrics for each model
+        predictions_matrix is a dict <model_name, weighted predictions y_hat>
+        Both of these simply aply the output_weighting function. 
         '''
-        assert data_split in ['train', 'val', 'scoring', 'test'], \
-            'Provided data_split is not valid. Available options are train, val, scoring, and test.'
-        assert len(self.model_names) != 0
         assert len(self.metrics_names) != 0
         assert len(self.target_vars) != 0
         assert self.target_feature_len is not None
-
-        if data_split == 'train':
-            assert len(self.preds_weighted_train) != 0
-            assert len(self.target_weighted_train) != 0
-            for model_name in self.model_names:
-                df_var = pd.DataFrame(columns = self.metrics_names, index = self.target_vars)
-                df_var.index.name = 'variable'
-                df_idx = pd.DataFrame(columns = self.metrics_names, index = range(self.target_feature_len))
-                df_idx.index.name = 'output_idx'
-                for metric_name in self.metrics_names:
-                    current_idx = 0
-                    for target_var in self.target_vars:
-                        metric = self.metrics_dict[metric_name](self.preds_weighted_train[model_name][target_var], self.target_weighted_train[target_var])
-                        df_var.loc[target_var, metric_name] = np.mean(metric)
-                        df_idx.loc[current_idx:current_idx + self.var_lens[target_var] - 1, metric_name] = np.atleast_1d(metric)
-                        current_idx += self.var_lens[target_var]
-                self.metrics_var_train[model_name] = df_var
-                self.metrics_idx_train[model_name] = df_idx
-
-        elif data_split == 'val':
-            assert len(self.preds_weighted_val) != 0
-            assert len(self.target_weighted_val) != 0
-            for model_name in self.model_names:
-                df_var = pd.DataFrame(columns = self.metrics_names, index = self.target_vars)
-                df_var.index.name = 'variable'
-                df_idx = pd.DataFrame(columns = self.metrics_names, index = range(self.target_feature_len))
-                df_idx.index.name = 'output_idx'
-                for metric_name in self.metrics_names:
-                    current_idx = 0
-                    for target_var in self.target_vars:
-                        metric = self.metrics_dict[metric_name](self.preds_weighted_val[model_name][target_var], self.target_weighted_val[target_var])
-                        df_var.loc[target_var, metric_name] = np.mean(metric)
-                        df_idx.loc[current_idx:current_idx + self.var_lens[target_var] - 1, metric_name] = np.atleast_1d(metric)
-                        current_idx += self.var_lens[target_var]
-                self.metrics_var_val[model_name] = df_var
-                self.metrics_idx_val[model_name] = df_idx
-
-        elif data_split == 'scoring':
-            assert len(self.preds_weighted_scoring) != 0
-            assert len(self.target_weighted_scoring) != 0
-            for model_name in self.model_names:
-                df_var = pd.DataFrame(columns = self.metrics_names, index = self.target_vars)
-                df_var.index.name = 'variable'
-                df_idx = pd.DataFrame(columns = self.metrics_names, index = range(self.target_feature_len))
-                df_idx.index.name = 'output_idx'
-                for metric_name in self.metrics_names:
-                    current_idx = 0
-                    for target_var in self.target_vars:
-                        metric = self.metrics_dict[metric_name](self.preds_weighted_scoring[model_name][target_var], self.target_weighted_scoring[target_var])
-                        df_var.loc[target_var, metric_name] = np.mean(metric)
-                        df_idx.loc[current_idx:current_idx + self.var_lens[target_var] - 1, metric_name] = np.atleast_1d(metric)
-                        current_idx += self.var_lens[target_var]
-                self.metrics_var_scoring[model_name] = df_var
-                self.metrics_idx_scoring[model_name] = df_idx
-
-        elif data_split == 'test':
-            assert len(self.preds_weighted_test) != 0
-            assert len(self.target_weighted_test) != 0
-            for model_name in self.model_names:
-                df_var = pd.DataFrame(columns = self.metrics_names, index = self.target_vars)
-                df_var.index.name = 'variable'
-                df_idx = pd.DataFrame(columns = self.metrics_names, index = range(self.target_feature_len))
-                df_idx.index.name = 'output_idx'
-                for metric_name in self.metrics_names:
-                    current_idx = 0
-                    for target_var in self.target_vars:
-                        metric = self.metrics_dict[metric_name](self.preds_weighted_test[model_name][target_var], self.target_weighted_test[target_var])
-                        df_var.loc[target_var, metric_name] = np.mean(metric)
-                        df_idx.loc[current_idx:current_idx + self.var_lens[target_var] - 1, metric_name] = np.atleast_1d(metric)
-                        current_idx += self.var_lens[target_var]
-                self.metrics_var_test[model_name] = df_var
-                self.metrics_idx_test[model_name] = df_idx
+        metrics_var_train = {}
+        metrics_idx_train = {}
+        if(not weighted):
+            print("Applying variable reweighting to y")
+            y = dutils.output_weighting(x, y, undo_norm=True)
+        
+        for model_name, preds in predictions_dict.items():
+            if(not weighted):
+                print("Applying variable reweighting to prediction")
+                preds = self.output_weighting(x, preds, undo_norm=True)
+                
+            df_var = pd.DataFrame(columns = self.metrics_names, index = self.target_vars)
+            df_var.index.name = 'variable'
+            df_idx = pd.DataFrame(columns = self.metrics_names, index = range(self.target_feature_len))
+            df_idx.index.name = 'output_idx'
+            for metric_name in self.metrics_names:
+                current_idx = 0
+                for target_var in self.target_vars:
+                    metric_fn = self.metrics_dict[metric_name]
+                    metric = metric_fn(preds[target_var], y[target_var])
+                    df_var.loc[target_var, metric_name] = np.mean(metric)
+                    df_idx.loc[current_idx:current_idx + self.var_lens[target_var] - 1, metric_name] = np.atleast_1d(metric)
+                    current_idx += self.var_lens[target_var]
+            metrics_var_train[model_name] = df_var
+            metrics_idx_train[model_name] = df_idx
+        return(metrics_var_train, metrics_idx_train)
 
     def reshape_daily(self, output):
         '''
@@ -1749,3 +1496,30 @@ def save_arrays(X, Y, bucket='scratch', fprefix='climsim'):
         np.save(f, Y)
 
 
+
+def eliq(T):
+    """
+    Function taking temperature (in K) and outputting liquid saturation
+    pressure (in hPa) using a polynomial fit
+    """
+    a_liq = np.array([-0.976195544e-15,-0.952447341e-13,0.640689451e-10,
+                              0.206739458e-7,0.302950461e-5,0.264847430e-3,
+                              0.142986287e-1,0.443987641,6.11239921]);
+    c_liq = -80
+    T0 = 273.16
+    return 100*np.polyval(a_liq,np.maximum(c_liq,T-T0))
+
+def eice(T):
+    """
+    Function taking temperature (in K) and outputting ice saturation
+    pressure (in hPa) using a polynomial fit
+    """
+    a_ice = np.array([0.252751365e-14,0.146898966e-11,0.385852041e-9,
+                      0.602588177e-7,0.615021634e-5,0.420895665e-3,
+                      0.188439774e-1,0.503160820,6.11147274]);
+    c_ice = np.array([273.15,185,-100,0.00763685,0.000151069,7.48215e-07])
+    T0 = 273.16
+    return (T>c_ice[0])*eliq(T)+\
+    (T<=c_ice[0])*(T>c_ice[1])*100*np.polyval(a_ice,T-T0)+\
+    (T<=c_ice[1])*100*(c_ice[3]+np.maximum(c_ice[2],T-T0)*\
+                       (c_ice[4]+np.maximum(c_ice[2],T-T0)*c_ice[5]))
