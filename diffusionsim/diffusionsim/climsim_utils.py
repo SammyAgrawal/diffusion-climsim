@@ -207,6 +207,7 @@ MLBackendType = Literal["tensorflow", "pytorch"]
 fs = gcsfs.GCSFileSystem()
 class data_utils:
     ## modified from https://github.com/leap-stc/ClimSim/blob/main/climsim_utils/data_utils.py
+    
     def __init__(self, source_type, ds_type, grid_info='', use_tendencies=True, ml_backend: MLBackendType = "pytorch"):
         self.source_type = source_type
         self.ds_type = ds_type
@@ -578,8 +579,8 @@ class data_utils:
                  'cam_out_SOLL':1,
                  'cam_out_SOLSD':1,
                  'cam_out_SOLLD':1
-                }  
- 
+                }
+    
     def set_norm_info(self, input_mean, input_max, input_min, output_scale):
         self.input_mean = input_mean
         self.input_max = input_max
@@ -886,7 +887,6 @@ class data_utils:
                 ds_target = self.get_target(file)
                 yield (ds_input, ds_target)
         return(gen)
-        
     
     def load_ncdata_with_generator(self, data_split):
         '''
