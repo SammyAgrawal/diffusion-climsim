@@ -39,11 +39,12 @@ class DataConfig:
     prenormalize: bool = False
     chunksize: Dict = field(default_factory=lambda:{})
     log_batching: bool = True
+    shuffle_indices: bool = False
     def __post_init__(self):
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
 
-def my_dconfig(data_vars='v1', in_notebook=False, dataset_type="climsim", batch_size=128):
+def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, dataset_type="climsim", batch_size=128, use_tendencies = True):
     dl_params = TrainLoaderParams()
     dl_params.batch_size = batch_size
     if("climsim" in dataset_type):
@@ -60,12 +61,13 @@ def my_dconfig(data_vars='v1', in_notebook=False, dataset_type="climsim", batch_
     dconfig = DataConfig()
 
     dconfig.dataloader_params = dl_params
-    dconfig.source = "local-vzarr" # specify from raw cloud bucket
+    dconfig.source = source# # specify from raw cloud bucket
     dconfig.climsim_type = "low-res-expanded" 
     dconfig.dataset_type = dataset_type
     dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
     dconfig.train_test_split = [0.35, 0.05] if "climsim" in dataset_type else [1.0]
     dconfig.data_vars = data_vars
+    dconfig.use_tendencies = use_tendencies
     return(dconfig)
             
 @dataclass

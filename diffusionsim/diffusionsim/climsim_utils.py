@@ -26,11 +26,12 @@ def load_raw_dataset(dconfig, return_dutils=False, **kwargs):
     dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, 
                               use_tendencies=dconfig.use_tendencies, data_dir=dconfig.data_dir, **kwargs)
     #ds_type = expand_ds_name(dconfig.climsim_type)
+    target_vars = [var.replace("ptend", "state") if 'ptend' in var else var for var in dutils.target_vars]
     if(dconfig.source == "gcsfs"):
         input_path = 'gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.input.zarr'
         output_path = 'gs://leap-persistent-ro/sungdukyu/E3SM-MMF_ne4.train.output.zarr'
         dsi = xr.open_dataset(input_path, engine='zarr', chunks=dconfig.chunksize)[dutils.input_vars].rename({"sample" : "time"})
-        dso = xr.open_dataset(output_path, engine='zarr', chunks=dconfig.chunksize)[dutils.target_vars].rename({"sample" : "time"})
+        dso = xr.open_dataset(output_path, engine='zarr', chunks=dconfig.chunksize)[target_vars].rename({"sample" : "time"})
 
     elif("vzarr" in dconfig.source):
         import icechunk
@@ -44,7 +45,7 @@ def load_raw_dataset(dconfig, return_dutils=False, **kwargs):
         repo = icechunk.Repository.open(storage)
         session = repo.writable_session("main")
         with session.allow_pickling():
-            dso = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})[dutils.target_vars]
+            dso = xr.open_zarr(session.store, zarr_format=3, consolidated=False, chunks={})[target_vars]
         
     elif(dconfig.source == "huggingface" or dconfig.source == "local"):
         year = int(input("Input year: "))
@@ -63,17 +64,14 @@ def load_raw_dataset(dconfig, return_dutils=False, **kwargs):
         
         start, stop, stride = dconfig.xarr_subsamples
         ds_in = ds_in.isel(sample=slice(start, stop, stride))[dutils.input_vars]
-        ds_out = ds_out.isel(sample=slice(start, stop, stride))[dutils.target_vars]
+        ds_out = ds_out.isel(sample=slice(start, stop, stride))[target_vars]
     
         mli = ds_in.to_stacked_array('mli', sample_dims=['sample', 'ncol']).mli
         mlo = ds_out.to_stacked_array('mlo', sample_dims=['sample', 'ncol']).mlo
         state = ds_in.stack({'state' : ['sample', 'ncol']}).state
         
-        Xarr = xr.DataArray(X, dims=['state', 'mli'], coords={'state' : state, 'mli':mli})
-        Yarr = xr.DataArray(Y, dims=['state', 'mlo'], coords={'state' : state, 'mlo':mlo})
-    
-        #Xarr, Yarr = add_space(Xarr.unstack('sample'), Yarr.unstack('sample'))
-        return(Xarr, Yarr)
+        dsi = xr.DataArray(X, dims=['state', 'mli'], coords={'state' : state, 'mli':mli})
+        dso = xr.DataArray(Y, dims=['state', 'mlo'], coords={'state' : state, 'mlo':mlo})
     
     dsi = add_space(dsi, ds_grid=dutils.grid_info)
     dso = add_space(dso, ds_grid=dutils.grid_info)
@@ -301,8 +299,8 @@ class data_utils:
                           'pbuf_LHFLX',
                           'pbuf_SHFLX']
         
-        self.v1_outputs = ['ptend_t',
-                           'ptend_q0001',
+        self.v1_outputs = ['state_t',
+                           'state_q0001',
                            'cam_out_NETSW',
                            'cam_out_FLWDS',
                            'cam_out_PRECSC',
@@ -339,12 +337,12 @@ class data_utils:
                           'pbuf_CH4',
                           'pbuf_N2O']  # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3
         
-        self.v2_outputs = ['ptend_t',
-                           'ptend_q0001',
-                           'ptend_q0002',
-                           'ptend_q0003',
-                           'ptend_u',
-                           'ptend_v',
+        self.v2_outputs = ['state_t',
+                           'state_q0001',
+                           'state_q0002',
+                           'state_q0003',
+                           'state_u',
+                           'state_v',
                            'cam_out_NETSW',
                            'cam_out_FLWDS',
                            'cam_out_PRECSC',
@@ -354,9 +352,9 @@ class data_utils:
                            'cam_out_SOLSD',
                            'cam_out_SOLLD']
         
-        if(not use_tendencies):
-            self.v1_outputs = [var.replace("ptend", "state") if 'ptend' in var else var for var in self.v1_outputs]
-            self.v2_outputs = [var.replace("ptend", "state") if 'ptend' in var else var for var in self.v2_outputs]
+        if(use_tendencies):
+            self.v1_outputs = [var.replace("state", "ptend") if 'state' in var else var for var in self.v1_outputs]
+            self.v2_outputs = [var.replace("state", "ptend") if 'state' in var else var for var in self.v2_outputs]
         
 
         self.var_short_names = {'ptend_t':'$dT/dt$',

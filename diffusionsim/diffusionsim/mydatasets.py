@@ -118,24 +118,39 @@ def noise_batch(scheduler, clean_images, device):
 class ClimsimDataset(Dataset):
     def __init__(self, dsi, dso, dutils, dconfig, log=False):
         self.log = log
+        self.dutils = dutils
         self.dsi, self.dso = dsi, dso
         self.permute_indices = cut.image_regridding(dsi)
         #assert self.dsi.sizes['time'] == self.dso.sizes['time'], "dsi and dso must have the same number of timesteps"
 
         self.input_vars, self.target_vars = dutils.input_vars, dutils.target_vars
         self.input_len, self.target_len = dutils.input_feature_len, dutils.target_feature_len
-        self.X_mean, self.X_std, self.Y_mean, self.Y_std = cut.get_norm_info(style='image')
-        xm = self.X_mean[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
-        xs = self.X_std[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
-        ym = self.Y_mean[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
-        ys = self.Y_std[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+        if(self.dutils.use_tendencies):
+            self.X_mean, self.X_max, self.X_min, self.Y_scale = cut.get_norm_info("scale")
+            xm = self.X_mean[self.input_vars].to_stacked_array('mli', sample_dims=())
+            xmax = self.X_max[self.input_vars].to_stacked_array('mli', sample_dims=())
+            xmin = self.X_min[self.input_vars].to_stacked_array('mli', sample_dims=())
+            ys = self.Y_scale[self.target_vars].to_stacked_array('mlo', sample_dims=())
+            
+            self.mli, self.mlo = xm.mli, ys.mlo
 
-        self.mli, self.mlo = xm.mli, ym.mlo
-
-        self.xm = torch.tensor(xm.data, dtype=torch.float32)
-        self.xs = torch.tensor(xs.data, dtype=torch.float32)
-        self.ym = torch.tensor(ym.data, dtype=torch.float32)
-        self.ys = torch.tensor(ys.data, dtype=torch.float32)
+            self.xm = torch.tensor(xm.data, dtype=torch.float32)
+            self.xmax = torch.tensor(xmax.data, dtype=torch.float32)
+            self.xmin = torch.tensor(xmin.data, dtype=torch.float32)
+            self.ys = torch.tensor(ys.data, dtype=torch.float32)
+        else:
+            self.X_mean, self.X_std, self.Y_mean, self.Y_std = cut.get_norm_info(style='image')
+            xm = self.X_mean[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
+            xs = self.X_std[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
+            ym = self.Y_mean[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+            ys = self.Y_std[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+    
+            self.mli, self.mlo = xm.mli, ym.mlo
+    
+            self.xm = torch.tensor(xm.data, dtype=torch.float32)
+            self.xs = torch.tensor(xs.data, dtype=torch.float32)
+            self.ym = torch.tensor(ym.data, dtype=torch.float32)
+            self.ys = torch.tensor(ys.data, dtype=torch.float32)
     
         #self.xgen = xbatcher.BatchGenerator(self.dsi, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
         #self.ygen = xbatcher.BatchGenerator(self.dso, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
@@ -153,12 +168,39 @@ class ClimsimDataset(Dataset):
         if(self.log):
             t0 = log_event("get-batch start", batch_idx=idx)
         x, y = self.xgen[idx].load(), self.ygen[idx].load()
+        if(self.dutils.use_tendencies):
+            y['ptend_t'] = (y['state_t'] - x['state_t'])/1200 # T tendency [K/s]
+            y['ptend_q0001'] = (y['state_q0001'] - x['state_q0001'])/1200 # Q tendency [kg/kg/s]
+            if(self.dutils.full_vars):
+                y['ptend_q0002'] = (y['state_q0002'] - x['state_q0002'])/1200 # Q tendency [kg/kg/s]
+                y['ptend_q0003'] = (y['state_q0003'] - x['state_q0003'])/1200 # Q tendency [kg/kg/s]
+                y['ptend_u'] = (y['state_u'] - x['state_u'])/1200 # U tendency [m/s/s]
+                y['ptend_v'] = (y['state_v'] - x['state_v'])/1200 # V tendency [m/s/s] 
+            y = y[self.target_vars] # drop state_vars
+            
         x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
-        x = (x - self.xm) / self.xs
-        y = (y - self.ym) / self.ys
+        x, y = self.normalize(x, y)
         if(self.log):
             log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
         return(x, y)
+
+    def normalize(self, x, y):
+        if(self.dutils.use_tendencies):
+            x = (x - self.xm) / (self.xmax - self.xmin)
+            y = y * self.ys
+        else:  
+            x = (x - self.xm) / self.xs
+            y = (y - self.ym) / self.ys
+        return(x, y)
+
+    def unnormalize(x, y):
+        if(self.dutils.use_tendencies):
+            x = x * (self.xmax - self.xmin) + self.xm
+            y = y / self.ys
+        else:  
+            x = x * self.xs + self.xm
+            y = y * self.ys + self.ym
+        return(x, y)        
     
     def __len__(self):
         return(self.length)
