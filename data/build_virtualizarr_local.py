@@ -25,9 +25,7 @@ dconfig.climsim_type = "low-res-expanded"
 
 base_dir = "/mnt/lustre/columbia/ssa2206/ClimSim_low-res-expanded/train"
 
-n = cut.expand_ds_name("low-res")
-grid_url = f"https://huggingface.co/datasets/LEAP/{n}/resolve/main/{n}_grid-info.nc"
-grid_info = cut.read_url(grid_url, copy_to_local=True)
+grid_info = xr.open_dataset("/mnt/home/ssa2206/Climsim/grid-info.nc").load()
 
 dutils = cut.setup_data_utils(dconfig.climsim_type, dconfig.source, 
                               dconfig.data_vars, use_tendencies=dconfig.use_tendencies, 
@@ -73,14 +71,13 @@ def fetch_virtual_datasets(year, month):
 
 def add_period(vds, commit_message, repo, appending=True):
     session = repo.writable_session("main")
-    print(f"Saving ds of size {vds.sizes}", flush=True)
+    print(f"Saving ds of size {vds.sizes}; appending: {appending}", flush=True)
     if(appending):
-        to_icechunk(vds, session, append_dim='time')
+        vds.virtualize.to_icechunk(session.store, append_dim='time')
     else:
-        to_icechunk(vds, session)
+        vds.virtualize.to_icechunk(session.store)
     msg = session.commit(commit_message)
     print(f"Committed {commit_message}, period added {msg}", flush=True)
-
 
 for year in range(1,10):
     for month in range(1,13):
@@ -92,7 +89,7 @@ for year in range(1,10):
         start_time = time.time()
         vds_inputs, vds_targets = fetch_virtual_datasets(year, month)
         print(f"time taken to fetch {year}-{month}: {(time.time() - start_time)/60} minutes")
-        add_period(vds_inputs, f"Appended {year}-{month} for inputs", input_repo)
+        add_period(vds_inputs, f"Appended {year}-{month} for inputs", input_repo, appending)
         print(f"time taken to store inputs in icechunk: {(time.time() - start_time)/60} minutes")
-        add_period(vds_targets, f"Appended {year}-{month} for targets", target_repo)
+        add_period(vds_targets, f"Appended {year}-{month} for targets", target_repo, appending)
         print(f"Time taken to store outputs in icehunk: {(time.time() - start_time)/60} minutes")

@@ -198,8 +198,10 @@ def get_norm_info(style='image', sanitize=True):
     raise ValueError(f"Invalid Norm Style {style} provided")
 
 def imagify(x, feature_len, permute_indices):
+    # X is most likely tensor of shape (BS, feature_len) where batch size is multipled by 384
+    # desired output is (BS, C, H, W)
     ximg = x.reshape(-1, 384, feature_len)  # assuming this is dutils.input_feature_len
-    ximg = ximg[:, permute_indices, :].reshape(-1, 16, 24, feature_len) 
+    ximg = ximg[:, permute_indices, :].reshape(-1, 16, 24, feature_len).permute(0, 3, 1, 2) 
     return(ximg)
 
 MLBackendType = Literal["tensorflow", "pytorch"]

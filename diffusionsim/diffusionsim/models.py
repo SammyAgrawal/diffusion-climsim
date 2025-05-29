@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from dataclasses import dataclass, asdict, field
 from . import DIFFUSERS_AVAILABLE
 import os
+import json
 if DIFFUSERS_AVAILABLE:
     from . import diffusers
 
@@ -55,13 +56,10 @@ def build_baseline_model(config, **kwargs):
     
     layers = []
     in_dim = config.bl_input_size
-
-    for i in range(config.bl_num_layers):
-        out_dim = config.bl_hidden_dims[i] if i < len(config.bl_hidden_dims) else config.bl_output_size
+    for out_dim in config.bl_hidden_dims:
         layers.append(nn.Linear(in_dim, out_dim))
         layers.append(nn.ReLU())
-        in_dim = out_dim  # Update input size for the next layer
-
+        in_dim = out_dim
     layers.append(nn.Linear(in_dim, config.bl_output_size))  # Final output layer (no activation)
     model = nn.Sequential(*layers)
     return model
@@ -207,8 +205,3 @@ class VariationalAutoencoder(torch.nn.Module):
             return y
         else:
             return mean_y, std_y
-
-
-
-
-
