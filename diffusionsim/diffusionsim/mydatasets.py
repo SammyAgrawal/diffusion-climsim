@@ -136,7 +136,6 @@ class ClimsimDataset(Dataset):
         self.X = dsi.stack(sample=("time", "ncol")).transpose("sample", "mli")
         dso = dso.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
         self.Y = dso.stack(sample=("time", "ncol")).transpose("sample", "mlo")
-        self.length = min(self.X.shape[0], self.Y.shape[0]) // dconfig.dataloader_params.batch_size
 
         self.xgen = xbatcher.BatchGenerator(self.X, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mli=dutils.input_feature_len), preload_batch=False,)
         self.ygen = xbatcher.BatchGenerator(self.Y, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mlo=dutils.target_feature_len), preload_batch=False,)
@@ -180,7 +179,7 @@ class ClimsimDataset(Dataset):
         return(x, y)        
     
     def __len__(self):
-        return(self.length)
+        return(len(self.xgen))
 
     def index_var(self, var, level):
         mli, mlo = list(self.mli.values), list(self.mlo.values)

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import numpy as np
 import os
-
+import diffusers
 import gcsfs
 import json
 import torch
@@ -39,7 +39,7 @@ class DataConfig:
     norm_info: str = "image"
     chunksize: Dict = field(default_factory=lambda:{})
     log_batching: bool = True
-    shuffle_indices: bool = True
+    shuffle_indices: bool = False
     def __post_init__(self):
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
@@ -54,7 +54,7 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False,
     if(torch.cuda.is_available() and batch_size > 16):
         dl_params.pin_memory = True
     if(not in_notebook):
-        dl_params.num_workers = 0
+        dl_params.num_workers = 4
         dl_params.prefetch_factor = 3
         dl_params.persistent_workers = True
         dl_params.multiprocessing_context = "forkserver"
@@ -83,7 +83,7 @@ class TrainingConfig:
     optimizer: str = 'adam'
     betas: Tuple[float, float] = (0.9, 0.999)
     lr_scheduler: str = None
-    lr_warmup_steps = 500
+    lr_warmup_steps = 50
     learning_rate: float = 1e-4
     loss_weights: Dict = field(default_factory=lambda: {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2})
     clip_gradients: bool = True
@@ -92,8 +92,8 @@ class TrainingConfig:
     max_T_sample: int = 100
     # logging params
     save_best_epoch: bool = True
-    batch_logging_interval: int = 32
-    batch_checkpoint_interval: int = 50 # save checkpoint every 50 batches
+    batch_logging_interval: int = 16
+    batch_checkpoint_interval: int = 10 # save checkpoint every 10 batches
     log_gradients: bool = False
     #save_image_epochs: int = 2
     push_to_hub: bool = False
@@ -106,8 +106,6 @@ class TrainingConfig:
     distloss_bs: int = 1152 # 384 * 8
     distloss_var_inds: List[int] = field(default_factory=lambda: [68, 60, 73, 82])
     distloss_var_sel: str = 'uniform'
-    def __post_init__(self):
-        self.shuffle_data = {'train':False, 'eval':False}
 
 @dataclass
 class UNetParams:
@@ -214,15 +212,18 @@ def load_diffusion_model(model_id='best_diffusion', base_dir="/mnt/home/ssa2206/
     return(model)
 
 
-
-
-#def load_lr_scheduler(config, optim, dataloader):
-#    lr = get_cosine_schedule_with_warmup(
-#        optimizer=optim, 
-#        num_warmup_steps=config.lr_warmup_steps, 
-#        num_training_steps=len(dataloader) * config.num_epochs,
-#    )
-#    return(lr)
+def load_lr_scheduler(tconfig, optim, dataloader):
+    match tconfig.lr_scheduler:
+        case "cosine":
+            lr = diffusers.optimization.get_cosine_schedule_with_warmup(
+                optimizer=optim, 
+                num_warmup_steps=tconfig.lr_warmup_steps, 
+                num_training_steps=len(dataloader) * tconfig.num_epochs,
+            )
+        case _:
+            #print(f"LR scheduler {tconfig.lr_scheduler} not supported")
+            return None
+    return(lr)
  
 def create_optimizer(model, tconfig):
     match tconfig.optimizer.lower():

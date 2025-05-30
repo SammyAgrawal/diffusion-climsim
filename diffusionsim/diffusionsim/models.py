@@ -15,7 +15,7 @@ def move_device(model, new_device):
     return(model)
 
 import inspect
-def load_model(config, model_type,**kwargs):
+def load_model(config, **kwargs):
     registered = ['VAE', 'diffusion', 'latent_diffusion']
     def pass_config(func, data_class):
         # only pass model config params that function takes in
@@ -23,7 +23,7 @@ def load_model(config, model_type,**kwargs):
         filtered_kwargs = {k: v for k, v in asdict(data_class).items() if k in accepted_params}
         return func(**filtered_kwargs)
         
-    match model_type.lower():
+    match config.model_type.lower():
         case "vae":
             model = VariationalAutoencoder(
                 data_dims= config.num_channels, 
