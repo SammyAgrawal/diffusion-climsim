@@ -1275,23 +1275,23 @@ class data_utils:
         else:
             return crps
 
-    def create_metrics_df(self, x, y, predictions_dict, weighted=True):
+    def create_metrics_df(self, x, y, predictions_dict, apply_weighting=True):
         '''
         creates a dataframe of metrics for each model
         predictions_matrix is a dict <model_name, weighted predictions y_hat>
         Both of these simply aply the output_weighting function. 
         '''
-        assert len(self.metrics_names) != 0
+        assert len(self.metrics_names) != 0, "must specify metrics first"
         assert len(self.target_vars) != 0
         assert self.target_feature_len is not None
         metrics_var_train = {}
         metrics_idx_train = {}
-        if(not weighted):
+        if apply_weighting:
             print("Applying variable reweighting to y")
             y = dutils.output_weighting(x, y, undo_norm=True)
         
         for model_name, preds in predictions_dict.items():
-            if(not weighted):
+            if apply_weighting:
                 print("Applying variable reweighting to prediction")
                 preds = self.output_weighting(x, preds, undo_norm=True)
                 

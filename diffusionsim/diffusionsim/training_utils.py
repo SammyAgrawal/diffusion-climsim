@@ -189,8 +189,8 @@ def load_config(fname, expid, base_dir="experiments/"):
 def load_model_from_ckpt(ckpt_path, mconfig, baseline=False):
     if(isinstance(mconfig, dict)):
         mconfig = ModelConfig(**mconfig)
-    model_type = "baseline" if baseline else mconfig.model_type
-    model = load_model(mconfig, model_type)
+    mconfig.model_type = "baseline" if baseline else mconfig.model_type
+    model = load_model(mconfig)
     model.load_state_dict(torch.load(ckpt_path, map_location=torch.device('cpu'), weights_only=True))
     return(model)
 

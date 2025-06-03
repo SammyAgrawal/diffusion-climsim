@@ -202,6 +202,8 @@ class ClimsimTrainer(AbstractTrainer):
             self.schedulers = dict(zip(self.run_ids, scheds))
 
     def _make_image(self, y):
+        if not torch.is_tensor(y):
+            y = torch.tensor(y)
         ds = self.dataloaders['train'].dataset
         return(tru.imagify(y, ds.target_len, ds.permute_indices))
 

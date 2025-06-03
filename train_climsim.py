@@ -15,7 +15,7 @@ import pprint
 os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 
 trainer = None
-num_epochs=5
+num_epochs = 10
 
 REF_BATCH_SIZE = 128
 EXP_DIR = "/mnt/home/ssa2206/Climsim/experiments"
@@ -40,8 +40,8 @@ signal.signal(signal.SIGUSR2, cleanup_and_exit)
 
 def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_size=128):
     dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, dataset_type, batch_size=batch_size, use_tendencies=False)
-    dconfig.shuffle_indices = False
-    dconfig.train_test_split = [0.25, 0.10]
+    dconfig.shuffle_indices = True
+    dconfig.train_test_split = [0.50, 0.20]
     tconfigs, mconfigs = [], []
 
     learning_rates = [1e-3, 1e-3, 1e-3, 1e-3]
@@ -49,7 +49,7 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
     distloss_weights = [0.0, 0.0, 1.0, 1.0] # [1.0, 1.0, 2.0, 5.0]
     diffloss_weights = [0.0, 10.0, 0.0, 10.0]
     target_variables_distloss = [68, 60, 73, 82]
-    num_gaussians = [3, 2, 3, 2]
+    num_gaussians = [2, 2, 2, 2]
 
     run_ids = "trial3-mse trial3-diff trial3-dist trial3-joint".split()
     for i in range(num_models):
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     #typer.run(main)
     #typer.run(test_args)
     exp_id = "DiffLossTesting"
-    run_id = "trial3"
+    run_id = "trial4"
     base_dir = os.path.join(EXP_DIR, exp_id)
     tconfigs, mconfigs, dconfig = setup_climsim_run(4, exp_id, run_id, data_vars='v1', batch_size=256)
     run_start_time = tru.log_event("run start", data_params = asdict(dconfig.dataloader_params))

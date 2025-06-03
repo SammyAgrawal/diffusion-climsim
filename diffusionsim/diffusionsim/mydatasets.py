@@ -169,7 +169,11 @@ class ClimsimDataset(Dataset):
             y = (y - self.ym) / self.ys
         return(x, y)
 
-    def unnormalize(x, y):
+    def denormalize(self, x, y):
+        if(not torch.is_tensor(x)):
+            x = torch.tensor(x)
+        if(not torch.is_tensor(y)):
+            y = torch.tensor(y)
         if(self.dutils.use_tendencies):
             x = x * (self.xmax - self.xmin) + self.xm
             y = y / self.ys
