@@ -34,9 +34,9 @@ def log_event(event_name, **kwargs):
     print(json.dumps(log), file=sys.stderr)
     return(t)
 
-def load_dataset(dconfig, log=False, shuffle_indices=False, indices=None):
+def load_dataset(dconfig, log=False, indices=None):
     dsi, dso, dutils = cut.load_raw_dataset(dconfig, return_dutils=True)
-    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, indices, shuffle=shuffle_indices)
+    dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, indices, shuffle=dconfig.shuffle_indices)
     datasets = []
     for (dsi, dso) in dsets:
         match dconfig.dataset_type.lower():
@@ -50,8 +50,8 @@ def load_dataset(dconfig, log=False, shuffle_indices=False, indices=None):
                 return(dsets, indices)
     return(datasets, indices)
 
-def load_dataloaders(dconfig, log=False, shuffle_indices=False):
-    datasets, indices = load_dataset(dconfig, log, shuffle_indices)
+def load_dataloaders(dconfig, log=False, indices=None):
+    datasets, indices = load_dataset(dconfig, log, indices)
     params = asdict(dconfig.dataloader_params)
     dataloaders = []
     for dataset in datasets:
@@ -66,6 +66,7 @@ def load_dataloaders(dconfig, log=False, shuffle_indices=False):
 
 def train_test_split(dsi, dso, split_frac=[0.75, 0.25], indices=None, typ='xr', shuffle=True):
     if(indices is not None):
+        # want to load up same indices as before; preserve prior run
         datasets = []
         assert isinstance(indices, list), "expect indices to be list of indices for each phase"
         for phase_index in indices:
@@ -101,11 +102,13 @@ def load_scheduler(mconfig):
     match mconfig.scheduler_type.lower():
         case sched if 'ddpm' in sched:
             # in charge of betas
-            return(pass_config(diffusers.DDPMScheduler, mconfig.scheduler))
+            scheduler = pass_config(diffusers.DDPMScheduler, mconfig.scheduler)
         case sched if 'ddim' in sched:
-            return(pass_config(diffusers.DDIMScheduler, mconfig.scheduler))
+            scheduler = pass_config(diffusers.DDIMScheduler, mconfig.scheduler)
         case other if True:
             print(f"scheduler '{other}' not yet supported")
+            return(None)
+    return(scheduler)   
         
 def noise_batch(scheduler, clean_images, device):
     num_timesteps = scheduler.config.num_train_timesteps
@@ -125,33 +128,7 @@ class ClimsimDataset(Dataset):
 
         self.input_vars, self.target_vars = dutils.input_vars, dutils.target_vars
         self.input_len, self.target_len = dutils.input_feature_len, dutils.target_feature_len
-        if(self.dutils.use_tendencies):
-            self.X_mean, self.X_max, self.X_min, self.Y_scale = cut.get_norm_info("scale")
-            xm = self.X_mean[self.input_vars].to_stacked_array('mli', sample_dims=())
-            xmax = self.X_max[self.input_vars].to_stacked_array('mli', sample_dims=())
-            xmin = self.X_min[self.input_vars].to_stacked_array('mli', sample_dims=())
-            ys = self.Y_scale[self.target_vars].to_stacked_array('mlo', sample_dims=())
-            
-            self.mli, self.mlo = xm.mli, ys.mlo
-
-            self.xm = torch.tensor(xm.data, dtype=torch.float32)
-            self.xmax = torch.tensor(xmax.data, dtype=torch.float32)
-            self.xmin = torch.tensor(xmin.data, dtype=torch.float32)
-            self.ys = torch.tensor(ys.data, dtype=torch.float32)
-        else:
-            self.X_mean, self.X_std, self.Y_mean, self.Y_std = cut.get_norm_info(style='image')
-            xm = self.X_mean[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
-            xs = self.X_std[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
-            ym = self.Y_mean[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
-            ys = self.Y_std[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
-    
-            self.mli, self.mlo = xm.mli, ym.mlo
-    
-            self.xm = torch.tensor(xm.data, dtype=torch.float32)
-            self.xs = torch.tensor(xs.data, dtype=torch.float32)
-            self.ym = torch.tensor(ym.data, dtype=torch.float32)
-            self.ys = torch.tensor(ys.data, dtype=torch.float32)
-    
+        set_ds_norm_info(self, dconfig.use_tendencies)
         #self.xgen = xbatcher.BatchGenerator(self.dsi, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
         #self.ygen = xbatcher.BatchGenerator(self.dso, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
 
@@ -159,14 +136,13 @@ class ClimsimDataset(Dataset):
         self.X = dsi.stack(sample=("time", "ncol")).transpose("sample", "mli")
         dso = dso.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
         self.Y = dso.stack(sample=("time", "ncol")).transpose("sample", "mlo")
-        self.length = min(self.X.shape[0], self.Y.shape[0]) // dconfig.dataloader_params.batch_size
 
         self.xgen = xbatcher.BatchGenerator(self.X, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mli=dutils.input_feature_len), preload_batch=False,)
         self.ygen = xbatcher.BatchGenerator(self.Y, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mlo=dutils.target_feature_len), preload_batch=False,)
 
     def __getitem__(self, idx):
         if(self.log):
-            t0 = log_event("get-batch start", batch_idx=idx)
+            t0 = log_event("get-item start", batch_idx=idx)
         x, y = self.xgen[idx].load(), self.ygen[idx].load()
         if(self.dutils.use_tendencies):
             y['ptend_t'] = (y['state_t'] - x['state_t'])/1200 # T tendency [K/s]
@@ -181,7 +157,7 @@ class ClimsimDataset(Dataset):
         x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
         x, y = self.normalize(x, y)
         if(self.log):
-            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
+            log_event("get-item end", batch_idx=idx, duration=time.time() - t0)
         return(x, y)
 
     def normalize(self, x, y):
@@ -193,7 +169,11 @@ class ClimsimDataset(Dataset):
             y = (y - self.ym) / self.ys
         return(x, y)
 
-    def unnormalize(x, y):
+    def denormalize(self, x, y):
+        if(not torch.is_tensor(x)):
+            x = torch.tensor(x)
+        if(not torch.is_tensor(y)):
+            y = torch.tensor(y)
         if(self.dutils.use_tendencies):
             x = x * (self.xmax - self.xmin) + self.xm
             y = y / self.ys
@@ -203,7 +183,7 @@ class ClimsimDataset(Dataset):
         return(x, y)        
     
     def __len__(self):
-        return(self.length)
+        return(len(self.xgen))
 
     def index_var(self, var, level):
         mli, mlo = list(self.mli.values), list(self.mlo.values)
@@ -214,92 +194,56 @@ class ClimsimDataset(Dataset):
         return(-1)
     
     def make_image(self, x, y, denormalize=True):
+        # IMAGE : (BS, C, H, W)
         # Denormalize using tensors
         if(denormalize):
-            x = x * self.xs + self.xm
-            y = y * self.ys + self.ym
+            x = x * self.xs.to(x.device) + self.xm.to(x.device)
+            y = y * self.ys.to(y.device) + self.ym.to(y.device)
         ximg = cut.imagify(x, self.input_len, self.permute_indices)
         yimg = cut.imagify(y, self.target_len, self.permute_indices)
         return ximg, yimg
-
-class ClimsimDatasetOld(Dataset):
-    def __init__(self, X, Y, normalize=True):
-        self.device = device
-        self.mli, self.mlo = X.mli, Y.mlo
-        self.Xarr, self.Yarr = X, Y
-        if(normalize):
-            X, Y = self.normalize(X, Y, load_norm=False)
-        self.X = torch.tensor(X.values, dtype=torch.float32) # each row is datapoint
-        self.Y = torch.tensor(Y.values, dtype=torch.float32)
-
-    def normalize(self, X, Y, load_norm=True):
-        print("Normalizing data")
-        if(load_norm):
-            self.X_mean = xr.DataArray(np.load(get_path("X_mean.npy")), coords={'mli' : self.mli})
-            self.X_std = xr.DataArray(np.load(get_path("X_std.npy")), coords={'mli' : self.mli})
-            self.Y_mean = xr.DataArray(np.load(get_path("Y_mean.npy")), coords={'mlo' : self.mlo})
-            self.Y_std = xr.DataArray(np.load(get_path("Y_std.npy")), coords={'mlo' : self.mlo})
-        else:
-            self.X_mean, self.X_std = X.mean(dim=['sample', 'ncol']), X.std(dim=['sample', 'ncol'])
-            self.Y_mean, self.Y_std = Y.mean(dim=['sample', 'ncol']), Y.std(dim=['sample', 'ncol'])
-        
-        X_norm = (X - self.X_mean) / self.X_std
-        Y_norm = (Y - self.Y_mean) / self.Y_std
-        return(X_norm, Y_norm)
-        
-    def __len__(self):
-        return(self.Y.shape[0])
-
-    def __getitem__(self, idx):
-        return(self.X[idx], self.Y[idx])
-
-
-class ClimsimImageDataset(Dataset):
-    def __init__(self, dsi, dso, dutils, dconfig, log=False):
-        self.X_mean, self.X_std, self.Y_mean, self.Y_std = cut.get_norm_info(style='nc')
-        self.normalize = dconfig.prenormalize
-        self.log = log
-        self.permute_indices = cut.image_regridding(dsi)
-        if(self.normalize):
-            self.X = (dsi - self.X_mean) / self.X_std
-            self.Y = (dso - self.Y_mean) / self.Y_std
-        else:
-            self.X, self.Y = dsi, dso
-        self.xgen = xbatcher.BatchGenerator(self.X, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
-        self.ygen = xbatcher.BatchGenerator(self.Y, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
-        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-            self.mli = dsi.to_stacked_array(new_dim='mli', sample_dims=("time", "ncol")).mli
-            self.mlo = dso.to_stacked_array(new_dim='mlo', sample_dims=("time", "ncol")).mlo
     
-    def __getitem__(self, idx):
-        if(self.log):
-            t0 = log_event("get-batch start", batch_idx=idx)
-        x, y = self.xgen[idx].load(), self.ygen[idx].load()
-        if(not self.normalize): # wasn't normalized from beginning, must do now
-            x, y = (x - self.X_mean) / self.X_std, (y - self.Y_mean) / self.Y_std
-        x, y = x.isel(ncol=self.permute_indices), y.isel(ncol=self.permute_indices)
-        x, y = x.to_stacked_array(new_dim="mli", sample_dims=("time", "ncol")), y.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
-        x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
-        if(self.log):
-            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
-        return x, y
+
+def set_ds_norm_info(dataset, use_tendencies):
+    if(use_tendencies):
+        dataset.X_mean, dataset.X_max, dataset.X_min, dataset.Y_scale = cut.get_norm_info("scale")
+        xm = dataset.X_mean[dataset.input_vars].to_stacked_array('mli', sample_dims=())
+        xmax = dataset.X_max[dataset.input_vars].to_stacked_array('mli', sample_dims=())
+        xmin = dataset.X_min[dataset.input_vars].to_stacked_array('mli', sample_dims=())
+        ys = dataset.Y_scale[dataset.target_vars].to_stacked_array('mlo', sample_dims=())
+        
+        dataset.mli, dataset.mlo = xm.mli, ys.mlo
+
+        dataset.xm = torch.tensor(xm.data, dtype=torch.float32)
+        dataset.xmax = torch.tensor(xmax.data, dtype=torch.float32)
+        dataset.xmin = torch.tensor(xmin.data, dtype=torch.float32)
+        dataset.ys = torch.tensor(ys.data, dtype=torch.float32)
+    else:
+        dataset.X_mean, dataset.X_std, dataset.Y_mean, dataset.Y_std = cut.get_norm_info(style='image')
+        xm = dataset.X_mean[dataset.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
+        xs = dataset.X_std[dataset.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
+        ym = dataset.Y_mean[dataset.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+        ys = dataset.Y_std[dataset.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+
+        dataset.mli, dataset.mlo = xm.mli, ym.mlo
+
+        dataset.xm = torch.tensor(xm.data, dtype=torch.float32)
+        dataset.xs = torch.tensor(xs.data, dtype=torch.float32)
+        dataset.ym = torch.tensor(ym.data, dtype=torch.float32)
+        dataset.ys = torch.tensor(ys.data, dtype=torch.float32)
     
-    def __len__(self):
-        return(len(self.xgen))
+    
 
 class XBatchDataset(torch.utils.data.Dataset):
     def __init__(self, dso, dutils, dconfig, log=False):
         self.Xmean, self.Xstd, self.Ymean, self.Ystd = cut.get_norm_info("image")
         # snowfall has some zeros, so just take global mean to avoid dividing by zero
+        self.dutils = dutils
         self.height, self.width = (16, 24)
-        self.normalize = dconfig.prenormalize
         self.log = log
         self.permute_indices = cut.image_regridding(dso)
         self.target_feature_len = dutils.target_feature_len
-        if(self.normalize):
-            self.data = (dso - self.Ymean) / self.Ystd
-        else:
-            self.data = dso.unify_chunks()
+        self.data = dso.unify_chunks()
         self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(
             time=dconfig.dataloader_params.batch_size, lev=60, ncol=384
         ), preload_batch=False,)
@@ -308,16 +252,15 @@ class XBatchDataset(torch.utils.data.Dataset):
     
     def __getitem__(self, idx):
         if(self.log):
-            t0 = log_event("get-batch start", batch_idx=idx)
+            t0 = log_event("get-item start", batch_idx=idx)
         data = self.bgen[idx].load()
-        if(not self.normalize): # wasn't normalized from beginning, must do now
-            data = (data - self.Ymean.mean(dim='ncol')) / self.Ystd.mean(dim='ncol')
+        data = (data - self.Ymean.mean(dim='ncol')) / self.Ystd.mean(dim='ncol')
         data = data.isel(ncol=self.permute_indices)
         data = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
         data = data.transpose("time", "mlo", "ncol")
         data = torch.tensor(data.data.reshape(-1, self.target_feature_len, self.height, self.width), dtype=torch.float32)
         if(self.log):
-            log_event("get-batch end", batch_idx=idx, duration=time.time() - t0)
+            log_event("get-item end", batch_idx=idx, duration=time.time() - t0)
         return data
         
     def __len__(self):
@@ -358,3 +301,39 @@ def add_tendencies(ds_out, output_vars):
 
 def collate_test_fn(batches):
     return(batches[0])
+
+
+
+
+
+
+class ClimsimDatasetOld(Dataset):
+    def __init__(self, X, Y, normalize=True):
+        self.device = device
+        self.mli, self.mlo = X.mli, Y.mlo
+        self.Xarr, self.Yarr = X, Y
+        if(normalize):
+            X, Y = self.normalize(X, Y, load_norm=False)
+        self.X = torch.tensor(X.values, dtype=torch.float32) # each row is datapoint
+        self.Y = torch.tensor(Y.values, dtype=torch.float32)
+
+    def normalize(self, X, Y, load_norm=True):
+        print("Normalizing data")
+        if(load_norm):
+            self.X_mean = xr.DataArray(np.load(get_path("X_mean.npy")), coords={'mli' : self.mli})
+            self.X_std = xr.DataArray(np.load(get_path("X_std.npy")), coords={'mli' : self.mli})
+            self.Y_mean = xr.DataArray(np.load(get_path("Y_mean.npy")), coords={'mlo' : self.mlo})
+            self.Y_std = xr.DataArray(np.load(get_path("Y_std.npy")), coords={'mlo' : self.mlo})
+        else:
+            self.X_mean, self.X_std = X.mean(dim=['sample', 'ncol']), X.std(dim=['sample', 'ncol'])
+            self.Y_mean, self.Y_std = Y.mean(dim=['sample', 'ncol']), Y.std(dim=['sample', 'ncol'])
+        
+        X_norm = (X - self.X_mean) / self.X_std
+        Y_norm = (Y - self.Y_mean) / self.Y_std
+        return(X_norm, Y_norm)
+        
+    def __len__(self):
+        return(self.Y.shape[0])
+
+    def __getitem__(self, idx):
+        return(self.X[idx], self.Y[idx])

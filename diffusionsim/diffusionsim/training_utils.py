@@ -3,13 +3,14 @@ import numpy as np
 import pandas as pd
 import numpy as np
 import os
-
+import diffusers
 import gcsfs
 import json
 import torch
 
 from .models import load_model, build_baseline_model
 from .mydatasets import load_dataset, load_dataloaders, load_scheduler, log_event
+from .climsim_utils import imagify
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Tuple
 
@@ -36,7 +37,6 @@ class DataConfig:
     data_vars: str = "v1"
     use_tendencies: bool = False
     norm_info: str = "image"
-    prenormalize: bool = False
     chunksize: Dict = field(default_factory=lambda:{})
     log_batching: bool = True
     shuffle_indices: bool = False
@@ -44,7 +44,8 @@ class DataConfig:
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
 
-def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, dataset_type="climsim", batch_size=128, use_tendencies = True):
+def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, 
+               dataset_type="climsim", batch_size=128, use_tendencies = True, **kwargs):
     dl_params = TrainLoaderParams()
     dl_params.batch_size = batch_size
     if("climsim" in dataset_type):
@@ -58,14 +59,14 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, dataset_
         dl_params.persistent_workers = True
         dl_params.multiprocessing_context = "forkserver"
     
-    dconfig = DataConfig()
+    dconfig = DataConfig(**kwargs)
 
     dconfig.dataloader_params = dl_params
     dconfig.source = source# # specify from raw cloud bucket
     dconfig.climsim_type = "low-res-expanded" 
     dconfig.dataset_type = dataset_type
     dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
-    dconfig.train_test_split = [0.35, 0.05] if "climsim" in dataset_type else [1.0]
+    dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
     dconfig.data_vars = data_vars
     dconfig.use_tendencies = use_tendencies
     return(dconfig)
@@ -82,42 +83,29 @@ class TrainingConfig:
     optimizer: str = 'adam'
     betas: Tuple[float, float] = (0.9, 0.999)
     lr_scheduler: str = None
+    lr_warmup_steps = 50
     learning_rate: float = 1e-4
     loss_weights: Dict = field(default_factory=lambda: {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2})
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
-    lr_warmup_steps = 500
     mixed_precision = "fp16"
     max_T_sample: int = 100
     # logging params
     save_best_epoch: bool = True
-    batch_logging_interval: int = 32
-    batch_checkpoint_interval: int = 50 # save checkpoint every 50 batches
+    batch_logging_interval: int = 16
+    batch_checkpoint_interval: int = 10 # save checkpoint every 10 batches
     log_gradients: bool = False
     #save_image_epochs: int = 2
     push_to_hub: bool = False
-    diffusion_loss_noise_level: int = 10; 
-
     # distribution loss params
+    diffusion_loss_noise_level: int = 10; 
+    diffusion_loss_decoding_interval: int = 1
     distloss_type: str = "ksd"
-    num_gaussians: int = 2
+    num_gaussians: List[int] = field(default_factory=lambda: [3, 2, 3, 2])
     num_distloss_samples: int = 8
     distloss_bs: int = 1152 # 384 * 8
     distloss_var_inds: List[int] = field(default_factory=lambda: [68, 60, 73, 82])
     distloss_var_sel: str = 'uniform'
-    def __post_init__(self):
-        self.shuffle_data = {'train':False, 'eval':False}
-
-def my_tconfig(climsim_training, batch_size, max_T_sample=51, lr=1e-4):
-    tconfig = TrainingConfig()
-    tconfig.exp_id = exp_id
-    tconfig.num_epochs = 10
-    #tconfig.lr_scheduler = 'get_cosine_schedule_with_warmup'
-    #tconfig.lr_warmup_steps = 100
-    ref_batch_size = 128
-    tconfig.learning_rate = lr * batch_size / ref_batch_size
-    tconfig.loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0}
-    tconfig.max_T_sample = max_T_sample
 
 @dataclass
 class UNetParams:
@@ -148,7 +136,6 @@ class SchedulerParams:
     clip_sample: bool = False
     clip_sample_range: float = 4.0
     beta_end: float = 0.02
-    beta_schedule: str = 'linear'
 
 @dataclass
 class ModelConfig:
@@ -164,11 +151,10 @@ class ModelConfig:
     ae_hidden_dims: List[int] = field(default_factory=lambda: [64, 32, 16])
     disable_enc_logstd_bias: bool = True
     # Baseline Model Params
-    bl_model_dir: str = "/mnt/home/ssa2206/Climsim/saved_models/"
+    bl_model_dir: str = "/mnt/home/ssa2206/Climsim/climsim-online/storage/shared_e3sm/saved_models/wrapper"
     bl_load_model_name: str = None
     bl_input_size: int = 124
     bl_output_size: int = 128
-    bl_num_layers: int = 3
     bl_hidden_dims: List[int] = field(default_factory=lambda: [256, 256, 256]) 
     def __post_init__(self):
         if isinstance(self.unet, dict):
@@ -200,22 +186,44 @@ def load_config(fname, expid, base_dir="experiments/"):
 
     return(tconfig, mconfig, dconfig)
 
-def load_model_from_ckpt(ckpt_fname, mconfig, expid, exp_dir, baseline=False):
+def load_model_from_ckpt(ckpt_path, mconfig, baseline=False):
     if(isinstance(mconfig, dict)):
         mconfig = ModelConfig(**mconfig)
-    model_type = "baseline" if baseline else mconfig.model_type
-    model = load_model(mconfig, model_type)
-    cpath = os.path.join(exp_dir, expid, ckpt_fname)
-    model.load_state_dict(torch.load(cpath, map_location=torch.device('cpu'), weights_only=True))
+    mconfig.model_type = "baseline" if baseline else mconfig.model_type
+    model = load_model(mconfig)
+    model.load_state_dict(torch.load(ckpt_path, map_location=torch.device('cpu'), weights_only=True))
     return(model)
 
-#def load_lr_scheduler(config, optim, dataloader):
-#    lr = get_cosine_schedule_with_warmup(
-#        optimizer=optim, 
-#        num_warmup_steps=config.lr_warmup_steps, 
-#        num_training_steps=len(dataloader) * config.num_epochs,
-#    )
-#    return(lr)
+
+model_table = {
+    'best_diffusion' : ('diffusion_hp_search', 'lr-explore', 'lr-explorea'),
+    'vintage_diffusion' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b'),
+}
+
+
+def load_diffusion_model(model_id='best_diffusion', base_dir="/mnt/home/ssa2206/Climsim/experiments"):
+    exp_id, log_id, run_id = model_table[model_id]
+    log_dict_path = os.path.join(base_dir, exp_id, f"{log_id}.json")
+    with open(log_dict_path, 'r') as file:
+        diff_logs = json.load(file)
+    mconfig = diff_logs[run_id]['model_config']
+    ckpt = os.path.join(base_dir, exp_id, "checkpoints", f"best{run_id}-ckpt.pt")
+    model = load_model_from_ckpt(ckpt, mconfig)
+    return(model)
+
+
+def load_lr_scheduler(tconfig, optim, dataloader):
+    match tconfig.lr_scheduler:
+        case "cosine":
+            lr = diffusers.optimization.get_cosine_schedule_with_warmup(
+                optimizer=optim, 
+                num_warmup_steps=tconfig.lr_warmup_steps, 
+                num_training_steps=len(dataloader) * tconfig.num_epochs,
+            )
+        case _:
+            #print(f"LR scheduler {tconfig.lr_scheduler} not supported")
+            return None
+    return(lr)
  
 def create_optimizer(model, tconfig):
     match tconfig.optimizer.lower():
@@ -242,58 +250,27 @@ def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
     return(X,Y)
 
 
+def create_sample(data, ds):
+    # mimics get_item from loaded xarray subsample
+    data = (data - ds.Y_mean.mean(dim='ncol')) / ds.Y_std.mean(dim='ncol')
+    data = data.isel(ncol=ds.permute_indices)
+    data = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
+    data = data.transpose("time", "mlo", "ncol").load()
+    data = torch.tensor(data.data.reshape(-1, 128, 16, 24), dtype=torch.float32)
+    return data
 
-
-REF_BATCH_SIZE = 128
-#exp_dir = "/mnt/home/ssa2206/Climsim/experiments"
-exp_dir = "/home/jovyan/Samarth/ClimsimProjectWork/diffusion-climsim/experiments"
-dataset_type = "climsim_train"
-climsim_training = True
-in_notebook = True
-diffusers_available = False
-def setup_run(num_models, exp_id, base_run_id, data_vars='v1', batch_size=128):
-    dconfig = tru.my_dconfig(data_vars, in_notebook, dataset_type, batch_size)
-    dconfig.train_test_split = [0.01, 0.002]
-    tconfigs, mconfigs = [], []
-
-    learning_rates = [1e-4, 1e-4, 1e-4, 1e-4]
-    distloss_weights = [1.0, 1.0, 1.0, 1.0]
-    diffloss_weights = [0.0, 0.0, 0.0, 0.0]
-    target_variables_distloss = [68, 60, 73, 82]
-    num_gaussians = [3, 2, 3, 2]
-    unet_channel_dims = []
-    unet_down_block_types = []
-
-    lettering = 'abcdefghijklmnopqrstuvwxyz'
-    for i in range(num_models):
-        tconfig = tru.TrainingConfig(exp_id=exp_id, run_id=f"{base_run_id}_{lettering[i]}")
-        tconfig.learning_rate = learning_rates[i] * batch_size / REF_BATCH_SIZE
-        tconfig.loss_weights = {'mse': 1.0, 'distribution': distloss_weights[i], 'diffusion': diffloss_weights[i]}
-        tconfig.distloss_var_inds = target_variables_distloss
-        tconfig.num_gaussians = num_gaussians[i]
-        tconfig.log_gradients = True
-
-        tconfig.max_T_sample = 51
-        tconfig.phases = ['train', 'eval']
-
-        unet = tru.UNetParams()
-        unet.block_out_channels = (128, 256, 512) if data_vars == "v1" else (256, 512, 1024)
-        unet.down_block_types = ("DownBlock2D", "DownBlock2D", "DownBlock2D")
-        unet.up_block_types = ("UpBlock2D", "UpBlock2D", "UpBlock2D")
-        unet.in_channels = 128 if data_vars == "v1" else 368
-        unet.out_channels = unet.in_channels
-
-        scheduler = tru.SchedulerParams()
-        mconfig = tru.ModelConfig(unet=unet, scheduler=scheduler)
-        if(climsim_training):
-            mconfig.model_type = "baseline"
-        # define baseline model
-        mconfig.bl_hidden_dims = [256, 256, 256] if data_vars == "v1" else [512, 256, 256]
-        mconfig.bl_num_layers = len(mconfig.bl_hidden_dims)
-        mconfig.bl_input_size = 124 if data_vars == "v1" else 557
-        mconfig.bl_output_size = 128 if data_vars == "v1" else 368
-
-        tconfigs.append(tconfig)
-        mconfigs.append(mconfig)
-
-    return(tconfigs, mconfigs, dconfig)
+def recreate_sample(sample, dataset):
+    if(isinstance(sample, torch.Tensor)):
+        if(sample.device != 'cpu'):
+            sample = sample.detach().cpu()
+        sample = sample.numpy()
+    
+    xarr = xr.DataArray(sample.reshape(-1, 128, 384), dims="time mlo ncol".split(), coords=dict(
+        time = np.arange(sample.shape[0]),
+        mlo = dataset.mlo, 
+        ncol = dataset.permute_indices
+    )).isel(ncol=np.argsort(dataset.permute_indices))
+    mu_stack = dataset.Ymean.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
+    sig_stack = dataset.Ystd.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
+    xrec = (xarr * sig_stack.mean(dim='ncol')) + mu_stack.mean(dim='ncol')
+    return(xrec.transpose("time", "ncol", "mlo"))

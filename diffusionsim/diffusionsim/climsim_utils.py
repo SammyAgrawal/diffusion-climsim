@@ -198,8 +198,10 @@ def get_norm_info(style='image', sanitize=True):
     raise ValueError(f"Invalid Norm Style {style} provided")
 
 def imagify(x, feature_len, permute_indices):
+    # X is most likely tensor of shape (BS, feature_len) where batch size is multipled by 384
+    # desired output is (BS, C, H, W)
     ximg = x.reshape(-1, 384, feature_len)  # assuming this is dutils.input_feature_len
-    ximg = ximg[:, permute_indices, :].reshape(-1, 16, 24, feature_len) 
+    ximg = ximg[:, permute_indices, :].reshape(-1, 16, 24, feature_len).permute(0, 3, 1, 2) 
     return(ximg)
 
 MLBackendType = Literal["tensorflow", "pytorch"]
@@ -1273,23 +1275,23 @@ class data_utils:
         else:
             return crps
 
-    def create_metrics_df(self, x, y, predictions_dict, weighted=True):
+    def create_metrics_df(self, x, y, predictions_dict, apply_weighting=True):
         '''
         creates a dataframe of metrics for each model
         predictions_matrix is a dict <model_name, weighted predictions y_hat>
         Both of these simply aply the output_weighting function. 
         '''
-        assert len(self.metrics_names) != 0
+        assert len(self.metrics_names) != 0, "must specify metrics first"
         assert len(self.target_vars) != 0
         assert self.target_feature_len is not None
         metrics_var_train = {}
         metrics_idx_train = {}
-        if(not weighted):
+        if apply_weighting:
             print("Applying variable reweighting to y")
             y = dutils.output_weighting(x, y, undo_norm=True)
         
         for model_name, preds in predictions_dict.items():
-            if(not weighted):
+            if apply_weighting:
                 print("Applying variable reweighting to prediction")
                 preds = self.output_weighting(x, preds, undo_norm=True)
                 
