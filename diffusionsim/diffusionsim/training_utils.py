@@ -16,7 +16,7 @@ from typing import List, Dict, Tuple
 
 
 @dataclass
-class TrainLoaderParams:
+class DataLoaderParams:
     batch_size: int = 128
     shuffle: bool = True
     num_workers: int = 0
@@ -32,23 +32,33 @@ class DataConfig:
     source: str = "gcsfs"
     data_dir: str = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
     train_test_split: List[int] = field(default_factory=lambda: [1.0, 0.0])
-    dataloader_params: TrainLoaderParams = field(default_factory=lambda: TrainLoaderParams())
-    xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)
+    dataloader_params: DataLoaderParams = field(default_factory=lambda: DataLoaderParams())
+    #xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)
     data_vars: str = "v1"
     use_tendencies: bool = False
     norm_info: str = "image"
     chunksize: Dict = field(default_factory=lambda:{})
     log_batching: bool = True
-    shuffle_indices: bool = False
+    shuffle_indices: bool = True
     def __post_init__(self):
         if isinstance(self.dataloader_params, dict):
-            self.dataloader_params = TrainLoaderParams(**self.dataloader_params)
+            self.dataloader_params = DataLoaderParams(**self.dataloader_params)
 
-def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, 
+def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, shuffle_indices=True,
                dataset_type="climsim", batch_size=128, use_tendencies = True, **kwargs):
-    dl_params = TrainLoaderParams()
+    dconfig = DataConfig(**kwargs)
+    dconfig.source = source# # specify from raw cloud bucket
+    dconfig.climsim_type = "low-res-expanded" 
+    dconfig.dataset_type = dataset_type
+    dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
+    dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
+    dconfig.data_vars = data_vars
+    dconfig.use_tendencies = use_tendencies
+    dconfig.shuffle_indices = shuffle_indices
+
+    dl_params = DataLoaderParams()
     dl_params.batch_size = batch_size
-    if("climsim" in dataset_type):
+    if("climsim" in dataset_type or "1d" in dataset_type):
         dl_params.batch_size *= 384
     dl_params.shuffle = True
     if(torch.cuda.is_available() and batch_size > 16):
@@ -58,17 +68,8 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False,
         dl_params.prefetch_factor = 3
         dl_params.persistent_workers = True
         dl_params.multiprocessing_context = "forkserver"
-    
-    dconfig = DataConfig(**kwargs)
 
     dconfig.dataloader_params = dl_params
-    dconfig.source = source# # specify from raw cloud bucket
-    dconfig.climsim_type = "low-res-expanded" 
-    dconfig.dataset_type = dataset_type
-    dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
-    dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
-    dconfig.data_vars = data_vars
-    dconfig.use_tendencies = use_tendencies
     return(dconfig)
             
 @dataclass
@@ -86,6 +87,7 @@ class TrainingConfig:
     lr_warmup_steps = 50
     learning_rate: float = 1e-4
     loss_weights: Dict = field(default_factory=lambda: {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2})
+    loss_schedule: Dict = field(default_factory=lambda: {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]})
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
     mixed_precision = "fp16"

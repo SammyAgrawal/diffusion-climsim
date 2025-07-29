@@ -79,6 +79,12 @@ def load_raw_dataset(dconfig, return_dutils=False, **kwargs):
         return(dsi, dso, dutils)
     return(dsi, dso)
 
+
+def dutils_from_config(dconfig):
+    dutils = setup_data_utils(dconfig.climsim_type, dconfig.source, dconfig.data_vars, 
+                              use_tendencies=dconfig.use_tendencies, data_dir=dconfig.data_dir)
+    return(dutils)
+
 def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
     # data source is either a google cloud bucket, local file path, or tries to load directly from Huggingface
     ds_type = expand_ds_name(ds_type)
@@ -102,10 +108,8 @@ def setup_data_utils(ds_type, data_source, data_vars, use_tendencies, **kwargs):
         data.set_to_v1_vars()
     elif(data_vars == 'v2'):
         data.set_to_v2_vars()
-
-    if('normalize' not in kwargs or kwargs['normalize']):
-        input_mean, input_max, input_min, output_scale = get_norm_info("scale")
-        data.set_norm_info(input_mean, input_max, input_min, output_scale)
+    elif(data_vars == 'all'):
+        data.set_to_all_vars()
     return(data)
 
 #print(os.path.dirname(__file__))
@@ -171,20 +175,7 @@ def image_regridding(ds):
 
 def get_norm_info(style='image', sanitize=True):
 
-    if(style=='image'):    
-        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
-        X_std = xr.open_dataset(get_path("image_xstd.nc"))
-        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
-        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
-
-        if(sanitize):
-            X_mean['state_q0002'].data = X_mean['state_q0002'].mean().item() * np.ones_like(X_mean['state_q0002'].data)
-            X_std['state_q0002'].data = X_std['state_q0002'].mean().item() * np.ones_like(X_std['state_q0002'].data)
-            Y_std['state_q0002'].data = Y_std['state_q0002'].mean().item() * np.ones_like(Y_std['state_q0002'].data)
-            Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
-        return(X_mean, X_std, Y_mean, Y_std)
-    
-    elif(style=='nc' or style=='scale'):
+    if(style == 'scale' or style == 'tendencies'):
         input_mean = xr.open_dataset(get_path('input_mean.nc'))
         input_max = xr.open_dataset(get_path('input_max.nc'))
         input_min = xr.open_dataset(get_path('input_min.nc'))
@@ -195,18 +186,71 @@ def get_norm_info(style='image', sanitize=True):
             input_max['pbuf_CH4'].data = input_max.pbuf_CH4.mean().item() * np.ones_like(input_max['pbuf_CH4'].data)
             input_min['pbuf_CH4'].data = input_min.pbuf_CH4.mean().item() * np.ones_like(input_min['pbuf_CH4'].data)
         return(input_mean, input_max, input_min, output_scale)
-    raise ValueError(f"Invalid Norm Style {style} provided")
+    
+    else:
+        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
+        X_std = xr.open_dataset(get_path("image_xstd.nc"))
+        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
+        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
 
-def imagify(x, feature_len, permute_indices):
-    # X is most likely tensor of shape (BS, feature_len) where batch size is multipled by 384
-    # desired output is (BS, C, H, W)
-    ximg = x.reshape(-1, 384, feature_len)  # assuming this is dutils.input_feature_len
-    ximg = ximg[:, permute_indices, :].reshape(-1, 16, 24, feature_len).permute(0, 3, 1, 2) 
-    return(ximg)
+        if(sanitize):
+            X_mean['state_q0002'].data = X_mean['state_q0002'].mean().item() * np.ones_like(X_mean['state_q0002'].data)
+            X_std['state_q0002'].data = X_std['state_q0002'].mean().item() * np.ones_like(X_std['state_q0002'].data)
+            Y_std['state_q0002'].data = Y_std['state_q0002'].mean().item() * np.ones_like(Y_std['state_q0002'].data)
+            Y_std['cam_out_PRECSC'].data = Y_std.cam_out_PRECSC.mean().item() * np.ones_like(Y_std.cam_out_PRECSC.data) 
+        if("image" in style):
+            return(X_mean, X_std, Y_mean, Y_std)
+            
+        return(X_mean.mean(dim='ncol'), X_std.mean(dim='ncol'), Y_mean.mean(dim='ncol'), Y_std.mean(dim='ncol'))
+
+
+def expand_levels(self, ds, vars, dim_name):
+    out = [ds[var].expand_dims({'lev': ds.lev}) if var in self.dutils.normal_variables else ds[var] for var in vars]
+    out =  xr.concat(out, dim=dim_name)
+    out.assign_coords({dim_name : vars})
+    return(out)
+
+
+def imagify(x, dutils, variable='y', image_dim=2):
+    # X is tensor of shape (BS'=BS*ncol, feature_len) where batch size is multipled by 384
+    assert variable in ['x', 'y'], "Variable must be either x or y"
+    image_dim = int(image_dim)
+    if(image_dim == 1):
+        # desired output is (BS', lev, C_var) where lev is 64 
+        var_map = dutils.input_var_idx if variable == 'x' else dutils.target_var_idx
+        ximg = torch.zeros(x.size(0), 64, len(var_map))
+        i = 0
+        for var, (start, stop) in var_map.items():
+            ximg[:,-60:,i] = x[:, start:stop] if stop-start>1 else x[:, start:stop].expand(-1, 60)
+            i += 1
+        return(img)
+    elif(image_dim == 2):
+        # desired output is (BS, C_mlv, H, W)
+        feature_len = dutils.input_feature_len if variable == 'x' else dutils.target_feature_len
+        ximg = x.reshape(-1, 384, feature_len)  # assuming this is dutils.input_feature_len
+        ximg = ximg[:, dutils.permute_indices, :].reshape(-1, 16, 24, feature_len).permute(0, 3, 1, 2) 
+        return(ximg)
+    elif(image_dim == 3):
+        # desired output is (BS, C_var, lev, H, W)
+        var_map = dutils.input_var_idx if variable == 'x' else dutils.target_var_idx
+        feature_len = dutils.input_feature_len if variable == 'x' else dutils.target_feature_len
+        x = x.reshape(-1, 384, feature_len)[:, dutils.permute_indices, :].reshape(-1, 16, 24, feature_len)
+        ximg = torch.zeros(x.size(0), len(var_map), 64, 16, 24) # N, C, 64, H, W
+        i = 0
+        for var, (start, stop) in var_map.items():
+            row = x[:, :, :, start:stop] if stop-start>1 else x[:, :, :, start:stop].expand(-1, -1, -1, 60) # N, H, W, 60
+            ximg[:, i, -60:, :, :] = row.permute(0, 3, 1, 2)
+            i += 1
+        return(ximg)
+    print("invalid dim argument", image_dim, "must be 1, 2, or 3")
+
+
 
 MLBackendType = Literal["tensorflow", "pytorch"]
 
+
 fs = gcsfs.GCSFileSystem()
+
 class data_utils:
     ## modified from https://github.com/leap-stc/ClimSim/blob/main/climsim_utils/data_utils.py
     
@@ -227,8 +271,8 @@ class data_utils:
         self.target_feature_len = None
         self.level_name = 'lev'
         self.sample_name = 'sample'
-        self.normalize = False
-
+        self.num_levels = 60
+        self.var_lens = {}
         self.ml_backend = ml_backend
         self.tf = None
         self.torch = None
@@ -293,7 +337,7 @@ class data_utils:
                                                                     # SHR_CONST_PSTD/(SHR_CONST_RDAIR*SHR_CONST_TKFRZ)
                                                                     # SHR_CONST_RDAIR   = SHR_CONST_RGAS/SHR_CONST_MWDAIR
                                                                     # SHR_CONST_RGAS    = SHR_CONST_AVOGAD*SHR_CONST_BOLTZ
-        self.rho_h20 = 1.e3       # density of fresh water     ~ kg/m^ 3
+        self.rho_h20 = 1000       # density of fresh water     ~ kg/m^ 3
         
         self.v1_inputs = ['state_t',
                           'state_q0001',
@@ -339,7 +383,24 @@ class data_utils:
                           'pbuf_ozone',
                           'pbuf_CH4',
                           'pbuf_N2O']  # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3
+
+        self.prev_timestep_vars = [f'tm_{var}' for var in self.v2_inputs[:10]] + ['tm_pbuf_COSZRS']
+        self.forcing_vars = []
+        self.convective_mem_vars = []
+
+        for var in ['state_t', 'state_q0001', 'state_q0002', 'state_q0003', 'state_u']:
+            self.convective_mem_vars += [f'{var}_prvphy', f'tm_{var}_prvphy']
+            self.var_lens[f'{var}_prvphy'] = self.num_levels
+            self.var_lens[f'tm_{var}_prvphy'] = self.num_levels
         
+        for var in ['state_t', 'state_q0', 'state_u']:
+            self.forcing_vars += [f'{var}_dyn', f'tm_{var}_dyn']
+            self.var_lens[f'{var}_dyn'] = self.num_levels
+            self.var_lens[f'tm_{var}_dyn'] = self.num_levels
+
+        self.other_expanded_vars = ['clat', 'icol', 'lat', 'lon', 'slat', 'state_pmid', 'tod', 'ymd']
+
+
         self.v2_outputs = ['state_t',
                            'state_q0001',
                            'state_q0002',
@@ -354,8 +415,11 @@ class data_utils:
                            'cam_out_SOLL',
                            'cam_out_SOLSD',
                            'cam_out_SOLLD']
+
+        self.all_inputs  = [v for v in self.v2_inputs]
+        self.all_outputs = [v for v in self.v2_outputs]
         
-        if(use_tendencies):
+        if(self.use_tendencies):
             self.v1_outputs = [var.replace("state", "ptend") if 'state' in var else var for var in self.v1_outputs]
             self.v2_outputs = [var.replace("state", "ptend") if 'state' in var else var for var in self.v2_outputs]
         
@@ -453,6 +517,10 @@ class data_utils:
         self.setup_metrics()
         if(grid_info):
             self.setup_grid_info(grid_info)
+        
+        self.input_mean, self.input_max, self.input_min, self.output_scale = get_norm_info(style='tendencies')
+        self.X_mean, self.X_std, self.Y_mean, self.Y_std = get_norm_info(style='states')
+
 
     def setup_metrics(self):
         # for metrics
@@ -515,6 +583,36 @@ class data_utils:
                            '#D55E00'
                            ]    
     
+    
+    def normalize(self, x, y):
+        assert isinstance(x, type(y)), "x and y must be the same type"
+        if(isinstance(x, xr.Dataset)):
+            if(self.use_tendencies):
+                x = (x - self.input_mean) / (self.input_max - self.input_min)
+                y = y * self.output_scale
+            else:
+                x = (x - self.X_mean) / self.X_std
+                y = (y - self.Y_mean) / self.Y_std
+        elif(torch.is_tensor(x)):
+            if(self.use_tendencies):
+                mu = torch.tensor(self.input_mean[self.input_vars].to_stacked_array("mli", sample_dims=()).data, device=x.device)
+                imax = torch.tensor(self.input_max[self.input_vars].to_stacked_array("mli", sample_dims=()).data, device=x.device)
+                imin = torch.tensor(self.input_min[self.input_vars].to_stacked_array("mli", sample_dims=()).data, device=x.device)
+                scale = torch.tensor(self.output_scale[self.target_vars].to_stacked_array("mlo", sample_dims=()).data, device=y.device)
+                x = (x - mu) / (imax - imin)
+                y = y * self.output_scale
+            else:
+                xm = torch.tensor(self.X_mean[self.input_vars].to_stacked_array("mli", sample_dims=()).data, device=x.device)
+                xs = torch.tensor(self.X_std[self.input_vars].to_stacked_array("mli", sample_dims=()).data, device=x.device)
+                ym = torch.tensor(self.Y_mean[self.target_vars].to_stacked_array("mlo", sample_dims=()).data, device=y.device)
+                ys = torch.tensor(self.Y_std[self.target_vars].to_stacked_array("mlo", sample_dims=()).data, device=y.device)
+                x = (x - xm) / xs
+                y = (y - ym) / ys
+        else:
+            raise ValueError("x and y must be xarray.Dataset or torch.Tensor")
+
+        return(x, y)
+    
     def setup_grid_info(self, grid_info):
         self.grid_info = grid_info
         self.num_levels = len(self.grid_info['lev'])
@@ -539,7 +637,7 @@ class data_utils:
         indices_list.sort(key = lambda x: x[0])
         self.lat_indices_list = indices_list
         self.hybm = self.grid_info['hybm'].values
-        self.var_lens = {#inputs
+        self.var_lens.update({#inputs
                  'state_t':self.num_levels,
                  'state_q0001':self.num_levels,
                  'state_q0002':self.num_levels,
@@ -566,6 +664,26 @@ class data_utils:
                  'pbuf_ozone':self.num_levels,
                  'pbuf_CH4':self.num_levels,
                  'pbuf_N2O':self.num_levels,
+                 # expanded inputs
+                 'clat':1,
+                 'icol':1,
+                 'lat':1,
+                 'lon':1,
+                 'slat':1,
+                 'state_pmid':self.num_levels,
+                 'tod':1,
+                 'ymd':1,
+                 'tm_state_t':self.num_levels,
+                 'tm_state_q0001':self.num_levels,
+                 'tm_state_q0002':self.num_levels,
+                 'tm_state_q0003':self.num_levels,
+                 'tm_state_u':self.num_levels,
+                 'tm_state_v':self.num_levels,
+                 'tm_state_ps':1,
+                 'tm_pbuf_SOLIN':1,
+                 'tm_pbuf_LHFLX':1,
+                 'tm_pbuf_SHFLX':1,
+                 'tm_pbuf_COSZRS':1,
                  #outputs
                  'ptend_t':self.num_levels,
                  'ptend_q0001':self.num_levels,
@@ -581,14 +699,7 @@ class data_utils:
                  'cam_out_SOLL':1,
                  'cam_out_SOLSD':1,
                  'cam_out_SOLLD':1
-                }
-    
-    def set_norm_info(self, input_mean, input_max, input_min, output_scale):
-        self.input_mean = input_mean
-        self.input_max = input_max
-        self.input_min = input_min
-        self.output_scale = output_scale
-        self.normalize = True
+                })
     
     def find_keys(self, dictionary, value):
         keys = []
@@ -627,7 +738,6 @@ class data_utils:
         self.level_variables = [v for v in self.input_vars + self.target_vars if self.var_lens[v] > 1]
         self.normal_variables = [v for v in self.input_vars + self.target_vars if self.var_lens[v] == 1]
         
-
     def set_to_v2_vars(self):
         '''
         This function sets the inputs and outputs to the V2 subset.
@@ -643,6 +753,16 @@ class data_utils:
         self.target_var_idx = self._make_index_map(self.target_vars)
         self.level_variables = [v for v in self.input_vars + self.target_vars if self.var_lens[v] > 1]
         self.normal_variables = [v for v in self.input_vars + self.target_vars if self.var_lens[v] == 1]
+    
+    def set_to_all_vars(self):
+        self.input_vars = self.v2_inputs + self.prev_timestep_vars + self.forcing_vars + self.convective_mem_vars
+        self.target_vars = self.v2_outputs
+        self.ps_index = 360
+        #self.input_feature_len = 557
+        #self.target_feature_len = 368
+        self.full_vars = True
+        self.input_var_idx  = self._make_index_map(self.input_vars)
+        self.target_var_idx = self._make_index_map(self.target_vars)
     
     def get_xrdata(self, file_name, virtual=False, file_vars = None):
         '''
@@ -851,7 +971,7 @@ class data_utils:
             assert self.test_filelist is not None, 'filelist for test is not set.'
             return self.test_filelist
 
-    def aggregate_file(self, data_split, virtual=False):
+    def aggregate_file(self, data_split, virtual=False, normalize=True):
         filelist = self.get_filelist(data_split)
         print(f"Aggregating {len(filelist)} files")
         ds_inputs, ds_targets = [], []
@@ -866,11 +986,9 @@ class data_utils:
             ds_target = self.get_target(file, virtual)
             
             # normalization, scaling
-            if self.normalize:
-                # TODO : figure out what kind of normalization is desired
-                ds_input = (ds_input - self.input_mean)/(self.input_max - self.input_min)
-                #ds_target = ds_target*self.output_scale     
-
+            if normalize:
+                ds_input, ds_target = self.normalize(ds_input, ds_target)
+                
             ds_inputs.append(ds_input)
             ds_targets.append(ds_target)
         try:
@@ -890,7 +1008,7 @@ class data_utils:
                 yield (ds_input, ds_target)
         return(gen)
     
-    def load_ncdata_with_generator(self, data_split):
+    def load_ncdata_with_generator(self, data_split, normalize=True):
         '''
         This function works as a dataloader when training the emulator with raw netCDF files.
         This can be used as a dataloader during training or it can be used to create entire datasets.
@@ -923,12 +1041,9 @@ class data_utils:
 
                     def __iter__(this_self):
                         for (inp, out) in this_self.data_generator:
-                                            # normalization, scaling
-                            if self.normalize:
-                                inp = (inp - self.input_mean)/(self.input_max - self.input_min)
-                                out = out*self.output_scale
-                            else:
-                                inp = inp.drop(['lat','lon'])
+                            inp = inp.drop(['lat','lon'])
+                            if normalize:
+                                inp, out = self.normalize(inp, out)
                             inp = inp.stack({'batch':{'ncol'}})
                             inp = inp.to_stacked_array('mlvar', sample_dims=['batch'], name='mli')
                             # dso = dso.stack({'batch':{'sample','ncol'}})
@@ -1057,6 +1172,7 @@ class data_utils:
         '''
         This function sets the pressure weighting for metrics.
         '''
+        assert inp_data.shape[0] % self.num_latlon == 0, f"Input data must be divisible by number of lat/lon points ({self.num_latlon})"
         assert len(inp_data.shape) == 2 and inp_data.shape[1] == self.input_feature_len, "Expecting (batch_size, mli) size array"
         if(torch.is_tensor(inp_data)):
             inp_data = inp_data.detach().cpu().numpy()
@@ -1104,8 +1220,10 @@ class data_utils:
     def denormalize(self, x, y, norm_method='nc'):
         if(torch.is_tensor(x)):
             x = x.detach().cpu().numpy()
+        if(torch.is_tensor(y)):
             y = y.detach().cpu().numpy()
-        if(norm_method == 'nc' or norm_method=='scale'):
+        
+        if(norm_method == 'scale' or norm_method=='tendencies' or self.use_tendencies):
             mu = self.input_mean[self.input_vars].to_stacked_array(new_dim="mli", sample_dims=()).data
             imax = self.input_max[self.input_vars].to_stacked_array(new_dim='mli', sample_dims=()).data
             imin = self.input_min[self.input_vars].to_stacked_array(new_dim='mli', sample_dims=()).data
@@ -1116,11 +1234,10 @@ class data_utils:
             )
             return(x * (imax-imin) + mu, y / scale_stacked.values)
         else:
-            X_mean, X_std, Y_mean, Y_std = get_norm_info(norm_method)
-            xm = X_mean[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
-            xs = X_std[self.input_vars].mean(dim=['ncol']).to_stacked_array('mli', sample_dims=())
-            ym = Y_mean[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
-            ys = Y_std[self.target_vars].mean(dim=['ncol']).to_stacked_array('mlo', sample_dims=())
+            xm = self.X_mean[self.input_vars].to_stacked_array('mli', sample_dims=()).data
+            xs = self.X_std[self.input_vars].to_stacked_array('mli', sample_dims=()).data
+            ym = self.Y_mean[self.target_vars].to_stacked_array('mlo', sample_dims=()).data
+            ys = self.Y_std[self.target_vars].to_stacked_array('mlo', sample_dims=()).data
             x = x * xs + xm
             y = y * ys + ym
             return(x, y)
@@ -1136,8 +1253,7 @@ class data_utils:
             ptend_u = output[:,240:300].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
             ptend_v = output[:,300:360].reshape((int(num_samples/self.num_latlon), self.num_latlon, 60))
             state_wind = ((ptend_u**2) + (ptend_v**2))**.5
-            self.target_energy_conv['ptend_u'] = state_wind
-            self.target_energy_conv['ptend_v'] = state_wind
+            self.target_energy_conv['ptend_wind'] = state_wind
         
         for var_name, (start,stop) in self.target_var_idx.items():
             if(var_name in self.level_variables):
@@ -1146,8 +1262,15 @@ class data_utils:
             else:
                 w = np.ones((int(num_samples/self.num_latlon), self.num_latlon))
                 w *= self.area_wgt[np.newaxis, :]
-            
-            w = w * self.target_energy_conv[var_name]
+
+            if(var_name not in self.target_energy_conv):
+                if( "state" in var_name and var_name.replace("state", "ptend") in self.target_energy_conv):
+                    energy_conv = self.target_energy_conv[var_name.replace("state", "ptend")]
+                    w = w * energy_conv / 1200
+                elif(var_name in ["state_u", "state_v", "ptend_u", "ptend_v"]):
+                    w = w * w['ptend_wind']
+            else:
+                w = w * self.target_energy_conv[var_name]
 
             weightings[var_name] = w
             weight_mat[:, start:stop] = w.reshape(num_samples, -1)
@@ -1158,7 +1281,7 @@ class data_utils:
             return(weight_mat)
 
 
-    def output_weighting(self, inp_data, output, undo_norm=True, norm_method='nc'):
+    def output_weighting(self, inp_data, output, undo_norm=True):
         '''
         This function does four transformations, and assumes we are using V1 variables:
         [0] Undos the output scaling
@@ -1167,7 +1290,7 @@ class data_utils:
         [3] Unit conversion to a common energy unit
         '''
         if(undo_norm):
-            inp_data, output = self.denormalize(inp_data, output, norm_method)
+            inp_data, output = self.denormalize(inp_data, output)
         dp = self.compute_dp(inp_data, undo_norm=False)
         var_weights = self.get_var_weights(output, dp, "dict")
         var_dict = {}
@@ -1287,13 +1410,19 @@ class data_utils:
         metrics_var_train = {}
         metrics_idx_train = {}
         if apply_weighting:
-            print("Applying variable reweighting to y")
-            y = dutils.output_weighting(x, y, undo_norm=True)
+            msg = "Applying variable reweighting to y" if self.use_tendencies else "Applying variable reweighting to y even though use_tendencies is False! Proceed with caution."
+            print(msg)
+            y = self.output_weighting(x, y, undo_norm=True)
+        if(torch.is_tensor(y)):
+            y = y.cpu().detach().numpy()
         
         for model_name, preds in predictions_dict.items():
             if apply_weighting:
-                print("Applying variable reweighting to prediction")
+                msg = "Applying variable reweighting to prediction" if self.use_tendencies else "Applying variable reweighting to prediction even though use_tendencies is False! Proceed with caution."
+                print(msg)
                 preds = self.output_weighting(x, preds, undo_norm=True)
+            if(torch.is_tensor(preds)):
+                preds = preds.cpu().detach().numpy()
                 
             df_var = pd.DataFrame(columns = self.metrics_names, index = self.target_vars)
             df_var.index.name = 'variable'
@@ -1301,9 +1430,19 @@ class data_utils:
             df_idx.index.name = 'output_idx'
             for metric_name in self.metrics_names:
                 current_idx = 0
+                metric_fn = self.metrics_dict[metric_name]
                 for target_var in self.target_vars:
-                    metric_fn = self.metrics_dict[metric_name]
-                    metric = metric_fn(preds[target_var], y[target_var])
+                    if(apply_weighting):
+                        pred_var, y_var = preds[target_var], y[target_var]
+                    else:
+                        start, stop = self.target_var_idx[target_var]
+                        if(target_var in self.level_variables):
+                            pred_var = preds[:, start:stop].reshape(-1, self.num_latlon, 60)
+                            y_var = y[:, start:stop].reshape(-1, self.num_latlon, 60)
+                        else:
+                            pred_var = preds[:, start:stop].reshape(-1, self.num_latlon)
+                            y_var = y[:, start:stop].reshape(-1, self.num_latlon)
+                    metric = metric_fn(pred_var, y_var)
                     df_var.loc[target_var, metric_name] = np.mean(metric)
                     df_idx.loc[current_idx:current_idx + self.var_lens[target_var] - 1, metric_name] = np.atleast_1d(metric)
                     current_idx += self.var_lens[target_var]
