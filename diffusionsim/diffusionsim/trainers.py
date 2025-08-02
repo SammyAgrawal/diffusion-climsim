@@ -14,13 +14,13 @@ import wandb
 from sklearn.mixture import GaussianMixture
 
 class AbstractTrainer(ABC):
-    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, **kwargs):
+    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, indices=None, **kwargs):
         self.device = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu'
         self.rank = rank
         self.phases = tconfigs[0].phases
         assert isinstance(mconfigs, list) and isinstance(tconfigs, list) and len(mconfigs) == len(tconfigs), "mconfigs and tconfigs must be lists of same length"
         self.dconfig = dconfig
-        dls, self.indices = tru.load_dataloaders(dconfig, log=True)
+        dls, self.indices = tru.load_dataloaders(dconfig, log=True, indices=indices)
         self.dutils = dls[0].dataset.dutils
         self.dataloaders = {}
         for i, phase in enumerate(self.phases):
@@ -37,10 +37,11 @@ class AbstractTrainer(ABC):
         self.optimizers = dict(zip(self.run_ids, optimizers))
         self.lr_schedulers = dict(zip(self.run_ids, [tru.load_lr_scheduler(tconfig, optim, dls[0]) for tconfig, optim in zip(tconfigs, optimizers)]))
         self.loss_fn = loss_fn
+        brid = self.base_run_id[:-1] if self.base_run_id[-1].isdigit() else self.base_run_id
         self.dirs = dict(
             log_dir = base_dir,
-            ckpt_dir = os.path.join(base_dir, "checkpoints"),
-            output_dir = os.path.join(base_dir, "outputs"),
+            ckpt_dir = os.path.join(base_dir, "checkpoints", brid),
+            output_dir = os.path.join(base_dir, "outputs", brid),
         )
         
         self.log_file_path = os.path.join(self.dirs['log_dir'], f"{self.base_run_id}.json")
@@ -55,7 +56,7 @@ class AbstractTrainer(ABC):
         self.log = log
         for phase in self.phases:
             self.dataloaders[phase].dataset.log = log
-        print(f"Getting ready to train {self.number_of_models} model(s) for {num_epochs} epochs on device {self.device}", flush=True)
+        print(f"Getting ready to train {self.number_of_models} model(s) for {num_epochs} epochs on device {self.device}; configs at {self.log_file_path}", flush=True)
         for dirname in self.dirs.values():
             Path(dirname).mkdir(parents=True, exist_ok=True)
         self.losses, self.gradients, self.best_losses, self.nan_incidents = {}, {}, {}, {}
@@ -84,7 +85,6 @@ class AbstractTrainer(ABC):
         print(f"Saving configs to {self.log_file_path}", flush=True)
         with open(self.log_file_path, "w") as f:
             json.dump(master_dict, f)
-        print(f"Config Values: {master_dict}", flush=True)
         
 
     def _save_checkpoint(self, run_id, cid='', **kwargs):
@@ -154,7 +154,7 @@ class AbstractTrainer(ABC):
             self.setup_training(num_epochs, log)
         for epoch in range(num_epochs):
             self.current_epoch = epoch
-            print(f"Epoch {epoch+1}/{num_epochs}", flush=True)
+            print(f"Epoch {epoch}/{num_epochs-1}", flush=True)
             print("_" * 10, flush=True)
             stats = self._run_epoch(epoch)
             if(stats is None):
@@ -169,12 +169,11 @@ class AbstractTrainer(ABC):
         losses = {}
         with open(self.log_file_path, "r") as f:
             master_dict = json.load(f)
-        
         for i, run_id in enumerate(self.run_ids):
             log_dict = master_dict[run_id]  
             # Add losses for this model
             log_dict['losses'] = self.losses[run_id]
-            log_dict['nan_incidents'] = self.nan_incidents[run_id]
+            log_dict['nan_incidents'] = self.nan_incidents.get(run_id)
             # Add any additional kwargs
             for key, value in kwargs.items():
                 if(isinstance(value, dict)):
@@ -196,8 +195,8 @@ class AbstractTrainer(ABC):
         return 0
 
 class ClimsimTrainer(AbstractTrainer):
-    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, **kwargs):
-        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank)
+    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, indices=None, **kwargs):
+        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, indices)
         self.tracked_losses = ["mse"]
         for run_id in self.run_ids:
             loss_weights = self.training_configs[run_id].loss_weights
@@ -230,14 +229,11 @@ class ClimsimTrainer(AbstractTrainer):
     def _return_loss_weights(self, run_id):
         tconfig = self.training_configs[run_id]
         lws = {}
-        sched = tconfig.loss_schedule
-        for loss_type, loss_sched in tconfig.loss_weights.items():
+        for loss_type, loss_sched in tconfig.loss_schedule.items():
             lws[loss_type] = tconfig.loss_weights[loss_type]
             if(isinstance(loss_sched, list) and len(loss_sched) == 2):
                 if not (loss_sched[0] <= self.current_epoch < loss_sched[1]):
                     lws[loss_type] = 0
-        if(random.random() < 0.20):
-            print(f"epoch {self.current_epoch}, {run_id} lws: {lws}", flush=True)
         return(lws)
     
     def finish_training(self, num_epochs):
@@ -259,13 +255,13 @@ class ClimsimTrainer(AbstractTrainer):
             if(self.distributed):
                 self.dataloaders[phase].sampler.set_epoch(epoch)
             for step, (X, Y) in enumerate(self.dataloaders[phase]):
-                if(step % 25 == 0):
+                if(step % 100 == 0):
                     print(f"Currently at epoch {epoch}, step {step}/{len(self.dataloaders[phase])}", flush=True)                
                 batch_losses = self._run_batch(X.to(self.device), Y.to(self.device), phase, step)
                 if(batch_losses is None):
                     print(f"Batch {step} is bad; stopping", flush=True)
                     break
-                epoch_losses = self.log_step(epoch_losses, batch_losses, step, phase)
+                self.log_step(epoch_losses, batch_losses, step, phase)
                 
         tru.log_event(f"epoch-{epoch} end", duration=time.time() - e0)
         return(epoch_losses)
@@ -376,24 +372,20 @@ class ClimsimTrainer(AbstractTrainer):
             self.run.log(wandb_metrics)
         
         if (step % self.bli == 0):
-            print(f"log stepping at {step}", flush=True)
-            with open(self.log_file_path, "r") as f:
-                master_dict = json.load(f)
+            #with open(self.log_file_path, "r") as f:
+            #    master_dict = json.load(f)
             for run_id in self.run_ids:
                 if('distribution' in self.tracked_losses):
                     epoch_losses[run_id].setdefault('distloss_var', []).append(batch_losses[run_id]['VAR_IND'])
                 for loss_type in self.tracked_losses:
                     epoch_losses[run_id].setdefault(loss_type, []).append(batch_losses[run_id][loss_type])
-                master_dict[run_id][f'{phase}_epoch_losses'] = epoch_losses[run_id]
-            with open(self.log_file_path, "w") as f:
-                json.dump(master_dict, f)
+            #    master_dict[run_id][f'{phase}_epoch_losses'] = epoch_losses[run_id]
+            #with open(self.log_file_path, "w") as f:
+            #    json.dump(master_dict, f)
         
         if ( (step + 1) % self.ckpt_interval == 0 and phase == 'train'): 
-            print(f"log stepping at {step}, saving checkpoint", flush=True)
             for run_id in self.run_ids:
                 self._save_checkpoint(run_id)
-        
-        return(epoch_losses)
 
     def _log_epoch_info(self, epoch_stats, epoch_num, phase='train'):
         with open(self.log_file_path, "r") as f:
@@ -479,8 +471,8 @@ class ClimsimTrainer(AbstractTrainer):
         return 0
 
 class DiffusionTrainer(AbstractTrainer):
-    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, **kwargs):
-        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank)
+    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, indices=None, **kwargs):
+        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, indices)
         self.scheduler = tru.load_scheduler(mconfigs[0])
     
     def _run_batch(self, images, phase='train'):
@@ -523,7 +515,7 @@ class DiffusionTrainer(AbstractTrainer):
                 # Given a batch from a dataloader on the dataset, return a noised sample
                 batch_losses = self._run_batch(images.to(self.device), phase)
                 #total_loss += loss.item()
-                epoch_losses = self.log_step(epoch, step, batch_losses, phase, epoch_losses)
+                self.log_step(epoch, step, batch_losses, phase, epoch_losses)
                 tru.log_event(f"batch-{step} end", batch=step, duration= time.time() - tt0)
                 if(step % 50 == 0):
                     print(f"Currently at epoch {epoch}, step {step}", flush=True)
@@ -630,11 +622,11 @@ def select_distloss_var(tconfig, step, **kwargs):
     
                     
 class VAETrainer(AbstractTrainer):
-    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, **kwargs):
+    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, indices=None, **kwargs):
         """
         Trainer Class for VAE Training
         """
-        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank)
+        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, indices)
 
     def setup_training(self, num_epochs):
         super().setup_training(num_epochs)

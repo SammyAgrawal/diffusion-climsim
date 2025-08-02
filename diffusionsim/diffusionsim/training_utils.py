@@ -29,7 +29,7 @@ class DataLoaderParams:
 class DataConfig:
     dataset_type: str = "XBatchDataset"
     climsim_type: str = "expanded-low-res"
-    source: str = "gcsfs"
+    source: str = "local-vzarr"
     data_dir: str = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
     train_test_split: List[int] = field(default_factory=lambda: [1.0, 0.0])
     dataloader_params: DataLoaderParams = field(default_factory=lambda: DataLoaderParams())

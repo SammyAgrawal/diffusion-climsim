@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import os
 import json
 import sys
@@ -41,7 +41,7 @@ def load_dataset(dconfig, log=False, indices=None):
     for (dsi, dso) in dsets:
         match dconfig.dataset_type.lower():
             case ds if "1d" in ds:
-                datasets.append(DiffusionImageDataset(dso.unify_chunks(), dutils, dconfig, log=log))
+                datasets.append(Diffusion2DDataset(dso.unify_chunks(), dutils, dconfig, log=log))
             case ds if "diffusion" in ds:
                 datasets.append(Diffusion1DDataset(dso.unify_chunks(), dutils, dconfig, log))
             case ds if "climsim" in ds:
@@ -118,7 +118,7 @@ def noise_batch(scheduler, clean_images, device):
     noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
     return(noisy_images, timesteps, noise)
     
-class ClimsimDataset(Dataset):
+class ClimsimDataset(torch.utils.data.Dataset):
     def __init__(self, dsi, dso, dutils, dconfig, log=False):
         self.log = log
         self.dutils = dutils
@@ -195,45 +195,15 @@ class ClimsimDataset(Dataset):
             return(mlo.index((var, level)))
         return(-1)
     
-    def make_image(self, x, y, denormalize=True):
+    def make_image(self, x, y, denormalize=True, image_dim=1):
         # IMAGE : (BS, C, H, W)
         # Denormalize using tensors
         if(denormalize):
-            x = x * self.xs.to(x.device) + self.xm.to(x.device)
-            y = y * self.ys.to(y.device) + self.ym.to(y.device)
-        ximg = cut.imagify(x, self.dutils, 'x', image_type='2d')
-        yimg = cut.imagify(y, self.dutils, 'y', image_type='2d')
+            x, y = self.denormalize(x, y)
+        ximg = cut.imagify(x, self.dutils, 'x', image_dim)
+        yimg = cut.imagify(y, self.dutils, 'y', image_dim)
         return ximg, yimg
     
-def set_ds_norm_info(ds, use_tendencies):
-    IO_map = dict(x=(ds.input_vars, "mli"), y=(ds.target_vars, "mlo"))
-    if(use_tendencies):
-        A, B, C, D = cut.get_norm_info("scale")
-        var_order = "xxxy"
-    else:
-        A, B, C, D = cut.get_norm_info(style='state')
-        var_order = "xxyy"
-    
-    if(isinstance(ds, Diffusion1DDataset)):
-        a = ds.expand_levels(A, IO_map[var_order[0]][0], IO_map[var_order[0]][1]).transpose("lev", IO_map[var_order[0]][1])
-        b = ds.expand_levels(B, IO_map[var_order[1]][0], IO_map[var_order[1]][1]).transpose("lev", IO_map[var_order[1]][1])
-        c = ds.expand_levels(C, IO_map[var_order[2]][0], IO_map[var_order[2]][1]).transpose("lev", IO_map[var_order[2]][1])
-        d = ds.expand_levels(D, IO_map[var_order[3]][0], IO_map[var_order[3]][1]).transpose("lev", IO_map[var_order[3]][1])
-    else:
-        a = A[IO_map[var_order[0]][0]].to_stacked_array(IO_map[var_order[0]][1], sample_dims=())
-        b = B[IO_map[var_order[1]][0]].to_stacked_array(IO_map[var_order[1]][1], sample_dims=())
-        c = C[IO_map[var_order[2]][0]].to_stacked_array(IO_map[var_order[2]][1], sample_dims=())
-        d = D[IO_map[var_order[3]][0]].to_stacked_array(IO_map[var_order[3]][1], sample_dims=())
-    ds.mli, ds.mlo = a.mli, d.mlo
-    to_tensor = lambda x : torch.tensor(x.data, dtype=torch.float32)
-    if(use_tendencies):
-        ds.X_mean, ds.X_max, ds.X_min, ds.Y_scale = A, B, C, D
-        ds.xm, ds.xmax, ds.xmin, ds.ys = to_tensor(a), to_tensor(b), to_tensor(c), to_tensor(d)
-    else:
-        ds.X_mean, ds.X_std, ds.Y_mean, ds.Y_std = A, B, C, D
-        ds.xm, ds.xs, ds.ym, ds.ys =  to_tensor(a), to_tensor(b), to_tensor(c), to_tensor(d)
-
-
 
 class Diffusion1DDataset(torch.utils.data.Dataset):
     def __init__(self, dso, dutils, dconfig, log=False):
@@ -247,9 +217,8 @@ class Diffusion1DDataset(torch.utils.data.Dataset):
             .transpose("sample", "lev", "mlo")
         )
 
-        self.X_mean, self.X_std, self.Y_mean, self.Y_std = cut.get_norm_info("state")
         set_ds_norm_info(self, self.dutils.use_tendencies)
-        print(self.ym.shape, self.ys.shape)
+        print(self.ys.shape)
 
         self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(
             sample=dconfig.dataloader_params.batch_size, lev=60, mlo=self.data.mlo.size
@@ -272,7 +241,7 @@ class Diffusion1DDataset(torch.utils.data.Dataset):
     def __len__(self):
         return(len(self.bgen))
 
-class Diffusion2dDataset(torch.utils.data.Dataset):
+class Diffusion2DDataset(torch.utils.data.Dataset):
     def __init__(self, dso, dutils, dconfig, log=False):
         self.Xmean, self.Xstd, self.Ymean, self.Ystd = cut.get_norm_info("state")
         # snowfall has some zeros, so just take global mean to avoid dividing by zero
@@ -312,6 +281,37 @@ class Diffusion2dDataset(torch.utils.data.Dataset):
         mean, std = torch.tensor(self.Y_mean.values).view(128, 1, 1), torch.tensor(self.Y_std.values).view(128, 1, 1)
         Y_rec = (Y_norm * std) + mean
         return(Y_rec)
+    
+
+def set_ds_norm_info(ds, use_tendencies):
+    IO_map = dict(x=(ds.input_vars, "mli"), y=(ds.target_vars, "mlo"))
+    if(use_tendencies):
+        A, B, C, D = cut.get_norm_info("scale")
+        var_order = "xxxy"
+    else:
+        A, B, C, D = cut.get_norm_info(style='state')
+        var_order = "xxyy"
+    
+    if(isinstance(ds, Diffusion1DDataset)):
+        a = ds.expand_levels(A, IO_map[var_order[0]][0], IO_map[var_order[0]][1]).transpose("lev", IO_map[var_order[0]][1])
+        b = ds.expand_levels(B, IO_map[var_order[1]][0], IO_map[var_order[1]][1]).transpose("lev", IO_map[var_order[1]][1])
+        c = ds.expand_levels(C, IO_map[var_order[2]][0], IO_map[var_order[2]][1]).transpose("lev", IO_map[var_order[2]][1])
+        d = ds.expand_levels(D, IO_map[var_order[3]][0], IO_map[var_order[3]][1]).transpose("lev", IO_map[var_order[3]][1])
+    else:
+        a = A[IO_map[var_order[0]][0]].to_stacked_array(IO_map[var_order[0]][1], sample_dims=())
+        b = B[IO_map[var_order[1]][0]].to_stacked_array(IO_map[var_order[1]][1], sample_dims=())
+        c = C[IO_map[var_order[2]][0]].to_stacked_array(IO_map[var_order[2]][1], sample_dims=())
+        d = D[IO_map[var_order[3]][0]].to_stacked_array(IO_map[var_order[3]][1], sample_dims=())
+    ds.mli, ds.mlo = a.mli, d.mlo
+    to_tensor = lambda x : torch.tensor(x.data, dtype=torch.float32)
+    if(use_tendencies):
+        ds.X_mean, ds.X_max, ds.X_min, ds.Y_scale = A, B, C, D
+        ds.xm, ds.xmax, ds.xmin, ds.ys = to_tensor(a), to_tensor(b), to_tensor(c), to_tensor(d)
+    else:
+        ds.X_mean, ds.X_std, ds.Y_mean, ds.Y_std = A, B, C, D
+        ds.xm, ds.xs, ds.ym, ds.ys =  to_tensor(a), to_tensor(b), to_tensor(c), to_tensor(d)
+
+
 
 
 

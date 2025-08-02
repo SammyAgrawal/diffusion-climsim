@@ -223,13 +223,11 @@ def imagify(x, dutils, variable='y', image_dim=2):
         for var, (start, stop) in var_map.items():
             ximg[:,-60:,i] = x[:, start:stop] if stop-start>1 else x[:, start:stop].expand(-1, 60)
             i += 1
-        return(img)
     elif(image_dim == 2):
         # desired output is (BS, C_mlv, H, W)
         feature_len = dutils.input_feature_len if variable == 'x' else dutils.target_feature_len
         ximg = x.reshape(-1, 384, feature_len)  # assuming this is dutils.input_feature_len
         ximg = ximg[:, dutils.permute_indices, :].reshape(-1, 16, 24, feature_len).permute(0, 3, 1, 2) 
-        return(ximg)
     elif(image_dim == 3):
         # desired output is (BS, C_var, lev, H, W)
         var_map = dutils.input_var_idx if variable == 'x' else dutils.target_var_idx
@@ -241,8 +239,9 @@ def imagify(x, dutils, variable='y', image_dim=2):
             row = x[:, :, :, start:stop] if stop-start>1 else x[:, :, :, start:stop].expand(-1, -1, -1, 60) # N, H, W, 60
             ximg[:, i, -60:, :, :] = row.permute(0, 3, 1, 2)
             i += 1
-        return(ximg)
-    print("invalid dim argument", image_dim, "must be 1, 2, or 3")
+    else:
+        print("invalid dim argument", image_dim, "must be 1, 2, or 3")
+    return(ximg)
 
 
 
@@ -1605,7 +1604,6 @@ class data_utils:
         return npy_predict_cnn_reshaped
 
 
-
 def load_numpy_arrays(dconfig, bucket='persist', fprefix='climsim'):
     if('scratch' in bucket):
         bucket = "leap-scratch"
@@ -1623,6 +1621,20 @@ def load_numpy_arrays(dconfig, bucket='persist', fprefix='climsim'):
 
     return(X, Y)
     
+
+
+def ds_to_npy(ds, load=False):
+    from dask.diagnostics import ProgressBar
+    ds = ds.stack({'sample' : ['time', 'ncol']}) # stacks the time and ncol into one MultiIndex
+    ds = ds.to_stacked_array('mlvar', sample_dims=['sample']) # turns the data array of multiple vars into one stacked var
+    if(load):
+        print(f"{ds.nbytes / 1e9} gigabytes") # GB
+        # visualize with progress bar
+        with ProgressBar():
+            # use .load() or .compute() to do the math and get the daily mean data
+            ds.load()
+    return(ds)
+
     
 def save_arrays(X, Y, bucket='scratch', fprefix='climsim'):
     if(bucket== 'scratch'):
