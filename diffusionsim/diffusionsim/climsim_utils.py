@@ -162,6 +162,8 @@ def add_space(ds, ds_grid=False, lat=False, lon=False, res='low'):
 
 def image_regridding(ds):
     lat, lon = np.round(ds.lat.data), np.round(ds.lon.data)
+    if lon.max() > 180:
+        lon = ((lon + 180) % 360) - 180 # convert from 0-360 to -180 to 180
     array = np.column_stack([lon, lat])
     # first sort by longitude, then by latitude (top is area of high longitude)
     sorted_indices = np.lexsort((array[:, 0], -1*array[:, 1]))
@@ -212,6 +214,9 @@ def expand_levels(self, ds, vars, dim_name):
 
 
 def imagify(x, dutils, variable='y', image_dim=2):
+    if image_dim is None:
+        print("image_dim is None, returning original tensor")
+        return(x)
     # X is tensor of shape (BS'=BS*ncol, feature_len) where batch size is multipled by 384
     assert variable in ['x', 'y'], "Variable must be either x or y"
     image_dim = int(image_dim)

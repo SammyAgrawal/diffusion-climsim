@@ -24,24 +24,6 @@ import diffusionsim.trainers as trainers
 exp_dir = "/mnt/home/ssa2206/Climsim/experiments"
 
 
-class ModelLens:
-    def __init__(self, model: torch.nn.Module):
-        self.model = model
-        self.params = dict(model.named_parameters())
-        self.param_names = [p for p in self.params]
-    
-    def get_param(self, getter):
-        if isinstance(getter, str):
-            return self.params[getter]
-        elif isinstance(getter, int):
-            return self.params[self.param_names[getter]]
-        raise ValueError(f"Invalid getter: {getter}")
-
-    def __repr__(self):
-        return repr(self.model)
-    def __str__(self):
-        return str(self.model)
-
 
 
 class Run:
@@ -72,7 +54,7 @@ class Run:
                 ckpt_dir = os.path.join(self.base_dir, "checkpoints", f"{cid}{run_id}-ckpt.pt")
             if (os.path.exists(ckpt_dir)):
                 model = tru.load_model_from_ckpt(ckpt_dir, self.mconfigs[run_id], baseline=True).to(device)
-                self.models[run_id] = ModelLens(model)
+                self.models[run_id] = tru.ModelLens(model)
             else:
                 print(f"Checkpoint {ckpt_dir} was deleted")
                 self.models[run_id] = None

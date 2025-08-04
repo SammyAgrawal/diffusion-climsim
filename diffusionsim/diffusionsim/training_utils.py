@@ -58,8 +58,7 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, shuffle_
 
     dl_params = DataLoaderParams()
     dl_params.batch_size = batch_size
-    if("climsim" in dataset_type or "1d" in dataset_type):
-        dl_params.batch_size *= 384
+    dl_params.batch_size *= 384
     dl_params.shuffle = True
     if(torch.cuda.is_available() and batch_size > 16):
         dl_params.pin_memory = True
@@ -88,6 +87,7 @@ class TrainingConfig:
     learning_rate: float = 1e-4
     loss_weights: Dict = field(default_factory=lambda: {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2})
     loss_schedule: Dict = field(default_factory=lambda: {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]})
+    loss_weight_params: Dict = field(default_factory=lambda: {"strategy": "epoch_fixed", "lr": 1e-4, "alpha": 1.0, "gradnorm_layer" : -2})
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
     mixed_precision = "fp16"
@@ -164,6 +164,29 @@ class ModelConfig:
         if isinstance(self.scheduler, dict):
             self.scheduler = SchedulerParams(**self.scheduler)  
 
+
+class ModelLens:
+    def __init__(self, model: torch.nn.Module):
+        self.model = model
+        self.params = dict(model.named_parameters())
+        self.param_names = [p for p in self.params]
+    
+    def get_param(self, getter):
+        if isinstance(getter, str):
+            return self.params[getter]
+        elif isinstance(getter, int):
+            return self.params[self.param_names[getter]]
+        raise ValueError(f"Invalid getter: {getter}")
+    
+    def __getattr__(self, name):
+        return getattr(self.model, name)
+    def __call__(self, *args):
+        return self.model(*args)
+
+    def __repr__(self):
+        return repr(self.model)
+    def __str__(self):
+        return str(self.model)
 
 def load_config(fname, expid, base_dir="experiments/"):
     if 'json' not in fname:

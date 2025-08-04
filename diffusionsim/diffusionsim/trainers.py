@@ -13,8 +13,8 @@ import random
 import wandb
 from sklearn.mixture import GaussianMixture
 
-class AbstractTrainer(ABC):
-    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, indices=None, **kwargs):
+class AbstractTrainer(ABC):data
+    def __init__(self, dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank, indices=None, **kwargs):
         self.device = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu'
         self.rank = rank
         self.phases = tconfigs[0].phases
@@ -29,14 +29,14 @@ class AbstractTrainer(ABC):
         self.number_of_models = len(mconfigs)
         self.base_run_id = base_run_id
         self.run_ids = [tconfig.run_id for tconfig in tconfigs]
-        self.mconfigs = dict(zip(self.run_ids, mconfigs))
-        self.training_configs = dict(zip(self.run_ids, tconfigs))
+        self.mconfigs, self.training_configs, models, optimizers, lr_schedulers = {}, {}, {}, {}, {}
         self.distributed = bool(tconfigs[0].distributed_training)
-        self.models = dict(zip(self.run_ids, [tru.load_model(mconfig, device=self.device, distributed=self.distributed) for mconfig in mconfigs]))
-        optimizers = [tru.create_optimizer(model, tconfig) for model, tconfig in zip(self.models.values(), tconfigs)]
-        self.optimizers = dict(zip(self.run_ids, optimizers))
-        self.lr_schedulers = dict(zip(self.run_ids, [tru.load_lr_scheduler(tconfig, optim, dls[0]) for tconfig, optim in zip(tconfigs, optimizers)]))
-        self.loss_fn = loss_fn
+        for i, run_id in enumerate(self.run_ids):
+            self.mconfigs[run_id], self.training_configs[run_id] = mconfigs[i], tconfigs[i]
+            self.models[run_id] = tru.ModelLens(tru.load_model(mconfigs[i], device=self.device, distributed=self.distributed))
+            self.optimizers[run_id] = tru.create_optimizer(self.models[run_id], self.training_configs[run_id])
+            self.lr_schedulers[run_id] = tru.load_lr_scheduler(self.training_configs[run_id], self.optimizers[run_id], self.dataloaders[0])
+
         brid = self.base_run_id[:-1] if self.base_run_id[-1].isdigit() else self.base_run_id
         self.dirs = dict(
             log_dir = base_dir,
@@ -195,8 +195,8 @@ class AbstractTrainer(ABC):
         return 0
 
 class ClimsimTrainer(AbstractTrainer):
-    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, indices=None, **kwargs):
-        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, indices)
+    def __init__(self, dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank=0, indices=None, **kwargs):
+        super().__init__(dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank, indices)
         self.tracked_losses = ["mse"]
         for run_id in self.run_ids:
             loss_weights = self.training_configs[run_id].loss_weights
@@ -228,14 +228,180 @@ class ClimsimTrainer(AbstractTrainer):
     
     def _return_loss_weights(self, run_id):
         tconfig = self.training_configs[run_id]
-        lws = {}
-        for loss_type, loss_sched in tconfig.loss_schedule.items():
-            lws[loss_type] = tconfig.loss_weights[loss_type]
-            if(isinstance(loss_sched, list) and len(loss_sched) == 2):
-                if not (loss_sched[0] <= self.current_epoch < loss_sched[1]):
-                    lws[loss_type] = 0
+        lws = tconfig.loss_weights # base
+        match tconfig.loss_weight_strategy:
+            case "fixed":
+                return(lws)
+            case "epoch_fixed":
+                for loss_type, loss_sched in tconfig.loss_schedule.items():
+                    if (isinstance(loss_sched, int) and self.current_epoch < loss_sched):
+                        lws[loss_type] = 0
+                        continue
+                    elif not (loss_sched[0] <= self.current_epoch < loss_sched[1]):
+                        lws[loss_type] = 0
+            case "gradnorm":
+                # implement gradnorm
+                pass
         return(lws)
     
+    def apply_loss(self, loss, loss_type, batch_losses):
+        if(loss_type == "mse"):
+            pass
+
+    def _run_batch_ideal(self, x, y, phase, step):
+        batch_losses = {}
+        for run_id in self.run_ids:
+            batch_losses[run_id] = {}
+            for loss_type in self.tracked_losses:
+                loss, grads = self.apply_loss(x, y, loss_type, run_id, batch_losses[run_id])
+            lws = self._return_loss_weights(run_id)
+            
+
+            model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
+            lws = self._return_loss_weights(run_id)
+            y_hat = model(x)
+            mse_loss = self.loss_fn(y_hat, y)
+            if(phase == 'train' and self._gradients_ops(run_id, "mse", mse_loss, step)):
+                self.nan_incidents[run_id][-1]['inputs'] = (x, y)
+            total_loss = lws['mse'] * mse_loss
+            batch_losses[run_id]['mse'] = mse_loss.item()
+
+    def _run_batch(self, x, y, phase, step):
+        if(self.log):
+            t0 = tru.log_event("run-batch start", step=step)
+        batch_losses = {}
+        for run_id in self.run_ids:
+            batch_losses[run_id] = {}
+            model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
+            lws = self._return_loss_weights(run_id)
+            y_hat = model(x)
+            mse_loss = self.loss_fn(y_hat, y)
+            if(phase == 'train' and self._gradients_ops(run_id, "mse", mse_loss, step)):
+                self.nan_incidents[run_id][-1]['inputs'] = (x, y)
+            total_loss = lws['mse'] * mse_loss
+            batch_losses[run_id]['mse'] = mse_loss.item()
+            if('distribution' in self.tracked_losses):
+                dist_loss, VAR_IND = self.distribution_loss(y_hat, y, run_id, step)
+                if(phase == 'train' and self._gradients_ops(run_id, "distribution", dist_loss, step)):
+                    self.nan_incidents[run_id][-1]['inputs'] = (x, y)
+                batch_losses[run_id]['distribution'] = dist_loss.item()
+                batch_losses[run_id]['VAR_IND'] = VAR_IND
+                if(lws['distribution'] > 0 and not torch.isnan(dist_loss)):
+                    total_loss += lws['distribution'] * dist_loss
+                
+            if('diffusion' in self.tracked_losses):
+                diff_loss = self.diffusion_loss(y_hat, run_id)
+                if(phase == 'train' and self._gradients_ops(run_id, "diffusion", diff_loss, step)):
+                    self.nan_incidents[run_id][-1]['inputs'] = (x, y)
+                batch_losses[run_id]['diffusion'] = diff_loss.item()
+                if(lws['diffusion'] > 0 and not torch.isnan(diff_loss)):  
+                    total_loss += lws['diffusion'] * diff_loss
+            
+            batch_losses[run_id]['total'] = total_loss.item()
+            if(phase == 'train'):
+                optimizer.zero_grad()
+                total_loss.backward(retain_graph=False)
+                if(self.training_configs[run_id].clip_gradients):
+                    total_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+                if(self.lr_schedulers[run_id] is not None):
+                    self.lr_schedulers[run_id].step()
+        losses = [batch_losses[run_id]['total'] for run_id in self.run_ids]
+        if(self.log):
+            tru.log_event("run-batch end", duration=time.time() - t0, loss=losses, step=step)
+        return(batch_losses)
+    
+    def _gradients_ops(self, run_id, loss_type, loss, step):
+        #assert loss_type in self.tracked_losses, f"loss_type {loss_type} must be one of {self.tracked_losses}"
+        model, optimizer = self.models[run_id], self.optimizers[run_id]
+
+        def register_incident(self, msg, tensor_name=None, tensor=None):
+            print(f"[NaN-Detect] step={step}  {run_id=} {loss_type=}  >>> {msg}", flush=True)
+            payload = dict(step=step, run_id=run_id, loss_type=loss_type, msg=msg, 
+                           tensor_name=tensor_name, 
+                           tensor_sample=tensor.clone().cpu() if tensor is not None else None, 
+                           state_dict={k: v.clone().cpu() for k, v in model.state_dict().items()}
+            )
+            self.nan_incidents.setdefault(run_id, []).append(payload)
+        
+        if not torch.isfinite(loss):
+            register_incident("LOSS is not finite (NaN or Inf)", "loss", loss.detach())
+            return -1
+
+        if (self.training_configs[run_id].log_gradients and step % self.bli == 0):
+            optimizer.zero_grad(set_to_none=True)           # clean slate
+            loss.backward(retain_graph=True)
+            gdict = self.gradients.setdefault(run_id, {}).setdefault(loss_type, {})
+            for n, p in model.named_parameters():
+                if(p.grad is None):
+                    continue
+                if torch.isfinite(p.grad).all():
+                    gdict.setdefault(n, []).append(
+                        (p.grad.mean().item(), p.grad.std().item())
+                    )
+                else:
+                    register_incident("GRAD has NaN/Inf", n, p.grad)
+                    return -1
+
+        # ------------------------------------------------------------------ #
+        # 5. Clean up so real backward sees a fresh gradient buffer
+        # ------------------------------------------------------------------ #
+        optimizer.zero_grad(set_to_none=True)
+
+        # Let caller know if we saw anything suspicious
+        return 0
+    
+    def distribution_loss(self, y_hat, y, run_id, step, epsilon=1e-3):
+        tconfig = self.training_configs[run_id]
+        VAR_IND, num_gaussian = select_distloss_var(tconfig, step)
+        assert isinstance(num_gaussian, int) and isinstance(VAR_IND, int), "num_gaussian and VAR_IND must be integers"
+        GMM = GaussianMixture(n_components=num_gaussian, reg_covar=epsilon)
+        GMM.fit(y[:,VAR_IND].detach().cpu().numpy().reshape(-1, 1))
+        mu = torch.tensor(GMM.means_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
+        pi = torch.tensor(GMM.weights_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:] 
+        var = torch.tensor(GMM.covariances_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
+        pi = torch.clamp(pi, min=epsilon)
+        var = torch.clamp(var, min=epsilon)
+        
+        with torch.no_grad():
+            h = 2 * torch.max(var).item()
+
+        bs, n_samples = tconfig.distloss_bs, tconfig.num_distloss_samples
+        batch_num = y_hat.shape[0] // bs
+        ix, jx = torch.randint(0, batch_num, (n_samples,)), torch.randint(0, batch_num, (n_samples,))
+        mask = ix == jx
+        while mask.any():
+            ix[mask] = torch.randint(0, batch_num, (mask.sum(),))
+            jx[mask] = torch.randint(0, batch_num, (mask.sum(),))
+            mask = ix == jx
+        loss = 0
+        for i,j in zip(ix, jx):
+            y1 = y_hat[i*bs : (i+1)*bs, VAR_IND]
+            y2 = y_hat[j*bs : (j+1)*bs, VAR_IND]
+            loss += u_q(y1, y2, mu, var, pi, h).mean()
+        return(loss / n_samples, VAR_IND)
+        
+
+    
+    def diffusion_loss(self, y_hat, run_id):
+        #raise NotImplementedError("Diffusion loss not implemented")
+        # TODO: y and yhat are of size (B, 128) and somehow need to convert into images for diffusion loss
+        tconfig = self.training_configs[run_id]
+        scheduler = self.schedulers[run_id]
+        y_image = self._make_image(y_hat, image_dim=2)
+        def encode(sample):
+            eps = torch.randn(sample.shape, device=sample.device) # BS x C x H x W
+            xt = scheduler.add_noise(sample, eps, torch.LongTensor([tconfig.diffusion_loss_noise_level])) # noisy image
+            return(xt)
+        def decode(xt):
+            with torch.no_grad():
+                for t in range(tconfig.diffusion_loss_noise_level, 0, -tconfig.diffusion_loss_decoding_interval):
+                    eps_theta = self.unet(xt, t).sample
+                    xt = scheduler.step(eps_theta, t, xt).prev_sample
+            return(xt)
+        y_image_denoised = decode(encode(y_image))
+        return(self.loss_fn(y_image_denoised, y_image))
+
     def finish_training(self, num_epochs):
         super().finish_training(num_epochs, distloss_var_counts=self.distloss_var_counts)
 
@@ -265,101 +431,7 @@ class ClimsimTrainer(AbstractTrainer):
                 
         tru.log_event(f"epoch-{epoch} end", duration=time.time() - e0)
         return(epoch_losses)
-
-    def _run_batch(self, x, y, phase, step):
-        if(self.log):
-            t0 = tru.log_event("run-batch start", step=step)
-        batch_losses = {}
-        for run_id in self.run_ids:
-            batch_losses[run_id] = {}
-            model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
-            lws = self._return_loss_weights(run_id)
-            y_hat = model(x)
-            mse_loss = self.loss_fn(y_hat, y)
-            if(phase == 'train' and self._gradients_ops(run_id, "mse", mse_loss, step)):
-                self.nan_incidents[run_id][-1]['inputs'] = (x, y)
-            total_loss = lws['mse'] * mse_loss
-            batch_losses[run_id]['mse'] = mse_loss.item()
-            if('distribution' in self.tracked_losses):
-                dist_loss, VAR_IND = self.distribution_loss(y_hat, y, tconfig, step)
-                if(phase == 'train' and self._gradients_ops(run_id, "distribution", dist_loss, step)):
-                    self.nan_incidents[run_id][-1]['inputs'] = (x, y)
-                self.distloss_var_counts.setdefault(run_id, defaultdict(int))[VAR_IND] += 1
-                batch_losses[run_id]['distribution'] = dist_loss.item()
-                batch_losses[run_id]['VAR_IND'] = VAR_IND
-                if(lws['distribution'] > 0 and not torch.isnan(dist_loss)):
-                    total_loss += lws['distribution'] * dist_loss
-                
-            if('diffusion' in self.tracked_losses):
-                diff_loss = self.diffusion_loss(y_hat, run_id)
-                if(phase == 'train' and self._gradients_ops(run_id, "diffusion", diff_loss, step)):
-                    self.nan_incidents[run_id][-1]['inputs'] = (x, y)
-                batch_losses[run_id]['diffusion'] = diff_loss.item()
-                if(lws['diffusion'] > 0 and not torch.isnan(diff_loss)):  
-                    total_loss += lws['diffusion'] * diff_loss
-            
-            batch_losses[run_id]['total'] = total_loss.item()
-            if(phase == 'train'):
-                optimizer.zero_grad()
-                total_loss.backward(retain_graph=False)
-                if(self.training_configs[run_id].clip_gradients):
-                    total_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
-                if(self.lr_schedulers[run_id] is not None):
-                    self.lr_schedulers[run_id].step()
-        losses = [batch_losses[run_id]['total'] for run_id in self.run_ids]
-        if(self.log):
-            tru.log_event("run-batch end", duration=time.time() - t0, loss=losses, step=step)
-        return(batch_losses)
     
-    def distribution_loss(self, y_hat, y, tconfig, step, epsilon=1e-3):
-        VAR_IND, num_gaussian = select_distloss_var(tconfig, step)
-        assert isinstance(num_gaussian, int) and isinstance(VAR_IND, int), "num_gaussian and VAR_IND must be integers"
-        GMM = GaussianMixture(n_components=num_gaussian, reg_covar=epsilon)
-        GMM.fit(y[:,VAR_IND].detach().cpu().numpy().reshape(-1, 1))
-        mu = torch.tensor(GMM.means_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
-        pi = torch.tensor(GMM.weights_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:] 
-        var = torch.tensor(GMM.covariances_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
-        pi = torch.clamp(pi, min=epsilon)
-        var = torch.clamp(var, min=epsilon)
-        
-        with torch.no_grad():
-            h = 2 * torch.max(var).item()
-
-        bs, n_samples = tconfig.distloss_bs, tconfig.num_distloss_samples
-        batch_num = y_hat.shape[0] // bs
-        ix, jx = torch.randint(0, batch_num, (n_samples,)), torch.randint(0, batch_num, (n_samples,))
-        mask = ix == jx
-        while mask.any():
-            ix[mask] = torch.randint(0, batch_num, (mask.sum(),))
-            jx[mask] = torch.randint(0, batch_num, (mask.sum(),))
-            mask = ix == jx
-        loss = 0
-        for i,j in zip(ix, jx):
-            y1 = y_hat[i*bs : (i+1)*bs, VAR_IND]
-            y2 = y_hat[j*bs : (j+1)*bs, VAR_IND]
-            loss += u_q(y1, y2, mu, var, pi, h).mean()
-        return(loss / n_samples, VAR_IND)
-        
-    def diffusion_loss(self, y_hat, run_id):
-        #raise NotImplementedError("Diffusion loss not implemented")
-        # TODO: y and yhat are of size (B, 128) and somehow need to convert into images for diffusion loss
-        tconfig = self.training_configs[run_id]
-        scheduler = self.schedulers[run_id]
-        y_image = self._make_image(y_hat, image_dim=2)
-        def encode(sample):
-            eps = torch.randn(sample.shape, device=sample.device) # BS x C x H x W
-            xt = scheduler.add_noise(sample, eps, torch.LongTensor([tconfig.diffusion_loss_noise_level])) # noisy image
-            return(xt)
-        def decode(xt):
-            with torch.no_grad():
-                for t in range(tconfig.diffusion_loss_noise_level, 0, -tconfig.diffusion_loss_decoding_interval):
-                    eps_theta = self.unet(xt, t).sample
-                    xt = scheduler.step(eps_theta, t, xt).prev_sample
-            return(xt)
-        y_image_denoised = decode(encode(y_image))
-        return(self.loss_fn(y_image_denoised, y_image))
-
     def log_step(self, epoch_losses, batch_losses, step, phase, wandb=True):
         if(wandb):
             wandb_metrics = {"epoch" : self.current_epoch}
@@ -411,68 +483,10 @@ class ClimsimTrainer(AbstractTrainer):
 
         with open(self.log_file_path, "w") as f:
             json.dump(master_dict, f)
-    
-    def _gradients_ops(self, run_id, loss_type, loss, step):
-        #assert loss_type in self.tracked_losses, f"loss_type {loss_type} must be one of {self.tracked_losses}"
-        model, optimizer = self.models[run_id], self.optimizers[run_id]
-
-        def register_incident(self, msg, tensor_name=None, tensor=None):
-            print(f"[NaN-Detect] step={step}  {run_id=} {loss_type=}  >>> {msg}", flush=True)
-            payload = dict(step=step, run_id=run_id, loss_type=loss_type, msg=msg, 
-                           tensor_name=tensor_name, 
-                           tensor_sample=tensor.clone().cpu() if tensor is not None else None, 
-                           state_dict={k: v.clone().cpu() for k, v in model.state_dict().items()}
-            )
-            self.nan_incidents.setdefault(run_id, []).append(payload)
-        
-        if not torch.isfinite(loss):
-            register_incident("LOSS is not finite (NaN or Inf)", "loss", loss.detach())
-            return -1
-        """
-        # ------------------------------------------------------------------ #
-        # 2. Check *parameter values* BEFORE backward (stage d in the table)
-        # ------------------------------------------------------------------ #
-        for n, p in model.named_parameters():
-            if not torch.isfinite(p).all():
-                register_incident("PARAM has NaN/Inf BEFORE backward", n, p)
-
-        # ------------------------------------------------------------------ #
-        # 3. Probe gradients for THIS loss only (retain_graph=True)
-        # ------------------------------------------------------------------ #
-        
-        optimizer.zero_grad(set_to_none=True)           # clean slate
-        loss.backward(retain_graph=True)
-
-        
-        for n, p in model.named_parameters():
-            if p.grad is not None and not torch.isfinite(p.grad).all():
-                register_incident("GRAD has NaN/Inf", n, p.grad)
-
-        """
-        if (self.training_configs[run_id].log_gradients and step % self.bli == 0):
-            optimizer.zero_grad(set_to_none=True)           # clean slate
-            loss.backward(retain_graph=True)
-            gdict = self.gradients.setdefault(run_id, {}).setdefault(loss_type, {})
-            for n, p in model.named_parameters():
-                if p.grad is not None and torch.isfinite(p.grad).all():
-                    gdict.setdefault(n, []).append(
-                        (p.grad.mean().item(), p.grad.std().item())
-                    )
-                elif(not torch.isfinite(p.grad).all()):
-                    register_incident("GRAD has NaN/Inf", n, p.grad)
-                    return -1
-
-        # ------------------------------------------------------------------ #
-        # 5. Clean up so real backward sees a fresh gradient buffer
-        # ------------------------------------------------------------------ #
-        optimizer.zero_grad(set_to_none=True)
-
-        # Let caller know if we saw anything suspicious
-        return 0
 
 class DiffusionTrainer(AbstractTrainer):
-    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, indices=None, **kwargs):
-        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, indices)
+    def __init__(self, dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank=0, indices=None, **kwargs):
+        super().__init__(dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank, indices)
         self.scheduler = tru.load_scheduler(mconfigs[0])
     
     def _run_batch(self, images, phase='train'):
@@ -622,11 +636,11 @@ def select_distloss_var(tconfig, step, **kwargs):
     
                     
 class VAETrainer(AbstractTrainer):
-    def __init__(self, dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank=0, indices=None, **kwargs):
+    def __init__(self, dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank=0, indices=None, **kwargs):
         """
         Trainer Class for VAE Training
         """
-        super().__init__(dconfig, mconfigs, tconfigs, loss_fn, base_dir, base_run_id, rank, indices)
+        super().__init__(dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank, indices)
 
     def setup_training(self, num_epochs):
         super().setup_training(num_epochs)

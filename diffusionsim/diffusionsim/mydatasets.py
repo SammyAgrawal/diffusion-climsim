@@ -118,8 +118,17 @@ def noise_batch(scheduler, clean_images, device):
     noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
     return(noisy_images, timesteps, noise)
     
+
 class ClimsimDataset(torch.utils.data.Dataset):
     def __init__(self, dsi, dso, dutils, dconfig, log=False):
+        self.dataset_type = dconfig.dataset_type
+        self.output_only = "diff" in self.dataset_type
+        self.image_dim = None
+        for dim in ["1", "2", "3"]:
+            if dim in self.dataset_type:
+                self.image_dim = int(dim) 
+                break
+
         self.log = log
         self.dutils = dutils
         self.dsi, self.dso = dsi, dso
@@ -143,24 +152,29 @@ class ClimsimDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         if(self.log):
             t0 = log_event("get-item start", batch_idx=idx)
-        x, y = self.xgen[idx].load(), self.ygen[idx].load()
+        y = self.ygen[idx].load()
+        x = 0 if (self.output_only and not self.dutils.use_tendencies) else self.xgen[idx].load()
         if(self.dutils.use_tendencies):
             x_idx, y_idx = self.dutils.input_var_idx, self.dutils.target_var_idx
             filter_xvar = lambda var: x[:, x_idx[var][0]:x_idx[var][1]].data
             filter_yvar = lambda var: y[:, y_idx[var][0]:y_idx[var][1]].data
-            y[:, y_idx['ptend_t'][0]:y_idx['ptend_t'][1]] = (filter_yvar('ptend_t') - filter_xvar('state_t'))/1200 # T tendency [K/s]
-            y[:, y_idx['ptend_q0001'][0]:y_idx['ptend_q0001'][1]] = (filter_yvar('ptend_q0001') - filter_xvar('state_q0001'))/1200 # Q tendency [kg/kg/s]
+
+            var_pairs = [('state_t', 'ptend_t'), ('state_q0001', 'ptend_q0001')]
             if(self.dutils.full_vars):
-                y[:, y_idx['ptend_q0002'][0]:y_idx['ptend_q0002'][1]] = (filter_yvar('ptend_q0002') - filter_xvar('state_q0002'))/1200 # Q tendency [kg/kg/s]
-                y[:, y_idx['ptend_q0003'][0]:y_idx['ptend_q0003'][1]] = (filter_yvar('ptend_q0003') - filter_xvar('state_q0003'))/1200 # Q tendency [kg/kg/s]
-                y[:, y_idx['ptend_u'][0]:y_idx['ptend_u'][1]] = (filter_yvar('ptend_u') - filter_xvar('state_u'))/1200 # U tendency [m/s/s]
-                y[:, y_idx['ptend_v'][0]:y_idx['ptend_v'][1]] = (filter_yvar('ptend_v') - filter_xvar('state_v'))/1200 # V tendency [m/s/s] 
-            
-        x, y = torch.tensor(x.data, dtype=torch.float32), torch.tensor(y.data, dtype=torch.float32)
+                var_pairs += [('state_q0002', 'ptend_q0002'), ('state_q0003', 'ptend_q0003'), ('state_u', 'ptend_u'), ('state_v', 'ptend_v')]
+            for (vx, vy) in var_pairs:
+                y[:, slice(*y_idx[vy])] = (filter_yvar(vy) - filter_xvar(vx))/1200
+        
+        y = torch.tensor(y.data, dtype=torch.float32)
+        x = 0 if self.output_only else torch.tensor(x.data, dtype=torch.float32)
         x, y = self.normalize(x, y)
         if(self.log):
             log_event("get-item end", batch_idx=idx, duration=time.time() - t0)
-        return(x, y)
+        if self.output_only:
+            print(y.shape)
+            return(cut.imagify(y, self.dutils, 'y', self.image_dim))
+        return(self.make_image(x,y))
+    
 
     def normalize(self, x, y):
         if(self.dutils.use_tendencies):
@@ -195,15 +209,14 @@ class ClimsimDataset(torch.utils.data.Dataset):
             return(mlo.index((var, level)))
         return(-1)
     
-    def make_image(self, x, y, denormalize=True, image_dim=1):
+    def make_image(self, x, y, denormalize=False, ):
         # IMAGE : (BS, C, H, W)
         # Denormalize using tensors
         if(denormalize):
             x, y = self.denormalize(x, y)
-        ximg = cut.imagify(x, self.dutils, 'x', image_dim)
-        yimg = cut.imagify(y, self.dutils, 'y', image_dim)
+        ximg = cut.imagify(x, self.dutils, 'x', self.image_dim)
+        yimg = cut.imagify(y, self.dutils, 'y', self.image_dim)
         return ximg, yimg
-    
 
 class Diffusion1DDataset(torch.utils.data.Dataset):
     def __init__(self, dso, dutils, dconfig, log=False):
@@ -347,7 +360,7 @@ def collate_test_fn(batches):
 
 
 
-class ClimsimDatasetOld(Dataset):
+class ClimsimDatasetOld(torch.utils.data.Dataset):
     def __init__(self, X, Y, normalize=True):
         self.device = device
         self.mli, self.mlo = X.mli, Y.mlo
