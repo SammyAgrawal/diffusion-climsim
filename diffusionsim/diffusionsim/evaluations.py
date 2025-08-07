@@ -128,6 +128,9 @@ class Run:
         indices = self.get("indices") if apply_indices else None
         trainer = trainers.ClimsimTrainer(self.dconfig, self.get_mconfig("all"), tconfigs,
                                  torch.nn.MSELoss(), self.base_dir, new_run_id, indices=indices)
+        
+        for run_id in trainer.run_ids:
+            trainer.losses[run_id] = self.logs[run_id]['losses']
         if apply_checkpoints:
             trainer.models = self.models
 

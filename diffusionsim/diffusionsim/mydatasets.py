@@ -122,6 +122,7 @@ def noise_batch(scheduler, clean_images, device):
 class ClimsimDataset(torch.utils.data.Dataset):
     def __init__(self, dsi, dso, dutils, dconfig, log=False):
         self.dataset_type = dconfig.dataset_type
+        self.data_config = dconfig
         self.output_only = "diff" in self.dataset_type
         self.image_dim = None
         for dim in ["1", "2", "3"]:
@@ -221,6 +222,7 @@ class ClimsimDataset(torch.utils.data.Dataset):
 class Diffusion1DDataset(torch.utils.data.Dataset):
     def __init__(self, dso, dutils, dconfig, log=False):
         self.dutils = dutils
+        self.data_config = dconfig
         self.log = log
         self.input_vars, self.target_vars = dutils.input_vars, dutils.target_vars
         self.input_len, self.target_len = dutils.input_feature_len, dutils.target_feature_len
@@ -259,6 +261,7 @@ class Diffusion2DDataset(torch.utils.data.Dataset):
         self.Xmean, self.Xstd, self.Ymean, self.Ystd = cut.get_norm_info("state")
         # snowfall has some zeros, so just take global mean to avoid dividing by zero
         self.dutils = dutils
+        self.data_config = dconfig
         self.height, self.width = (16, 24)
         self.log = log
         self.permute_indices = cut.image_regridding(dso)

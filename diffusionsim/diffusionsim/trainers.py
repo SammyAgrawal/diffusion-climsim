@@ -12,30 +12,30 @@ import dataclasses
 import random
 import wandb
 from sklearn.mixture import GaussianMixture
+import math
 
-class AbstractTrainer(ABC):data
-    def __init__(self, dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank, indices=None, **kwargs):
+
+class AbstractTrainer(ABC):
+    def __init__(self, dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id, rank):
         self.device = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu'
         self.rank = rank
         self.phases = tconfigs[0].phases
         assert isinstance(mconfigs, list) and isinstance(tconfigs, list) and len(mconfigs) == len(tconfigs), "mconfigs and tconfigs must be lists of same length"
-        self.dconfig = dconfig
-        dls, self.indices = tru.load_dataloaders(dconfig, log=True, indices=indices)
-        self.dutils = dls[0].dataset.dutils
-        self.dataloaders = {}
-        for i, phase in enumerate(self.phases):
-            self.dataloaders[phase] = dls[i]
-        
+        self.dconfig, self.dutils = dataloaders[0].dataset.data_config, dataloaders[0].dataset.dutils
+        self.indices = indices
+        self.dataloaders = {self.phases[i] : dataloaders[i] for i in range(dataloaders)}
+
+        self.loss_fn = torch.nn.MSELoss()
         self.number_of_models = len(mconfigs)
         self.base_run_id = base_run_id
         self.run_ids = [tconfig.run_id for tconfig in tconfigs]
-        self.mconfigs, self.training_configs, models, optimizers, lr_schedulers = {}, {}, {}, {}, {}
+        self.mconfigs, self.training_configs, self.models, self.optimizers, self.lr_schedulers = {}, {}, {}, {}, {}
         self.distributed = bool(tconfigs[0].distributed_training)
         for i, run_id in enumerate(self.run_ids):
             self.mconfigs[run_id], self.training_configs[run_id] = mconfigs[i], tconfigs[i]
             self.models[run_id] = tru.ModelLens(tru.load_model(mconfigs[i], device=self.device, distributed=self.distributed))
             self.optimizers[run_id] = tru.create_optimizer(self.models[run_id], self.training_configs[run_id])
-            self.lr_schedulers[run_id] = tru.load_lr_scheduler(self.training_configs[run_id], self.optimizers[run_id], self.dataloaders[0])
+            self.lr_schedulers[run_id] = tru.load_lr_scheduler(self.training_configs[run_id], self.optimizers[run_id], dls[0])
 
         brid = self.base_run_id[:-1] if self.base_run_id[-1].isdigit() else self.base_run_id
         self.dirs = dict(
@@ -47,6 +47,7 @@ class AbstractTrainer(ABC):data
         self.log_file_path = os.path.join(self.dirs['log_dir'], f"{self.base_run_id}.json")
         self.bli = tconfigs[0].batch_logging_interval
         self.ckpt_interval = tconfigs[0].batch_checkpoint_interval
+        self.logs_per_epoch = {phase : math.ceil(len(self.dataloaders[phase]) / self.bli) + 1 for phase in self.phases}
         self.restarted = False
         self.losses, self.gradients, self.best_losses, self.nan_incidents = {}, {}, {}, {}
         self.batches_per_epoch = dict(zip(self.phases, [len(self.dataloaders[phase]) for phase in self.phases]))
@@ -57,8 +58,6 @@ class AbstractTrainer(ABC):data
         for phase in self.phases:
             self.dataloaders[phase].dataset.log = log
         print(f"Getting ready to train {self.number_of_models} model(s) for {num_epochs} epochs on device {self.device}; configs at {self.log_file_path}", flush=True)
-        for dirname in self.dirs.values():
-            Path(dirname).mkdir(parents=True, exist_ok=True)
         self.losses, self.gradients, self.best_losses, self.nan_incidents = {}, {}, {}, {}
         self.batches_per_epoch = dict(zip(self.phases, [len(self.dataloaders[phase]) for phase in self.phases]))
         master_dict = {'data_config': dataclasses.asdict(self.dconfig)}
@@ -75,16 +74,19 @@ class AbstractTrainer(ABC):data
                     model_config=dataclasses.asdict(self.mconfigs[run_id]),
             )
         
-        self.run = wandb.init(
-            entity="samart-agr-columbia-university", 
-            project="diffusionsim",
-            name=self.base_run_id,
-            config=master_dict,
-        )
-        
-        print(f"Saving configs to {self.log_file_path}", flush=True)
-        with open(self.log_file_path, "w") as f:
-            json.dump(master_dict, f)
+        if log:
+            for dirname in self.dirs.values():
+                Path(dirname).mkdir(parents=True, exist_ok=True)
+            self.run = wandb.init(
+                entity="samart-agr-columbia-university", 
+                project="diffusionsim",
+                name=self.base_run_id,
+                config=master_dict,
+            )
+            
+            print(f"Saving configs to {self.log_file_path}", flush=True)
+            with open(self.log_file_path, "w") as f:
+                json.dump(master_dict, f)
         
 
     def _save_checkpoint(self, run_id, cid='', **kwargs):
@@ -116,54 +118,32 @@ class AbstractTrainer(ABC):data
         else:
             self.evaluate()
     
+    @abstractmethod
     def _run_batch(self, batch, phase):
-        batch_results = {}
-        for idx, (model, optimizer) in enumerate(zip(self.models, self.optimizers)):
-            data, label = batch
-            output = model(data)
-            loss = self.loss_fn(output, label)            
-            if phase == 'train':
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-            batch_results[self.run_ids[idx]] = {
-                'output': output,
-                'loss': loss.item()
-            }
-        
-        return batch_results
+        pass
 
     @abstractmethod
     def _run_epoch(self, epoch, phase):
         pass
 
     @abstractmethod
-    def _log_epoch_info(self, epoch_num, epoch_stats, phase):
+    def _log_epoch_info(self, phase):
         pass
 
-    def evaluate(self, log=True):
-        self.log = log
-        assert len(self.phases) > 1, "Need to define more than one phase to evaluate"
-        phase = "eval"
-        self.distloss_var_counts = {}
-        eval_stats = self._run_epoch(0, phase)
-        self._log_epoch_info(eval_stats, 0, phase)
-
-    def train(self, num_epochs, log=True):
+    def train(self, num_epochs, log=True, run_eval_epoch=False):
         if not self.restarted:
             self.setup_training(num_epochs, log)
         for epoch in range(num_epochs):
             self.current_epoch = epoch
             print(f"Epoch {epoch}/{num_epochs-1}", flush=True)
             print("_" * 10, flush=True)
-            stats = self._run_epoch(epoch)
-            if(stats is None):
-                print(f"Epoch {epoch} is bad; stopping", flush=True)
-                break
-            self._log_epoch_info(stats, epoch, phase="train")
-        
+            self._run_epoch(epoch, phase="train")
+            self._log_epoch_info(phase="train")
+            if run_eval_epoch:
+                self._run_epoch(epoch, phase="eval")
+                self._log_epoch_info(phase="eval")
         self.finish_training(num_epochs)
-
+    
     def finish_training(self, num_epochs, **kwargs):
         print(f"Finished training {self.number_of_models} model(s) for {num_epochs} epochs.", flush=True)
         losses = {}
@@ -194,299 +174,11 @@ class AbstractTrainer(ABC):data
                     
         return 0
 
-class ClimsimTrainer(AbstractTrainer):
-    def __init__(self, dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank=0, indices=None, **kwargs):
-        super().__init__(dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank, indices)
-        self.tracked_losses = ["mse"]
-        for run_id in self.run_ids:
-            loss_weights = self.training_configs[run_id].loss_weights
-            if(loss_weights['distribution'] > 0 and "distribution" not in self.tracked_losses):
-                self.tracked_losses.append("distribution")
-            if(loss_weights['diffusion'] > 0 and "diffusion" not in self.tracked_losses):
-                self.tracked_losses.append("diffusion")
-        
-        if(len(self.tracked_losses) > 1):
-            self.tracked_losses.append("total")
 
-        if ("diffusion" in self.tracked_losses):
-            self.unet = kwargs['unet'] if('unet' in kwargs) else tru.load_diffusion_model().to(self.device)
-            scheds = [kwargs['scheduler'] for _ in range(len(self.run_ids))] if 'scheduler' in kwargs else [tru.load_scheduler(mconfig) for mconfig in self.mconfigs.values()]
-            self.schedulers = dict(zip(self.run_ids, scheds))
-        #if ("distribution" in self.tracked_losses):
-        
-
-    def _make_image(self, y, image_dim=2):
-        if not torch.is_tensor(y):
-            y = torch.tensor(y)
-        ds = self.dataloaders['train'].dataset
-        # desired output is (BS, C, H, W)
-        return(tru.imagify(y, ds.dutils, 'y', image_dim))
-
-    def setup_training(self, num_epochs, log=True):
-        super().setup_training(num_epochs, log)
-        self.distloss_var_counts = {}
-    
-    def _return_loss_weights(self, run_id):
-        tconfig = self.training_configs[run_id]
-        lws = tconfig.loss_weights # base
-        match tconfig.loss_weight_strategy:
-            case "fixed":
-                return(lws)
-            case "epoch_fixed":
-                for loss_type, loss_sched in tconfig.loss_schedule.items():
-                    if (isinstance(loss_sched, int) and self.current_epoch < loss_sched):
-                        lws[loss_type] = 0
-                        continue
-                    elif not (loss_sched[0] <= self.current_epoch < loss_sched[1]):
-                        lws[loss_type] = 0
-            case "gradnorm":
-                # implement gradnorm
-                pass
-        return(lws)
-    
-    def apply_loss(self, loss, loss_type, batch_losses):
-        if(loss_type == "mse"):
-            pass
-
-    def _run_batch_ideal(self, x, y, phase, step):
-        batch_losses = {}
-        for run_id in self.run_ids:
-            batch_losses[run_id] = {}
-            for loss_type in self.tracked_losses:
-                loss, grads = self.apply_loss(x, y, loss_type, run_id, batch_losses[run_id])
-            lws = self._return_loss_weights(run_id)
-            
-
-            model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
-            lws = self._return_loss_weights(run_id)
-            y_hat = model(x)
-            mse_loss = self.loss_fn(y_hat, y)
-            if(phase == 'train' and self._gradients_ops(run_id, "mse", mse_loss, step)):
-                self.nan_incidents[run_id][-1]['inputs'] = (x, y)
-            total_loss = lws['mse'] * mse_loss
-            batch_losses[run_id]['mse'] = mse_loss.item()
-
-    def _run_batch(self, x, y, phase, step):
-        if(self.log):
-            t0 = tru.log_event("run-batch start", step=step)
-        batch_losses = {}
-        for run_id in self.run_ids:
-            batch_losses[run_id] = {}
-            model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
-            lws = self._return_loss_weights(run_id)
-            y_hat = model(x)
-            mse_loss = self.loss_fn(y_hat, y)
-            if(phase == 'train' and self._gradients_ops(run_id, "mse", mse_loss, step)):
-                self.nan_incidents[run_id][-1]['inputs'] = (x, y)
-            total_loss = lws['mse'] * mse_loss
-            batch_losses[run_id]['mse'] = mse_loss.item()
-            if('distribution' in self.tracked_losses):
-                dist_loss, VAR_IND = self.distribution_loss(y_hat, y, run_id, step)
-                if(phase == 'train' and self._gradients_ops(run_id, "distribution", dist_loss, step)):
-                    self.nan_incidents[run_id][-1]['inputs'] = (x, y)
-                batch_losses[run_id]['distribution'] = dist_loss.item()
-                batch_losses[run_id]['VAR_IND'] = VAR_IND
-                if(lws['distribution'] > 0 and not torch.isnan(dist_loss)):
-                    total_loss += lws['distribution'] * dist_loss
-                
-            if('diffusion' in self.tracked_losses):
-                diff_loss = self.diffusion_loss(y_hat, run_id)
-                if(phase == 'train' and self._gradients_ops(run_id, "diffusion", diff_loss, step)):
-                    self.nan_incidents[run_id][-1]['inputs'] = (x, y)
-                batch_losses[run_id]['diffusion'] = diff_loss.item()
-                if(lws['diffusion'] > 0 and not torch.isnan(diff_loss)):  
-                    total_loss += lws['diffusion'] * diff_loss
-            
-            batch_losses[run_id]['total'] = total_loss.item()
-            if(phase == 'train'):
-                optimizer.zero_grad()
-                total_loss.backward(retain_graph=False)
-                if(self.training_configs[run_id].clip_gradients):
-                    total_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
-                if(self.lr_schedulers[run_id] is not None):
-                    self.lr_schedulers[run_id].step()
-        losses = [batch_losses[run_id]['total'] for run_id in self.run_ids]
-        if(self.log):
-            tru.log_event("run-batch end", duration=time.time() - t0, loss=losses, step=step)
-        return(batch_losses)
-    
-    def _gradients_ops(self, run_id, loss_type, loss, step):
-        #assert loss_type in self.tracked_losses, f"loss_type {loss_type} must be one of {self.tracked_losses}"
-        model, optimizer = self.models[run_id], self.optimizers[run_id]
-
-        def register_incident(self, msg, tensor_name=None, tensor=None):
-            print(f"[NaN-Detect] step={step}  {run_id=} {loss_type=}  >>> {msg}", flush=True)
-            payload = dict(step=step, run_id=run_id, loss_type=loss_type, msg=msg, 
-                           tensor_name=tensor_name, 
-                           tensor_sample=tensor.clone().cpu() if tensor is not None else None, 
-                           state_dict={k: v.clone().cpu() for k, v in model.state_dict().items()}
-            )
-            self.nan_incidents.setdefault(run_id, []).append(payload)
-        
-        if not torch.isfinite(loss):
-            register_incident("LOSS is not finite (NaN or Inf)", "loss", loss.detach())
-            return -1
-
-        if (self.training_configs[run_id].log_gradients and step % self.bli == 0):
-            optimizer.zero_grad(set_to_none=True)           # clean slate
-            loss.backward(retain_graph=True)
-            gdict = self.gradients.setdefault(run_id, {}).setdefault(loss_type, {})
-            for n, p in model.named_parameters():
-                if(p.grad is None):
-                    continue
-                if torch.isfinite(p.grad).all():
-                    gdict.setdefault(n, []).append(
-                        (p.grad.mean().item(), p.grad.std().item())
-                    )
-                else:
-                    register_incident("GRAD has NaN/Inf", n, p.grad)
-                    return -1
-
-        # ------------------------------------------------------------------ #
-        # 5. Clean up so real backward sees a fresh gradient buffer
-        # ------------------------------------------------------------------ #
-        optimizer.zero_grad(set_to_none=True)
-
-        # Let caller know if we saw anything suspicious
-        return 0
-    
-    def distribution_loss(self, y_hat, y, run_id, step, epsilon=1e-3):
-        tconfig = self.training_configs[run_id]
-        VAR_IND, num_gaussian = select_distloss_var(tconfig, step)
-        assert isinstance(num_gaussian, int) and isinstance(VAR_IND, int), "num_gaussian and VAR_IND must be integers"
-        GMM = GaussianMixture(n_components=num_gaussian, reg_covar=epsilon)
-        GMM.fit(y[:,VAR_IND].detach().cpu().numpy().reshape(-1, 1))
-        mu = torch.tensor(GMM.means_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
-        pi = torch.tensor(GMM.weights_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:] 
-        var = torch.tensor(GMM.covariances_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
-        pi = torch.clamp(pi, min=epsilon)
-        var = torch.clamp(var, min=epsilon)
-        
-        with torch.no_grad():
-            h = 2 * torch.max(var).item()
-
-        bs, n_samples = tconfig.distloss_bs, tconfig.num_distloss_samples
-        batch_num = y_hat.shape[0] // bs
-        ix, jx = torch.randint(0, batch_num, (n_samples,)), torch.randint(0, batch_num, (n_samples,))
-        mask = ix == jx
-        while mask.any():
-            ix[mask] = torch.randint(0, batch_num, (mask.sum(),))
-            jx[mask] = torch.randint(0, batch_num, (mask.sum(),))
-            mask = ix == jx
-        loss = 0
-        for i,j in zip(ix, jx):
-            y1 = y_hat[i*bs : (i+1)*bs, VAR_IND]
-            y2 = y_hat[j*bs : (j+1)*bs, VAR_IND]
-            loss += u_q(y1, y2, mu, var, pi, h).mean()
-        return(loss / n_samples, VAR_IND)
-        
-
-    
-    def diffusion_loss(self, y_hat, run_id):
-        #raise NotImplementedError("Diffusion loss not implemented")
-        # TODO: y and yhat are of size (B, 128) and somehow need to convert into images for diffusion loss
-        tconfig = self.training_configs[run_id]
-        scheduler = self.schedulers[run_id]
-        y_image = self._make_image(y_hat, image_dim=2)
-        def encode(sample):
-            eps = torch.randn(sample.shape, device=sample.device) # BS x C x H x W
-            xt = scheduler.add_noise(sample, eps, torch.LongTensor([tconfig.diffusion_loss_noise_level])) # noisy image
-            return(xt)
-        def decode(xt):
-            with torch.no_grad():
-                for t in range(tconfig.diffusion_loss_noise_level, 0, -tconfig.diffusion_loss_decoding_interval):
-                    eps_theta = self.unet(xt, t).sample
-                    xt = scheduler.step(eps_theta, t, xt).prev_sample
-            return(xt)
-        y_image_denoised = decode(encode(y_image))
-        return(self.loss_fn(y_image_denoised, y_image))
-
-    def finish_training(self, num_epochs):
-        super().finish_training(num_epochs, distloss_var_counts=self.distloss_var_counts)
-
-    def _run_epoch(self, epoch, phase='train'):
-        for run_id in self.run_ids:
-            self.models[run_id].train(phase=='train')
-
-        """
-        Tracking 3 kinds of losses, which can be confusing: 
-        batch_losses: losses for a single batch. Because there might be many batches in an epoch, do not save every single batch loss
-        int current_losses: instead, divide epoch into batch_logging_interval sized sections, and save the mean of the losses for each section
-        int[] epoch_losses: the number of loss items saved for a single epoch is (batches_per_epoch / batch_logging_interval) 
-        """
-        e0 = tru.log_event(f"epoch-{epoch} start")
-        epoch_losses = defaultdict(dict)
-        with torch.set_grad_enabled(phase=='train'):
-            if(self.distributed):
-                self.dataloaders[phase].sampler.set_epoch(epoch)
-            for step, (X, Y) in enumerate(self.dataloaders[phase]):
-                if(step % 100 == 0):
-                    print(f"Currently at epoch {epoch}, step {step}/{len(self.dataloaders[phase])}", flush=True)                
-                batch_losses = self._run_batch(X.to(self.device), Y.to(self.device), phase, step)
-                if(batch_losses is None):
-                    print(f"Batch {step} is bad; stopping", flush=True)
-                    break
-                self.log_step(epoch_losses, batch_losses, step, phase)
-                
-        tru.log_event(f"epoch-{epoch} end", duration=time.time() - e0)
-        return(epoch_losses)
-    
-    def log_step(self, epoch_losses, batch_losses, step, phase, wandb=True):
-        if(wandb):
-            wandb_metrics = {"epoch" : self.current_epoch}
-            for run_id in self.run_ids:
-                if('distribution' in self.tracked_losses):
-                    wandb_metrics[f"{phase}/{run_id}/distloss_var"] = batch_losses[run_id]['VAR_IND']
-                for loss_type in self.tracked_losses:
-                    wandb_metrics[f"{phase}/{run_id}/{loss_type}"] = batch_losses[run_id][loss_type]
-            #global_step = self.current_epoch * len(self.dataloaders[phase]) + step
-            self.run.log(wandb_metrics)
-        
-        if (step % self.bli == 0):
-            #with open(self.log_file_path, "r") as f:
-            #    master_dict = json.load(f)
-            for run_id in self.run_ids:
-                if('distribution' in self.tracked_losses):
-                    epoch_losses[run_id].setdefault('distloss_var', []).append(batch_losses[run_id]['VAR_IND'])
-                for loss_type in self.tracked_losses:
-                    epoch_losses[run_id].setdefault(loss_type, []).append(batch_losses[run_id][loss_type])
-            #    master_dict[run_id][f'{phase}_epoch_losses'] = epoch_losses[run_id]
-            #with open(self.log_file_path, "w") as f:
-            #    json.dump(master_dict, f)
-        
-        if ( (step + 1) % self.ckpt_interval == 0 and phase == 'train'): 
-            for run_id in self.run_ids:
-                self._save_checkpoint(run_id)
-
-    def _log_epoch_info(self, epoch_stats, epoch_num, phase='train'):
-        with open(self.log_file_path, "r") as f:
-            master_dict = json.load(f)
-        print("\n\n", flush=True)
-        for run_id in self.run_ids:
-            ldict = self.losses.setdefault(run_id, {}).setdefault(phase, {})
-            for loss_type in self.tracked_losses:
-                ldict[loss_type] = ldict.setdefault(loss_type, []) + epoch_stats[run_id][loss_type]
-                avg_loss = sum(epoch_stats[run_id][loss_type]) / len(epoch_stats[run_id][loss_type])
-                print(f"avg {loss_type} loss for epoch {epoch_num}, run_id {run_id}: {avg_loss}", flush=True)
-                if(phase == 'train' and loss_type == 'total'):
-                    if(avg_loss < self.best_losses.setdefault(run_id, float('inf'))):
-                        print(f"new best! saving new checkpoint at epoch {epoch_num}", flush=True)
-                        self.best_losses[run_id] = avg_loss
-                        self._save_checkpoint(run_id, cid='best-')
-            
-                master_dict[run_id].setdefault('losses', {}).setdefault(phase, {}).setdefault(loss_type, []).extend(ldict[loss_type])
-                
-                if(phase == 'train'):
-                    master_dict[run_id]['gradients'] = self.gradients[run_id]
-            master_dict[run_id][f'{phase}_epoch_losses'] = None
-
-        with open(self.log_file_path, "w") as f:
-            json.dump(master_dict, f)
 
 class DiffusionTrainer(AbstractTrainer):
-    def __init__(self, dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank=0, indices=None, **kwargs):
-        super().__init__(dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank, indices)
+    def __init__(self, dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id, rank=0, **kwargs):
+        super().__init__(dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id, rank)
         self.scheduler = tru.load_scheduler(mconfigs[0])
     
     def _run_batch(self, images, phase='train'):
@@ -588,6 +280,7 @@ class DiffusionTrainer(AbstractTrainer):
         #if(self.event_file):
         #    self.event_file.close()
 
+
 def score_function(x, mu, var, pi, clamp_val=10, epsilon=1e-7):
     mahal = (x[:,None] - mu) ** 2 / (2 * var)
     log_probs = torch.log(pi) - 0.5 * torch.log(var * 2 * torch.pi) - torch.clamp(mahal, max=clamp_val)
@@ -633,6 +326,56 @@ def select_distloss_var(tconfig, step, **kwargs):
     else:
         i = random.randrange(len(var_inds))
     return(var_inds[i], ng[i])
+
+
+def distribution_loss(trainer, y_hat, y, run_id, step, epsilon=1e-3):
+    tconfig = trainer.training_configs[run_id]
+    VAR_IND, num_gaussian = select_distloss_var(tconfig, step)
+    assert isinstance(num_gaussian, int) and isinstance(VAR_IND, int), "num_gaussian and VAR_IND must be integers"
+    GMM = GaussianMixture(n_components=num_gaussian, reg_covar=epsilon)
+    GMM.fit(y[:,VAR_IND].detach().cpu().numpy().reshape(-1, 1))
+    mu = torch.tensor(GMM.means_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
+    pi = torch.tensor(GMM.weights_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:] 
+    var = torch.tensor(GMM.covariances_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
+    pi = torch.clamp(pi, min=epsilon)
+    var = torch.clamp(var, min=epsilon)
+    
+    with torch.no_grad():
+        h = 2 * torch.max(var).item()
+
+    bs, n_samples = tconfig.distloss_bs, tconfig.num_distloss_samples
+    batch_num = y_hat.shape[0] // bs
+    ix, jx = torch.randint(0, batch_num, (n_samples,)), torch.randint(0, batch_num, (n_samples,))
+    mask = ix == jx
+    while mask.any():
+        ix[mask] = torch.randint(0, batch_num, (mask.sum(),))
+        jx[mask] = torch.randint(0, batch_num, (mask.sum(),))
+        mask = ix == jx
+    loss = 0
+    for i,j in zip(ix, jx):
+        y1 = y_hat[i*bs : (i+1)*bs, VAR_IND]
+        y2 = y_hat[j*bs : (j+1)*bs, VAR_IND]
+        loss += u_q(y1, y2, mu, var, pi, h).mean()
+    return(loss / n_samples, VAR_IND)
+    
+def diffusion_loss(trainer, y_hat, run_id):
+    #raise NotImplementedError("Diffusion loss not implemented")
+    # TODO: y and yhat are of size (B, 128) and somehow need to convert into images for diffusion loss
+    tconfig = trainer.training_configs[run_id]
+    scheduler = trainer.schedulers[run_id]
+    y_image = trainer._make_image(y_hat, image_dim=2)
+    def encode(sample):
+        eps = torch.randn(sample.shape, device=sample.device) # BS x C x H x W
+        xt = scheduler.add_noise(sample, eps, torch.LongTensor([tconfig.diffusion_loss_noise_level])) # noisy image
+        return(xt)
+    def decode(xt):
+        with torch.no_grad():
+            for t in range(tconfig.diffusion_loss_noise_level, 0, -tconfig.diffusion_loss_decoding_interval):
+                eps_theta = trainer.unet(xt, t).sample
+                xt = scheduler.step(eps_theta, t, xt).prev_sample
+        return(xt)
+    y_image_denoised = decode(encode(y_image))
+    return(trainer.loss_fn(y_image_denoised, y_image))
     
                     
 class VAETrainer(AbstractTrainer):
@@ -747,3 +490,13 @@ class VAETrainer(AbstractTrainer):
         else:
             self._run_eval_epoch(epoch)
         print(f"Eval Loss on epoch {epoch}: [mse : {self.eval_losses['mse'][-1]}, kl {self.eval_losses['kl'][-1]}]", flush=True)
+
+
+
+
+
+def register_incident(trainer, msg, step, run_id, loss_type, **kwargs):
+    print(f"[NaN-Detect] at {step=} for {run_id} with {loss_type=} >>> {msg}", flush=True)
+    payload = dict(step=step, run_id=run_id, loss_type=loss_type, msg=msg, **kwargs)
+    trainer.nan_incidents.setdefault(run_id, []).append(payload)
+    return -1

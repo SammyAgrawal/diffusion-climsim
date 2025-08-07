@@ -51,14 +51,16 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, shuffle_
     dconfig.climsim_type = "low-res-expanded" 
     dconfig.dataset_type = dataset_type
     dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
-    dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
+    if "train_test_split" in kwargs:
+        dconfig.train_test_split = kwargs["train_test_split"]
+    else:
+        dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
     dconfig.data_vars = data_vars
     dconfig.use_tendencies = use_tendencies
     dconfig.shuffle_indices = shuffle_indices
 
     dl_params = DataLoaderParams()
-    dl_params.batch_size = batch_size
-    dl_params.batch_size *= 384
+    dl_params.batch_size = batch_size * 384
     dl_params.shuffle = True
     if(torch.cuda.is_available() and batch_size > 16):
         dl_params.pin_memory = True
@@ -85,9 +87,11 @@ class TrainingConfig:
     lr_scheduler: str = None
     lr_warmup_steps = 50
     learning_rate: float = 1e-4
-    loss_weights: Dict = field(default_factory=lambda: {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2})
-    loss_schedule: Dict = field(default_factory=lambda: {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]})
-    loss_weight_params: Dict = field(default_factory=lambda: {"strategy": "epoch_fixed", "lr": 1e-4, "alpha": 1.0, "gradnorm_layer" : -2})
+    loss_weight_params: Dict = field(default_factory=lambda: {
+                    "strategy": "gradnorm", "lr": 0.025, "alpha": 0.5, "gradnorm_layer" : -2, "T" : 3.0, "update_interval": 5,
+                    "weights":{'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2},
+                    "schedule" : {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]}
+                    })
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
     mixed_precision = "fp16"
