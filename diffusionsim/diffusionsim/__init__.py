@@ -14,4 +14,4 @@ else:
     __all__ = ['DIFFUSERS_AVAILABLE']
 
 
-from .trainers import DiffusionTrainer, VAETrainer, ClimsimTrainer
+from .trainers import DiffusionTrainer, VAETrainer

@@ -215,7 +215,6 @@ def expand_levels(self, ds, vars, dim_name):
 
 def imagify(x, dutils, variable='y', image_dim=2):
     if image_dim is None:
-        print("image_dim is None, returning original tensor")
         return(x)
     # X is tensor of shape (BS'=BS*ncol, feature_len) where batch size is multipled by 384
     assert variable in ['x', 'y'], "Variable must be either x or y"
