@@ -22,21 +22,22 @@ REF_BATCH_SIZE = 128
 dataset_type="climsim"
 in_notebook = True
 
-NUM_MODELS = 7
+NUM_MODELS = 5
 os.environ['WANDB_NAME'] = ""
 os.environ['WANDB_NOTES'] = ""
 
 
 def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_size=128):
-    dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, dataset_type, batch_size=batch_size, use_tendencies=False)
-    dconfig.shuffle_indices = True
-    dconfig.train_test_split = [0.15, 0.05]
+    shuffle_indices = True
+    dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, shuffle_indices, 
+                             dataset_type, batch_size, use_tendencies=False)
+    dconfig.train_test_split = [0.25, 0.10]
     tconfigs, mconfigs = [], []
 
-    learning_rates = [1e-5, 5e-5, 1e-4, 2e-4, 6e-4, 0.001, 0.005]
-    diffloss_weights = [0.0, 0.0, 0.0, 0.0]
-    distloss_weights = [0.0, 0.0, 0.0, 0.0]
-    target_variables_distloss = [68, 73, 82]
+    learning_rates = [5e-5, 1e-4, 5e-4, 1e-3, 2.5e-3]
+    #diffloss_weights = [5.0, 5.0, 5.0, 5.0]
+    #distloss_weights = [0.1, 0.1, 0.1, 0.1]
+    target_variables_distloss = [73, 59, 123]
     num_gaussians = [2, 2, 2]
     
     #run_ids = f"{base_run_id}-mse {base_run_id}-diff {base_run_id}-dist {base_run_id}-joint".split()
@@ -45,11 +46,20 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
     for i in range(num_models):
         tconfig = tru.TrainingConfig(exp_id=exp_id, run_id=run_ids[i])
         tconfig.phases = ['train', 'eval']
-        tconfig.learning_rate = learning_rates[i] * batch_size / REF_BATCH_SIZE
-        tconfig.loss_weights = {'mse': 1.0, 'distribution': distloss_weights[0], 'diffusion': diffloss_weights[0]}
-        tconfig.loss_schedule = {'mse': [0,100], 'distribution': 2 , 'diffusion': 2}
-        tconfig.clip_gradients = True
-        tconfig.lr_scheduler = "cosine"
+        tconfig.learning_rate_params.update({
+            "base_learning_rate" : learning_rates[i] * batch_size / REF_BATCH_SIZE,
+            "step_size" : 500,
+            "gamma" : 0.95,
+            "scheduler_type" : "steplr",
+        })
+        tconfig.loss_weight_params.update({
+            "strategy" : "gradnorm",
+            "update_interval" : 10,
+            "alpha" : 0.5,
+            "weights" : {'mse': 1.0, 'distribution': 0.1, 'diffusion': 5.0},
+            "schedule" : {'mse': [0,100], 'distribution': 2 , 'diffusion': 2}
+        })
+        tconfig.clip_gradients = False
         
         tconfig.distloss_var_inds = target_variables_distloss
         tconfig.num_gaussians = num_gaussians
@@ -76,15 +86,15 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
 
 
 RESTART_FROM_CKPT = False
-RERUN = True
+RERUN = False
 torch.set_grad_enabled(True)
 
 EXP_DIR = "/mnt/home/ssa2206/Climsim/experiments"
 if __name__ == "__main__":
     #typer.run(main)
     #typer.run(test_args)
-    exp_id = "LossWeightTesting"
-    run_id = "JointTest"
+    exp_id = "MultiTask"
+    run_id = "lr-sweep2"
     run_start_time = tru.log_event("run start", exp_id=exp_id, run_id=run_id)
     t0 = tru.log_event("setup start")
     if(RERUN):
@@ -93,7 +103,8 @@ if __name__ == "__main__":
     else:
         base_dir = os.path.join(EXP_DIR, exp_id)
         tconfigs, mconfigs, dconfig = setup_climsim_run(NUM_MODELS, exp_id, run_id, data_vars='v1', batch_size=256)
-        trainer = ClimsimTrainer(dconfig, mconfigs, tconfigs, torch.nn.MSELoss(), base_dir, run_id, rank=0)
+        dataloaders, indices = tru.load_dataloaders(dconfig, log=True)
+        trainer = ClimsimTrainer(dataloaders, indices, mconfigs, tconfigs, base_dir, run_id, rank=0)
     
     tru.log_event("setup end", duration=time.time() - t0)
     if (RESTART_FROM_CKPT):

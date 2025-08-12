@@ -83,10 +83,10 @@ class TrainingConfig:
     distributed_training: bool = False
     # learning parameters
     optimizer: str = 'adam'
-    betas: Tuple[float, float] = (0.9, 0.999)
-    lr_scheduler: str = None
-    lr_warmup_steps = 50
-    learning_rate: float = 1e-4
+    learning_rate_params: Dict = field(default_factory=lambda: {
+        "base_learning_rate" : 1e-4, "scheduler_type" : None, "patience" : 5, "betas" : (0.9, 0.999),
+        "lr_warmup_steps" : 20, "step_size" : 100, "gamma" : 0.9, "min_lr" : 1e-6,
+    })
     loss_weight_params: Dict = field(default_factory=lambda: {
                     "strategy": "gradnorm", "lr": 0.025, "alpha": 0.5, "gradnorm_layer" : -2, "T" : 3.0, "update_interval": 5,
                     "weights":{'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2},
@@ -229,7 +229,6 @@ model_table = {
     'vintage_diffusion' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b'),
 }
 
-
 def load_diffusion_model(model_id='best_diffusion', base_dir="/mnt/home/ssa2206/Climsim/experiments"):
     exp_id, log_id, run_id = model_table[model_id]
     log_dict_path = os.path.join(base_dir, exp_id, f"{log_id}.json")
@@ -240,31 +239,64 @@ def load_diffusion_model(model_id='best_diffusion', base_dir="/mnt/home/ssa2206/
     model = load_model_from_ckpt(ckpt, mconfig)
     return(model)
 
-
 def load_lr_scheduler(tconfig, optim, dataloader):
-    match tconfig.lr_scheduler:
+    total_steps = len(dataloader) * tconfig.num_epochs
+    params = tconfig.learning_rate_params
+    match params['scheduler_type']:
+        # -------------------- HuggingFace/Diffusers schedulers --------------------
         case "cosine":
-            lr = diffusers.optimization.get_cosine_schedule_with_warmup(
+            return diffusers.optimization.get_cosine_schedule_with_warmup(
                 optimizer=optim, 
-                num_warmup_steps=tconfig.lr_warmup_steps, 
-                num_training_steps=len(dataloader) * tconfig.num_epochs,
+                num_warmup_steps=params.get("lr_warmup_steps", 0), 
+                num_training_steps=total_steps,
             )
+        case "linear":
+            return diffusers.optimization.get_linear_schedule_with_warmup(
+                optimizer=optim,
+                step_size=params.get("step_size", 10),
+                gamma=params.get("gamma", 0.9)
+            )
+
+        # -------------------- PyTorch built-in schedulers --------------------
+        case "steplr":
+            return torch.optim.lr_scheduler.StepLR(
+                optimizer=optim,
+                step_size=params.get("step_size", 10),
+                gamma=params.get("gamma", 0.9)
+            )
+        case "exponential":
+            return torch.optim.lr_scheduler.ExponentialLR(
+                optimizer=optim,
+                gamma=params.get("gamma", 0.95)
+            )
+        case "cosineanneal":
+            return torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer=optim,
+                T_max=total_steps,
+                eta_min=params.get("min_lr", 0)
+            )
+        case "reduce_on_plateau":
+            return torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer=optim,
+                mode=params.get("mode", "min"),
+                factor=params.get("gamma", 0.75),
+                patience=params.get("patience", 5),
+                min_lr=params.get("min_lr", 0)
+            )
+
+        # -------------------- No scheduler --------------------
         case _:
-            #print(f"LR scheduler {tconfig.lr_scheduler} not supported")
             return None
-    return(lr)
+
  
 def create_optimizer(model, tconfig):
     match tconfig.optimizer.lower():
         case "adam":
-            try:
-                my_betas = tconfig.betas
-            except AttributeError:
-                my_betas = (0.9, 0.999) # default values
-            optim = torch.optim.Adam(model.parameters(), lr=tconfig.learning_rate, betas=my_betas)
+            my_betas = tconfig.learning_rate_params.get("betas", (0.9, 0.999))
+            optim = torch.optim.Adam(model.parameters(), lr=tconfig.learning_rate_params.get("base_learning_rate"), betas=my_betas)
 
         case _: # defaults to SGD
-            optim = torch.optim.SGD(model.parameters(), lr=tconfig.learning_rate)
+            optim = torch.optim.SGD(model.parameters(), lr=tconfig.learning_rate_params.get("base_learning_rate"))
     return(optim)
 
 def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):

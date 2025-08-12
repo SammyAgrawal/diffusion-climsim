@@ -211,9 +211,9 @@ def plot_gradients(run, loss_type: str, param_name: str = '0.weight', log: bool 
         c = plotly.colors.DEFAULT_PLOTLY_COLORS[i % len(plotly.colors.DEFAULT_PLOTLY_COLORS)]
 
         data[run_id] = [
-            go.Scatter(x=x, y=means + stds, mode='lines', line=dict(width=0, color=c), showlegend=False, hoverinfo='skip', legendgroup=key),
-            go.Scatter(x=x, y=means - stds, fill='tonexty', line=dict(width=0, color=c), showlegend=False, hoverinfo='skip', legendgroup=key),
-            go.Scatter(x=x, y=means, mode='lines', name=key, line=dict(width=2, color=c), showlegend=True, legendgroup=key)
+            go.Scatter(x=x, y=means + stds, mode='lines', line=dict(width=0, color=c), showlegend=False, hoverinfo='skip', legendgroup=run_id),
+            go.Scatter(x=x, y=means - stds, fill='tonexty', line=dict(width=0, color=c), showlegend=False, hoverinfo='skip', legendgroup=run_id),
+            go.Scatter(x=x, y=means, mode='lines', name=key, line=dict(width=2, color=c), showlegend=True, legendgroup=run_id)
         ]
     plot_data = dict(
         title=f"{loss_type} Gradient throughout training",
