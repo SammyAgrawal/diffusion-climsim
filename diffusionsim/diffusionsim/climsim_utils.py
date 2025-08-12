@@ -220,12 +220,12 @@ def imagify(x, dutils, variable='y', image_dim=2):
     assert variable in ['x', 'y'], "Variable must be either x or y"
     image_dim = int(image_dim)
     if(image_dim == 1):
-        # desired output is (BS', lev, C_var) where lev is 64 
+        # desired output is (BS', C_var, lev) where lev is 64 
         var_map = dutils.input_var_idx if variable == 'x' else dutils.target_var_idx
-        ximg = torch.zeros(x.size(0), 64, len(var_map))
+        ximg = torch.zeros(x.size(0), len(var_map), 64)
         i = 0
         for var, (start, stop) in var_map.items():
-            ximg[:,-60:,i] = x[:, start:stop] if stop-start>1 else x[:, start:stop].expand(-1, 60)
+            ximg[:,i, -60:] = x[:, start:stop] if stop-start>1 else x[:, start:stop].expand(-1, 60)
             i += 1
     elif(image_dim == 2):
         # desired output is (BS, C_mlv, H, W)

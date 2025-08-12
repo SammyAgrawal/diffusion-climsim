@@ -10,7 +10,12 @@ import diffusionsim.training_utils as tru
 from collections import defaultdict
 import dataclasses
 import random
-import wandb
+WANDB_AVAILABLE = True
+try:
+    import wandb
+except:
+    WANDB_AVAILABLE = False
+    print("WANDB NOT AVAILABLE")
 from sklearn.mixture import GaussianMixture
 import math
 
@@ -77,12 +82,13 @@ class AbstractTrainer(ABC):
         if log:
             for dirname in self.dirs.values():
                 Path(dirname).mkdir(parents=True, exist_ok=True)
-            self.run = wandb.init(
-                entity="samart-agr-columbia-university", 
-                project="diffusionsim",
-                name=self.base_run_id,
-                config=master_dict,
-            )
+            if WANDB_AVAILABLE:
+                self.run = wandb.init(
+                    entity="samart-agr-columbia-university", 
+                    project="diffusionsim",
+                    name=self.base_run_id,
+                    config=master_dict,
+                )
             
             print(f"Saving configs to {self.log_file_path}", flush=True)
             with open(self.log_file_path, "w") as f:
