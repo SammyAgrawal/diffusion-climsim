@@ -13,7 +13,7 @@ import random
 import wandb
 from sklearn.mixture import GaussianMixture
 
-class AbstractTrainer(ABC):data
+class AbstractTrainer(ABC):
     def __init__(self, dconfig, mconfigs, tconfigs, base_dir, base_run_id, rank, indices=None, **kwargs):
         self.device = f'cuda:{rank}' if torch.cuda.is_available() else 'cpu'
         self.rank = rank
