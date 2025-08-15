@@ -1,0 +1,196 @@
+_wandb:
+    value:
+        cli_version: 0.21.1
+        e:
+            l3l463h83feleq8sezza2nfgcdfwqdba:
+                cpu_count: 4
+                cpu_count_logical: 8
+                cudaVersion: "12.2"
+                disk:
+                    /:
+                        total: "101203873792"
+                        used: "31969935360"
+                email: samart.agr@gmail.com
+                executable: /srv/conda/envs/notebook/bin/python
+                git:
+                    commit: b5701011df8054d7e5f42d6217b48a07be0ba2ed
+                    remote: https://github.com/SammyAgrawal/diffusion-climsim.git
+                gpu: Tesla T4
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Turing
+                      cudaCores: 2560
+                      memoryTotal: "16106127360"
+                      name: Tesla T4
+                      uuid: GPU-2f38055c-e157-e4a4-cb73-d6b3f2927e78
+                host: jupyter-sammyagrawal
+                memory:
+                    total: "31547400192"
+                os: Linux-6.6.56+-x86_64-with-glibc2.35
+                program: <python with no main file>
+                python: CPython 3.12.11
+                root: /home/jovyan/Samarth/ClimsimProjectWork/diffusion-climsim/Notebooks
+                startedAt: "2025-08-15T02:33:23.782132Z"
+                writerId: l3l463h83feleq8sezza2nfgcdfwqdba
+        m: []
+        python_version: 3.12.11
+        t:
+            "1":
+                - 1
+                - 5
+                - 49
+                - 53
+                - 54
+                - 83
+            "2":
+                - 1
+                - 5
+                - 49
+                - 53
+                - 54
+                - 83
+            "3":
+                - 13
+                - 16
+            "4": 3.12.11
+            "5": 0.21.1
+            "8":
+                - 1
+            "12": 0.21.1
+            "13": linux-x86_64
+data_config:
+    value:
+        climsim_type: low-res-expanded
+        data_dir: /mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests
+        data_vars: v2
+        dataloader_params:
+            batch_size: 12288
+            multiprocessing_context: null
+            num_workers: 0
+            persistent_workers: false
+            pin_memory: true
+            prefetch_factor: null
+            shuffle: true
+        dataset_type: diffusion1d
+        log_batching: true
+        norm_info: image
+        shuffle_indices: false
+        source: gcsfs
+        train_test_split:
+            - 1
+        use_tendencies: false
+test1da:
+    value:
+        model_config:
+            ae_hidden_dims:
+                - 64
+                - 32
+                - 16
+            bl_hidden_dims:
+                - 256
+                - 256
+                - 256
+            bl_input_size: 124
+            bl_load_model_name: null
+            bl_model_dir: /mnt/home/ssa2206/Climsim/climsim-online/storage/shared_e3sm/saved_models/wrapper
+            bl_output_size: 128
+            data_vars: v2
+            disable_enc_logstd_bias: true
+            latent_dims: 16
+            model_type: ddom_diffusion
+            num_channels: 128
+            scheduler:
+                beta_end: 0.02
+                beta_schedule: linear
+                clip_sample: false
+                clip_sample_range: 4
+                num_train_timesteps: 100
+            scheduler_inference_steps: 100
+            scheduler_type: ddpm
+            unet:
+                block_out_channels:
+                    - 32
+                    - 32
+                    - 64
+                down_block_types:
+                    - DownResnetBlock1D
+                    - AttnDownBlock1D
+                    - DownBlock1D
+                in_channels: 14
+                layers_per_block: 1
+                norm_num_groups: 2
+                out_channels: 14
+                sample_size:
+                    - 16
+                    - 24
+                up_block_types:
+                    - UpResnetBlock1D
+                    - AttnUpBlock1D
+                    - UpBlock1D
+        training_config:
+            batch_checkpoint_interval: 10
+            batch_logging_interval: 16
+            clip_gradients: false
+            diffusion_loss_decoding_interval: 1
+            diffusion_loss_noise_level: 10
+            distloss_bs: 1152
+            distloss_type: ksd
+            distloss_var_inds:
+                - 68
+                - 60
+                - 73
+                - 82
+            distloss_var_sel: uniform
+            distributed_training: false
+            exp_id: diffusion_hp_search
+            learning_rate_params:
+                betas:
+                    - 0.9
+                    - 0.999
+                gamma: 0.9
+                learning_rate: 1.25e-05
+                lr_scheduler: linear
+                lr_warmup_steps: 50
+                min_lr: 1e-06
+                patience: 5
+                step_size: 100
+            log_gradients: false
+            loss_weight_params:
+                T: 3
+                alpha: 0.5
+                gradnorm_layer: -2
+                loss_schedule:
+                    diffusion:
+                        - 0
+                        - 100
+                    distribution:
+                        - 0
+                        - 100
+                    kl_div:
+                        - 0
+                        - 100
+                    mse:
+                        - 0
+                        - 100
+                loss_weights:
+                    diffusion: 0
+                    distribution: 0
+                    kl_div: 0.2
+                    mse: 1
+                lr: 0.025
+                strategy: gradnorm
+                update_interval: 5
+            max_T_sample: 51
+            num_distloss_samples: 8
+            num_epochs: 1
+            num_gaussians:
+                - 3
+                - 2
+                - 3
+                - 2
+            optimizer: adam
+            phases:
+                - train
+            push_to_hub: false
+            run_id: test1da
+            save_best_epoch: true

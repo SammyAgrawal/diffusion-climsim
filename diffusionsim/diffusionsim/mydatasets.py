@@ -53,15 +53,11 @@ def load_dataset(dconfig, log=False, indices=None):
 def load_dataloaders(dconfig, log=False, indices=None):
     datasets, indices = load_dataset(dconfig, log, indices)
     params = asdict(dconfig.dataloader_params)
+    params['batch_size'] = 1
     dataloaders = []
     for dataset in datasets:
-        match dconfig.dataset_type.lower():
-            case ds if "xbatch" in ds or "image" in ds or "climsim" in ds:
-                # batch size is already set via xbatcher in dataset sample; dataloader should just return one item
-                params['batch_size'] = 1
-                dataloaders.append(DataLoader(dataset, collate_fn=collate_test_fn, **params))
-            case _:
-                dataloaders.append(DataLoader(dataset, **params))
+        # batch size is already set via xbatcher in dataset sample; dataloader should just return one item
+        dataloaders.append(DataLoader(dataset, collate_fn=collate_test_fn, **params))
     return(dataloaders, indices)
 
 def train_test_split(dsi, dso, split_frac=[0.75, 0.25], indices=None, typ='xr', shuffle=True):
@@ -172,7 +168,6 @@ class ClimsimDataset(torch.utils.data.Dataset):
         if(self.log):
             log_event("get-item end", batch_idx=idx, duration=time.time() - t0)
         if self.output_only:
-            print(y.shape)
             return(cut.imagify(y, self.dutils, 'y', self.image_dim))
         return(self.make_image(x,y))
     
@@ -229,11 +224,10 @@ class Diffusion1DDataset(torch.utils.data.Dataset):
         self.data = (
             self.expand_levels(dso, self.target_vars, "mlo")
             .stack(sample=("time", "ncol"))
-            .transpose("sample", "lev", "mlo")
+            .transpose("sample",  "mlo", "lev")
         )
 
         set_ds_norm_info(self, self.dutils.use_tendencies)
-        print(self.ys.shape)
 
         self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(
             sample=dconfig.dataloader_params.batch_size, lev=60, mlo=self.data.mlo.size
@@ -249,8 +243,8 @@ class Diffusion1DDataset(torch.utils.data.Dataset):
         mlo = self.bgen[idx].load()
         mlo = torch.tensor(mlo.data, dtype=torch.float32)
         mlo = (mlo - self.ym) / self.ys
-        zero_pad = torch.zeros(mlo.size(0), 64-mlo.size(1), mlo.size(2))
-        mlo = torch.cat([zero_pad, mlo], dim=1)
+        zero_pad = torch.zeros(mlo.size(0), mlo.size(1), 64-mlo.size(2))
+        mlo = torch.cat([zero_pad, mlo], dim=2)
         return(mlo)
 
     def __len__(self):
@@ -309,10 +303,10 @@ def set_ds_norm_info(ds, use_tendencies):
         var_order = "xxyy"
     
     if(isinstance(ds, Diffusion1DDataset)):
-        a = ds.expand_levels(A, IO_map[var_order[0]][0], IO_map[var_order[0]][1]).transpose("lev", IO_map[var_order[0]][1])
-        b = ds.expand_levels(B, IO_map[var_order[1]][0], IO_map[var_order[1]][1]).transpose("lev", IO_map[var_order[1]][1])
-        c = ds.expand_levels(C, IO_map[var_order[2]][0], IO_map[var_order[2]][1]).transpose("lev", IO_map[var_order[2]][1])
-        d = ds.expand_levels(D, IO_map[var_order[3]][0], IO_map[var_order[3]][1]).transpose("lev", IO_map[var_order[3]][1])
+        a = ds.expand_levels(A, IO_map[var_order[0]][0], IO_map[var_order[0]][1])#.transpose("lev", IO_map[var_order[0]][1])
+        b = ds.expand_levels(B, IO_map[var_order[1]][0], IO_map[var_order[1]][1])
+        c = ds.expand_levels(C, IO_map[var_order[2]][0], IO_map[var_order[2]][1])
+        d = ds.expand_levels(D, IO_map[var_order[3]][0], IO_map[var_order[3]][1])
     else:
         a = A[IO_map[var_order[0]][0]].to_stacked_array(IO_map[var_order[0]][1], sample_dims=())
         b = B[IO_map[var_order[1]][0]].to_stacked_array(IO_map[var_order[1]][1], sample_dims=())

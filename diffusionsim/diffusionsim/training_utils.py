@@ -253,12 +253,13 @@ def load_lr_scheduler(tconfig, optim, dataloader):
                 optimizer=optim, 
                 num_warmup_steps=params.get("lr_warmup_steps", 0), 
                 num_training_steps=total_steps,
+                num_cycles=params.get("cycles", 0.5)
             )
         case "linear":
             return diffusers.optimization.get_linear_schedule_with_warmup(
                 optimizer=optim,
-                step_size=params.get("step_size", 10),
-                gamma=params.get("gamma", 0.9)
+                num_warmup_steps=params.get("lr_warmup_steps", 0),
+                num_training_steps=total_steps,
             )
 
         # -------------------- PyTorch built-in schedulers --------------------
