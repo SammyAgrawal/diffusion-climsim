@@ -40,7 +40,7 @@ def load_dataset(dconfig, log=False, indices=None):
     datasets = []
     for (dsi, dso) in dsets:
         match dconfig.dataset_type.lower():
-            case ds if "1d" in ds or "xbatch" in ds:
+            case ds if "2d" in ds or "xbatch" in ds:
                 datasets.append(Diffusion2DDataset(dso.unify_chunks(), dutils, dconfig, log=log))
             case ds if "diffusion" in ds:
                 datasets.append(Diffusion1DDataset(dso.unify_chunks(), dutils, dconfig, log))
