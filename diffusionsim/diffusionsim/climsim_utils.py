@@ -178,10 +178,10 @@ def image_regridding(ds):
 def get_norm_info(style='image', sanitize=True):
 
     if(style == 'scale' or style == 'tendencies'):
-        input_mean = xr.open_dataset(get_path('input_mean.nc'))
-        input_max = xr.open_dataset(get_path('input_max.nc'))
-        input_min = xr.open_dataset(get_path('input_min.nc'))
-        output_scale = xr.open_dataset(get_path('output_scale.nc'))
+        input_mean = xr.open_dataset(get_path('input_mean.nc')).load()
+        input_max = xr.open_dataset(get_path('input_max.nc')).load()
+        input_min = xr.open_dataset(get_path('input_min.nc')).load()
+        output_scale = xr.open_dataset(get_path('output_scale.nc')).load()
         if(sanitize):
             input_max['pbuf_N2O'].data = input_max.pbuf_N2O.mean().item() * np.ones_like(input_max['pbuf_N2O'].data)
             input_min['pbuf_N2O'].data = input_min.pbuf_N2O.mean().item() * np.ones_like(input_min['pbuf_N2O'].data)
@@ -190,10 +190,10 @@ def get_norm_info(style='image', sanitize=True):
         return(input_mean, input_max, input_min, output_scale)
     
     else:
-        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
-        X_std = xr.open_dataset(get_path("image_xstd.nc"))
-        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
-        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
+        X_mean = xr.open_dataset(get_path("image_xmean.nc")).load()
+        X_std = xr.open_dataset(get_path("image_xstd.nc")).load()
+        Y_mean = xr.open_dataset(get_path("image_ymean.nc")).load()
+        Y_std = xr.open_dataset(get_path("image_ystd.nc")).load()
 
         if(sanitize):
             X_mean['state_q0002'].data = X_mean['state_q0002'].mean().item() * np.ones_like(X_mean['state_q0002'].data)

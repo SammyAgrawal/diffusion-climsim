@@ -194,9 +194,9 @@ class ClimsimTrainer(AbstractTrainer):
         self.track_loss_weights = False
         for run_id in self.run_ids:
             lw_params = self.training_configs[run_id].loss_weight_params #@['weights']
-            if(lw_params['weights']['distribution'] > 0 and "distribution" not in self.tracked_losses):
+            if(lw_params['loss_weights']['distribution'] > 0 and "distribution" not in self.tracked_losses):
                 self.tracked_losses.append("distribution")
-            if(lw_params['weights']['diffusion'] > 0 and "diffusion" not in self.tracked_losses):
+            if(lw_params['loss_weights']['diffusion'] > 0 and "diffusion" not in self.tracked_losses):
                 self.tracked_losses.append("diffusion")
             if(lw_params['strategy'] == "gradnorm"):
                 self.track_loss_weights = True
@@ -220,7 +220,7 @@ class ClimsimTrainer(AbstractTrainer):
         self.loss_weights, self.lw_optimizers, self.lw_history, self.L0 = {}, {}, defaultdict(list), {}
         for run_id in self.run_ids:
             params = self.training_configs[run_id].loss_weight_params
-            lws = [params['weights'][k] for k in self.tracked_losses]
+            lws = [params['loss_weights'][k] for k in self.tracked_losses]
             if self.track_loss_weights:
                 lws = torch.tensor(lws, device=self.device, dtype=torch.float64).mul_(params['T'] / sum(lws))
                 self.loss_weights[run_id] = lws.requires_grad_(True)
@@ -237,7 +237,7 @@ class ClimsimTrainer(AbstractTrainer):
             case "epoch_fixed":
                 lws = self.loss_weights[run_id].clone()
                 for i, loss_type in enumerate(self.tracked_losses):
-                    loss_sched = params['schedule'][loss_type]
+                    loss_sched = params['loss_schedule'][loss_type]
                     if (isinstance(loss_sched, int) and self.current_epoch < loss_sched):
                         lws[i] = 0
                     elif isinstance(loss_sched, list) and not (loss_sched[0] <= self.current_epoch < loss_sched[1]):
@@ -248,7 +248,7 @@ class ClimsimTrainer(AbstractTrainer):
                 assert batch_losses is not None, "losses must be provided for gradnorm loss weight strategy"
                 retval = self.loss_weights[run_id].detach().clone()
                 #retval = torch.nn.functional.softmax(retval) * params['T']
-                self.lw_history[run_id].append(retval)
+                self.lw_history[run_id].append(retval.numpy().tolist())
                 return(retval)
             
     def apply_loss(self, y_hat, x, y, batch_losses, run_id, step):
@@ -411,6 +411,10 @@ class ClimsimTrainer(AbstractTrainer):
                     self._save_checkpoint(run_id, cid='best-')
             
             master_dict[run_id]['losses'] = self.losses[run_id]
+            if self.track_loss_weights:
+                master_dict[run_id]['loss_weights'] = self.loss_weights[run_id].detach().cpu().numpy().tolist()
+                master_dict[run_id]['L0'] = self.L0[run_id]
+                master_dict[run_id]['loss_weight_history'] = self.lw_history[run_id]
             if(phase == 'train'):
                 master_dict[run_id]['gradients'] = self.gradients.get(run_id)
         with open(self.log_file_path, "w") as f:

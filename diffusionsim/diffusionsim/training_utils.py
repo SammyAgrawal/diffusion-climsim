@@ -84,13 +84,13 @@ class TrainingConfig:
     # learning parameters
     optimizer: str = 'adam'
     learning_rate_params: Dict = field(default_factory=lambda: {
-        "base_learning_rate" : 1e-4, "scheduler_type" : None, "patience" : 5, "betas" : (0.9, 0.999),
+        "learning_rate" : 1e-4, "lr_scheduler" : None, "patience" : 5, "betas" : (0.9, 0.999),
         "lr_warmup_steps" : 20, "step_size" : 100, "gamma" : 0.9, "min_lr" : 1e-6,
     })
     loss_weight_params: Dict = field(default_factory=lambda: {
                     "strategy": "gradnorm", "lr": 0.025, "alpha": 0.5, "gradnorm_layer" : -2, "T" : 3.0, "update_interval": 5,
-                    "weights":{'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2},
-                    "schedule" : {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]}
+                    "loss_weights":{'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2},
+                    "loss_schedule" : {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]}
                     })
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
@@ -242,7 +242,7 @@ def load_diffusion_model(model_id='best_diffusion', base_dir="/mnt/home/ssa2206/
 def load_lr_scheduler(tconfig, optim, dataloader):
     total_steps = len(dataloader) * tconfig.num_epochs
     params = tconfig.learning_rate_params
-    match params['scheduler_type']:
+    match params['lr_scheduler']:
         # -------------------- HuggingFace/Diffusers schedulers --------------------
         case "cosine":
             return diffusers.optimization.get_cosine_schedule_with_warmup(
@@ -293,10 +293,10 @@ def create_optimizer(model, tconfig):
     match tconfig.optimizer.lower():
         case "adam":
             my_betas = tconfig.learning_rate_params.get("betas", (0.9, 0.999))
-            optim = torch.optim.Adam(model.parameters(), lr=tconfig.learning_rate_params.get("base_learning_rate"), betas=my_betas)
+            optim = torch.optim.Adam(model.parameters(), lr=tconfig.learning_rate_params.get("learning_rate"), betas=my_betas)
 
         case _: # defaults to SGD
-            optim = torch.optim.SGD(model.parameters(), lr=tconfig.learning_rate_params.get("base_learning_rate"))
+            optim = torch.optim.SGD(model.parameters(), lr=tconfig.learning_rate_params.get("learning_rate"))
     return(optim)
 
 def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
@@ -313,8 +313,14 @@ def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
 
 def create_sample(data, ds):
     # mimics get_item from loaded xarray subsample
-    data = (data - ds.Y_mean.mean(dim='ncol')) / ds.Y_std.mean(dim='ncol')
-    data = data.isel(ncol=ds.permute_indices)
+    if not (hasattr(ds, "Y_mean") or hasattr(ds, "Ymean")):
+        raise ValueError("ds does not have Y_mean or Ymean")
+    ym = ds.Y_mean if hasattr(ds, "Y_mean") else ds.Ymean
+    ys = ds.Y_std if hasattr(ds, "Y_std") else ds.Ystd
+    if "ncol" in ym.dims:
+        ym = ym.mean(dim='ncol')
+        ys = ys.mean(dim='ncol')
+    data = ((data-ym)/ys).isel(ncol=ds.permute_indices)
     data = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
     data = data.transpose("time", "mlo", "ncol").load()
     data = torch.tensor(data.data.reshape(-1, 128, 16, 24), dtype=torch.float32)
@@ -331,7 +337,13 @@ def recreate_sample(sample, dataset):
         mlo = dataset.mlo, 
         ncol = dataset.permute_indices
     )).isel(ncol=np.argsort(dataset.permute_indices))
-    mu_stack = dataset.Ymean.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
-    sig_stack = dataset.Ystd.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
-    xrec = (xarr * sig_stack.mean(dim='ncol')) + mu_stack.mean(dim='ncol')
+    if "ncol" in dataset.Ymean.dims:
+        mu_stack = dataset.Ymean.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
+        sig_stack = dataset.Ystd.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
+        xrec = (xarr * sig_stack.mean(dim='ncol')) + mu_stack.mean(dim='ncol')
+    else:
+        mu_stack = dataset.Ymean.to_stacked_array(new_dim="mlo", sample_dims=())
+        sig_stack = dataset.Ystd.to_stacked_array(new_dim="mlo", sample_dims=())
+        xrec = (xarr * sig_stack) + mu_stack
+    
     return(xrec.transpose("time", "ncol", "mlo"))
