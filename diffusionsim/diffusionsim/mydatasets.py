@@ -42,14 +42,14 @@ def load_dataset(dconfig, log=False, indices=None):
         match dconfig.dataset_type.lower():
             case ds if "2d" in ds or "xbatch" in ds:
                 datasets.append(Diffusion2DDataset(dso.unify_chunks(), dutils, dconfig, log=log))
-            case ds if "diffusion" in ds:
+            case ds if "1d" in ds or "diffusion" in ds:
                 datasets.append(Diffusion1DDataset(dso.unify_chunks(), dutils, dconfig, log))
             case ds if "climsim" in ds:
                 datasets.append(ClimsimDataset(dsi.unify_chunks(), dso.unify_chunks(), dutils, dconfig, log))
             case _:
                 return(dsets, indices)
     return(datasets, indices)
-
+ 
 def load_dataloaders(dconfig, log=False, indices=None):
     datasets, indices = load_dataset(dconfig, log, indices)
     params = asdict(dconfig.dataloader_params)

@@ -118,6 +118,7 @@ class UNetParams:
     sample_size: Tuple[int, int] = field(default_factory=lambda: (16, 24))
     in_channels: int = 128
     out_channels: int = 128
+    extra_in_channels: int = 0
     block_out_channels: Tuple = field(default_factory=lambda: (32, 64, 64, 128))  # num output channel for each UNet block
     down_block_types: Tuple = field(default_factory=lambda: (
         "DownBlock2D",  # a regular ResNet downsampling block
@@ -133,6 +134,9 @@ class UNetParams:
     ))
     layers_per_block: int = 1
     norm_num_groups: int = 2
+    act_fn: str = "silu" # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L27
+    freq_shift: float = 0.0 # fourier freq shift
+    use_timestep_embedding: bool = True
 
 # scheduler params
 @dataclass
