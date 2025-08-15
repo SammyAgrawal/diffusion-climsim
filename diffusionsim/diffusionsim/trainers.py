@@ -465,7 +465,7 @@ class DiffusionTrainer(AbstractTrainer):
                     print("________________________________________________")
                     print(f"Currently at epoch {self.current_epoch}, step {step}/{num_steps}\n________________________________________________", flush=True) 
                 # Given a batch from a dataloader on the dataset, return a noised sample
-                batch_losses = self._run_batch(images.to(self.device), phase, step)
+                batch_losses = self._run_batch(images.to(self.device), phase)
                 self.log_step(batch_losses, step, phase)
                 del batch_losses
         if self.log:
@@ -480,7 +480,7 @@ class DiffusionTrainer(AbstractTrainer):
         
         if(step % self.bli == 0 or step+1 == len(self.dataloaders[phase])):
             for run_id in self.run_ids:
-                self.losses.setdefault(run_id, defaultdict(list))['phase'].append(batch_losses[run_id])
+                self.losses.setdefault(run_id, defaultdict(list))[phase].append(batch_losses[run_id])
 
         if ((step+1) % self.ckpt_interval == 0 and phase == 'train'): 
             for run_id in self.run_ids:
