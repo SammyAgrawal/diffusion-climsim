@@ -387,6 +387,21 @@ class data_utils:
                           'pbuf_CH4',
                           'pbuf_N2O']  # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3
 
+        self.v2_outputs = ['state_t',
+                           'state_q0001',
+                           'state_q0002',
+                           'state_q0003',
+                           'state_u',
+                           'state_v',
+                           'cam_out_NETSW',
+                           'cam_out_FLWDS',
+                           'cam_out_PRECSC',
+                           'cam_out_PRECC',
+                           'cam_out_SOLS',
+                           'cam_out_SOLL',
+                           'cam_out_SOLSD',
+                           'cam_out_SOLLD']
+
         self.prev_timestep_vars = [f'tm_{var}' for var in self.v2_inputs[:10]] + ['tm_pbuf_COSZRS']
         self.forcing_vars = []
         self.convective_mem_vars = []
@@ -402,22 +417,6 @@ class data_utils:
             self.var_lens[f'tm_{var}_dyn'] = self.num_levels
 
         self.other_expanded_vars = ['clat', 'icol', 'lat', 'lon', 'slat', 'state_pmid', 'tod', 'ymd']
-
-
-        self.v2_outputs = ['state_t',
-                           'state_q0001',
-                           'state_q0002',
-                           'state_q0003',
-                           'state_u',
-                           'state_v',
-                           'cam_out_NETSW',
-                           'cam_out_FLWDS',
-                           'cam_out_PRECSC',
-                           'cam_out_PRECC',
-                           'cam_out_SOLS',
-                           'cam_out_SOLL',
-                           'cam_out_SOLSD',
-                           'cam_out_SOLLD']
 
         self.all_inputs  = [v for v in self.v2_inputs]
         self.all_outputs = [v for v in self.v2_outputs]

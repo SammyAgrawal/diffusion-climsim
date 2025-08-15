@@ -361,9 +361,9 @@ class ClimsimTrainer(AbstractTrainer):
                 self.dataloaders[phase].sampler.set_epoch(self.current_epoch)
             num_steps = len(self.dataloaders[phase])
             for step, (X, Y) in enumerate(self.dataloaders[phase]):
-                #if(step % (num_steps // 4) == 0):
-                #print("________________________________________________")
-                #print(f"Currently at epoch {epoch}, step {step}/{num_steps}\n________________________________________________", flush=True)                
+                if(step % (num_steps // 4) == 0):
+                    print("________________________________________________")
+                    print(f"Currently at epoch {self.current_epoch}, step {step}/{num_steps}\n________________________________________________", flush=True)                
                 batch_losses = self._run_batch(X.to(self.device), Y.to(self.device), phase, step)
                 if(batch_losses is None):
                     print(f"Batch {step} is bad; stopping", flush=True)
@@ -400,9 +400,8 @@ class ClimsimTrainer(AbstractTrainer):
         with open(self.log_file_path, "r") as f:
             master_dict = json.load(f)
         for run_id in self.run_ids:
-            ldict = self.losses.setdefault(run_id, {}).setdefault(phase, {})
             for loss_type in self.tracked_losses:
-                epoch_loss = ldict[loss_type][-self.logs_per_epoch[phase]:]
+                epoch_loss = self.losses[run_id][phase][loss_type][-self.logs_per_epoch[phase]:]
                 avg_loss = sum(epoch_loss) / len(epoch_loss)
                 print(f"avg {loss_type} loss for epoch {self.current_epoch}, {run_id=}: {avg_loss}", flush=True)
                 if(phase == 'train' and loss_type == 'total' and avg_loss < self.best_losses.setdefault(run_id, float('inf'))):
@@ -452,65 +451,57 @@ class DiffusionTrainer(AbstractTrainer):
             tru.log_event("run-batch end", duration=time.time() - t0, **batch_losses)
         return(batch_losses)
 
-    def _run_epoch(self, epoch, phase='train'):
+    def _run_epoch(self, phase='train'):
         for run_id in self.run_ids:
             self.models[run_id].train(phase=='train')
-        epoch_losses = defaultdict(list)
-        #total_loss = 0.0
+        if self.log:
+            e0 = tru.log_event(f"epoch-{self.current_epoch} start")
         with torch.set_grad_enabled(phase=='train'):
             if(self.distributed):
-                self.dataloaders[phase].sampler.set_epoch(epoch)
+                self.dataloaders[phase].sampler.set_epoch(self.current_epoch)
+            num_steps = len(self.dataloaders[phase])
             for step, images in enumerate(self.dataloaders[phase]):
-                tt0 = tru.log_event(f"batch-{step} start", batch=step)
+                if(step % (num_steps // 4) == 0):
+                    print("________________________________________________")
+                    print(f"Currently at epoch {self.current_epoch}, step {step}/{num_steps}\n________________________________________________", flush=True) 
                 # Given a batch from a dataloader on the dataset, return a noised sample
-                batch_losses = self._run_batch(images.to(self.device), phase)
-                #total_loss += loss.item()
-                self.log_step(epoch, step, batch_losses, phase, epoch_losses)
-                tru.log_event(f"batch-{step} end", batch=step, duration= time.time() - tt0)
-                if(step % 50 == 0):
-                    print(f"Currently at epoch {epoch}, step {step}", flush=True)
-        return(epoch_losses)
+                batch_losses = self._run_batch(images.to(self.device), phase, step)
+                self.log_step(batch_losses, step, phase)
+                del batch_losses
+        if self.log:
+            tru.log_event(f"epoch-{self.current_epoch} end", duration=time.time() - e0)
 
-    def log_step(self, epoch, step, batch_losses, phase, epoch_losses):
-        for run_id in self.run_ids:
-            if(step % self.bli == 0 or step == len(self.dataloaders[phase])):
-                epoch_losses[run_id].append(batch_losses[run_id])
+    def log_step(self, batch_losses, step, phase):
+        if self.log and hasattr(self, "run"):
+            wandb_metrics = {"epoch" : self.current_epoch}
+            for run_id in self.run_ids:
+                wandb_metrics[f"{phase}/{run_id}/loss"] = batch_losses[run_id]
+            self.run.log(wandb_metrics)
+        
+        if(step % self.bli == 0 or step+1 == len(self.dataloaders[phase])):
+            for run_id in self.run_ids:
+                self.losses.setdefault(run_id, defaultdict(list))['phase'].append(batch_losses[run_id])
 
-        if ((step+1) % self.ckpt_interval == 0):
-            print(f"epoch {epoch}, step {step}: saving checkpoint", flush=True)
+        if ((step+1) % self.ckpt_interval == 0 and phase == 'train'): 
             for run_id in self.run_ids:
                 self._save_checkpoint(run_id)
-        return(epoch_losses)
     
-    def _log_epoch_info(self, epoch_num, epoch_losses, phase='train'):
+    def _log_epoch_info(self, phase='train'):
+        with open(self.log_file_path, "r") as f:
+            master_dict = json.load(f) 
         for run_id in self.run_ids:
-            ld = self.losses.setdefault(run_id, {})
-            ld.setdefault(phase, []).extend(epoch_losses[run_id])
-            avg_loss = sum(epoch_losses[run_id]) / len(epoch_losses[run_id])
-            if(avg_loss < self.best_losses.setdefault(run_id, float('inf')) and self.training_configs[run_id].save_best_epoch):
+            epoch_losses = self.losses[run_id][phase][-self.logs_per_epoch[phase]:]
+            avg_loss = sum(epoch_losses) / len(epoch_losses)
+            print(f"avg loss for epoch {self.current_epoch}, {run_id=}: {avg_loss}", flush=True)
+            if(avg_loss < self.best_losses.setdefault(run_id, float('inf')) and phase=="train"):
                 self.best_losses[run_id] = avg_loss
                 self._save_checkpoint(run_id, cid='best-')
-        
-    #def _save_checkpoint(self, epoch, cid):
-        # extend such that training can be resumed from checkpoint alone. 
-        # possibly create and delete as part of finish training? 
-    #    super()._save_checkpoint(epoch,  cid=cid)
-     
-    def train(self, num_epochs=0, log=True):
-        self.setup_training(num_epochs, log)
-        print(f"Training for {num_epochs} epochs", flush=True)
-        try: 
-            for epoch in range(num_epochs): # set in setup_training
-                e0 = tru.log_event("epoch start", epoch=epoch)
-                loss = self._run_epoch(epoch)
-                self._log_epoch_info(epoch, loss, phase='train')
-                tru.log_event("epoch end", epoch=epoch, duration=time.time() - e0, epoch_loss=loss)
-        except Exception as e:
-            print(f"Some error occurred during training: {e}", flush=True)
-            traceback.print_exc(file=sys.stdout)
-        self.finish_training(num_epochs)
-    
-
+            
+            master_dict[run_id]['losses'] = self.losses[run_id]
+            if(phase == 'train'):
+                master_dict[run_id]['gradients'] = self.gradients.get(run_id)
+        with open(self.log_file_path, "w") as f:
+            json.dump(master_dict, f)
 
 def score_function(x, mu, var, pi, clamp_val=10, epsilon=1e-7):
     mahal = (x[:,None] - mu) ** 2 / (2 * var)
