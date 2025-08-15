@@ -21,7 +21,6 @@ def move_device(model, new_device):
 
 
 def load_model(config, **kwargs):
-    registered = ['VAE', 'diffusion', 'latent_diffusion']
     def pass_config(func, data_class):
         # only pass model config params that function takes in
         accepted_params = inspect.signature(func).parameters
@@ -36,11 +35,13 @@ def load_model(config, **kwargs):
                 hidden_dims= config.ae_hidden_dims,
                 disable_logstd_bias = config.disable_enc_logstd_bias,
             )
-        case model_type if "diffusion" in model_type:
+        case model_type if "2d" in model_type:
             if 'latent' in model_type: # modify channels for VAE 
                 config.unet.in_channels = config.latent_dims 
                 config.unet.out_channels = config.latent_dims
             model = pass_config(diffusers.UNet2DModel, config.unet)
+        case model_type if "1d" in model_type or "diffusion" in model_type:
+            model = pass_config(ClimsimUNet1DModel, config.unet)
         case "baseline":
             model = build_baseline_model(config)
         case _:
@@ -299,6 +300,7 @@ class ClimsimUNet1DModel(diffusers.models.ModelMixin, diffusers.configuration_ut
                 act_fn=act_fn,
                 out_dim=block_out_channels[0],
             )
+            timestep_input_dim = block_out_channels[0]
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -321,7 +323,7 @@ class ClimsimUNet1DModel(diffusers.models.ModelMixin, diffusers.configuration_ut
                 num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
-                temb_channels=block_out_channels[0],
+                temb_channels=timestep_input_dim,
                 add_downsample=not is_final_block or downsample_each_block,
             )
             self.down_blocks.append(down_block)
@@ -332,7 +334,7 @@ class ClimsimUNet1DModel(diffusers.models.ModelMixin, diffusers.configuration_ut
             in_channels=block_out_channels[-1],
             mid_channels=block_out_channels[-1],
             out_channels=block_out_channels[-1],
-            embed_dim=block_out_channels[0],
+            temb_channels=timestep_input_dim,
             num_layers=layers_per_block,
             add_downsample=downsample_each_block,
         )
@@ -358,7 +360,7 @@ class ClimsimUNet1DModel(diffusers.models.ModelMixin, diffusers.configuration_ut
                 num_layers=layers_per_block,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
-                temb_channels=block_out_channels[0],
+                temb_channels=timestep_input_dim,
                 add_upsample=not is_final_block,
             )
             self.up_blocks.append(up_block)
@@ -408,10 +410,7 @@ class ClimsimUNet1DModel(diffusers.models.ModelMixin, diffusers.configuration_ut
         timestep_embed = self.time_proj(timesteps)
         if self.config.use_timestep_embedding:
             timestep_embed = self.time_mlp(timestep_embed.to(sample.dtype))
-        else:
-            timestep_embed = timestep_embed[..., None]
-            timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
-            timestep_embed = timestep_embed.broadcast_to((sample.shape[:1] + timestep_embed.shape[1:]))
+        timestep_embed = timestep_embed.broadcast_to((sample.shape[:1] + timestep_embed.shape[1:]))
         if debug:
             print(sample.shape, timestep_embed.shape)
         # 2. down

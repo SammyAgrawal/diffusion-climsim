@@ -436,7 +436,6 @@ class DiffusionTrainer(AbstractTrainer):
             noises = torch.randn(images.shape, device=self.device)
             timesteps = torch.randint(0, tconfig.max_T_sample, 
                                       size=(images.shape[0],), device=self.device, dtype=torch.int64)
-            self.noise_timesteps[run_id] += torch.bincount(timesteps.cpu(), minlength=tconfig.max_T_sample)
             images = self.scheduler.add_noise(images, noises, timesteps)
             noise_pred = model(images, timesteps.flatten()).sample
             loss = self.loss_fn(noise_pred, noises)
@@ -511,19 +510,6 @@ class DiffusionTrainer(AbstractTrainer):
             traceback.print_exc(file=sys.stdout)
         self.finish_training(num_epochs)
     
-    def setup_training(self, num_epochs):
-        super().setup_training(num_epochs)
-        self.event_file = 0 #open(os.path.join(self.dirs['output_dir'], "event_log.txt"), "a")
-        self.noise_timesteps = {}
-
-    def finish_training(self, num_epochs, **kwargs):
-        # to do: add github hash as well so can reproduce code base at time of training run
-        noise_timesteps = {}
-        for run_id in self.run_ids:
-            noise_timesteps[run_id] = self.noise_timesteps[run_id].numpy().tolist()
-        super().finish_training(num_epochs, sampled_timesteps=noise_timesteps)
-        #if(self.event_file):
-        #    self.event_file.close()
 
 
 def score_function(x, mu, var, pi, clamp_val=10, epsilon=1e-7):

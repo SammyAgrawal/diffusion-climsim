@@ -334,7 +334,6 @@ class DownResnetBlock1D(nn.Module): # composed of ResidualTemporalBlocks
 
     def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
         output_states = ()
-
         hidden_states = self.resnets[0](hidden_states, temb) 
         for resnet in self.resnets[1:]:
             hidden_states = resnet(hidden_states, temb)
@@ -440,7 +439,7 @@ class MidResTemporalBlock1D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        embed_dim: int,
+        temb_channels: int,
         num_layers: int = 1,
         add_downsample: bool = False,
         add_upsample: bool = False,
@@ -452,7 +451,7 @@ class MidResTemporalBlock1D(nn.Module):
         self.add_downsample = add_downsample
 
         # there will always be at least one resnet
-        resnets = [ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=embed_dim)]
+        resnets = [ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=temb_channels)]
 
         for _ in range(num_layers):
             resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=embed_dim))
@@ -886,7 +885,7 @@ def get_mid_block(
     in_channels: int,
     mid_channels: int,
     out_channels: int,
-    embed_dim: int,
+    temb_channels: int,
     add_downsample: bool,
 ) -> MidBlockType:
     if mid_block_type == "MidResTemporalBlock1D":
@@ -894,7 +893,7 @@ def get_mid_block(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
-            embed_dim=embed_dim,
+            temb_channels=temb_channels,
             add_downsample=add_downsample,
         )
     elif mid_block_type == "ValueFunctionMidBlock1D":
