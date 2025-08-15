@@ -51,14 +51,16 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, shuffle_
     dconfig.climsim_type = "low-res-expanded" 
     dconfig.dataset_type = dataset_type
     dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
-    dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
+    if "train_test_split" in kwargs:
+        dconfig.train_test_split = kwargs["train_test_split"]
+    else:
+        dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
     dconfig.data_vars = data_vars
     dconfig.use_tendencies = use_tendencies
     dconfig.shuffle_indices = shuffle_indices
 
     dl_params = DataLoaderParams()
-    dl_params.batch_size = batch_size
-    dl_params.batch_size *= 384
+    dl_params.batch_size = batch_size * 384
     dl_params.shuffle = True
     if(torch.cuda.is_available() and batch_size > 16):
         dl_params.pin_memory = True
@@ -81,13 +83,15 @@ class TrainingConfig:
     distributed_training: bool = False
     # learning parameters
     optimizer: str = 'adam'
-    betas: Tuple[float, float] = (0.9, 0.999)
-    lr_scheduler: str = None
-    lr_warmup_steps = 50
-    learning_rate: float = 1e-4
-    loss_weights: Dict = field(default_factory=lambda: {'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2})
-    loss_schedule: Dict = field(default_factory=lambda: {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]})
-    loss_weight_params: Dict = field(default_factory=lambda: {"strategy": "epoch_fixed", "lr": 1e-4, "alpha": 1.0, "gradnorm_layer" : -2})
+    learning_rate_params: Dict = field(default_factory=lambda: {
+        "learning_rate" : 1e-4, "lr_scheduler" : None, "patience" : 5, "betas" : (0.9, 0.999),
+        "lr_warmup_steps" : 20, "step_size" : 100, "gamma" : 0.9, "min_lr" : 1e-6,
+    })
+    loss_weight_params: Dict = field(default_factory=lambda: {
+                    "strategy": "gradnorm", "lr": 0.025, "alpha": 0.5, "gradnorm_layer" : -2, "T" : 3.0, "update_interval": 5,
+                    "loss_weights":{'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2},
+                    "loss_schedule" : {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]}
+                    })
     clip_gradients: bool = True
     gradient_accumulation_steps = 1
     mixed_precision = "fp16"
@@ -114,6 +118,7 @@ class UNetParams:
     sample_size: Tuple[int, int] = field(default_factory=lambda: (16, 24))
     in_channels: int = 128
     out_channels: int = 128
+    extra_in_channels: int = 0
     block_out_channels: Tuple = field(default_factory=lambda: (32, 64, 64, 128))  # num output channel for each UNet block
     down_block_types: Tuple = field(default_factory=lambda: (
         "DownBlock2D",  # a regular ResNet downsampling block
@@ -129,6 +134,9 @@ class UNetParams:
     ))
     layers_per_block: int = 1
     norm_num_groups: int = 2
+    act_fn: str = "silu" # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L27
+    freq_shift: float = 0.0 # fourier freq shift
+    use_timestep_embedding: bool = True
 
 # scheduler params
 @dataclass
@@ -225,7 +233,6 @@ model_table = {
     'vintage_diffusion' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b'),
 }
 
-
 def load_diffusion_model(model_id='best_diffusion', base_dir="/mnt/home/ssa2206/Climsim/experiments"):
     exp_id, log_id, run_id = model_table[model_id]
     log_dict_path = os.path.join(base_dir, exp_id, f"{log_id}.json")
@@ -236,31 +243,65 @@ def load_diffusion_model(model_id='best_diffusion', base_dir="/mnt/home/ssa2206/
     model = load_model_from_ckpt(ckpt, mconfig)
     return(model)
 
-
 def load_lr_scheduler(tconfig, optim, dataloader):
-    match tconfig.lr_scheduler:
+    total_steps = len(dataloader) * tconfig.num_epochs
+    params = tconfig.learning_rate_params
+    match params['lr_scheduler']:
+        # -------------------- HuggingFace/Diffusers schedulers --------------------
         case "cosine":
-            lr = diffusers.optimization.get_cosine_schedule_with_warmup(
+            return diffusers.optimization.get_cosine_schedule_with_warmup(
                 optimizer=optim, 
-                num_warmup_steps=tconfig.lr_warmup_steps, 
-                num_training_steps=len(dataloader) * tconfig.num_epochs,
+                num_warmup_steps=params.get("lr_warmup_steps", 0), 
+                num_training_steps=total_steps,
+                num_cycles=params.get("cycles", 0.5)
             )
+        case "linear":
+            return diffusers.optimization.get_linear_schedule_with_warmup(
+                optimizer=optim,
+                num_warmup_steps=params.get("lr_warmup_steps", 0),
+                num_training_steps=total_steps,
+            )
+
+        # -------------------- PyTorch built-in schedulers --------------------
+        case "steplr":
+            return torch.optim.lr_scheduler.StepLR(
+                optimizer=optim,
+                step_size=params.get("step_size", 10),
+                gamma=params.get("gamma", 0.9)
+            )
+        case "exponential":
+            return torch.optim.lr_scheduler.ExponentialLR(
+                optimizer=optim,
+                gamma=params.get("gamma", 0.95)
+            )
+        case "cosineanneal":
+            return torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer=optim,
+                T_max=total_steps,
+                eta_min=params.get("min_lr", 0)
+            )
+        case "reduce_on_plateau":
+            return torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer=optim,
+                mode=params.get("mode", "min"),
+                factor=params.get("gamma", 0.75),
+                patience=params.get("patience", 5),
+                min_lr=params.get("min_lr", 0)
+            )
+
+        # -------------------- No scheduler --------------------
         case _:
-            #print(f"LR scheduler {tconfig.lr_scheduler} not supported")
             return None
-    return(lr)
+
  
 def create_optimizer(model, tconfig):
     match tconfig.optimizer.lower():
         case "adam":
-            try:
-                my_betas = tconfig.betas
-            except AttributeError:
-                my_betas = (0.9, 0.999) # default values
-            optim = torch.optim.Adam(model.parameters(), lr=tconfig.learning_rate, betas=my_betas)
+            my_betas = tconfig.learning_rate_params.get("betas", (0.9, 0.999))
+            optim = torch.optim.Adam(model.parameters(), lr=tconfig.learning_rate_params.get("learning_rate"), betas=my_betas)
 
         case _: # defaults to SGD
-            optim = torch.optim.SGD(model.parameters(), lr=tconfig.learning_rate)
+            optim = torch.optim.SGD(model.parameters(), lr=tconfig.learning_rate_params.get("learning_rate"))
     return(optim)
 
 def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
@@ -277,8 +318,14 @@ def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
 
 def create_sample(data, ds):
     # mimics get_item from loaded xarray subsample
-    data = (data - ds.Y_mean.mean(dim='ncol')) / ds.Y_std.mean(dim='ncol')
-    data = data.isel(ncol=ds.permute_indices)
+    if not (hasattr(ds, "Y_mean") or hasattr(ds, "Ymean")):
+        raise ValueError("ds does not have Y_mean or Ymean")
+    ym = ds.Y_mean if hasattr(ds, "Y_mean") else ds.Ymean
+    ys = ds.Y_std if hasattr(ds, "Y_std") else ds.Ystd
+    if "ncol" in ym.dims:
+        ym = ym.mean(dim='ncol')
+        ys = ys.mean(dim='ncol')
+    data = ((data-ym)/ys).isel(ncol=ds.permute_indices)
     data = data.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
     data = data.transpose("time", "mlo", "ncol").load()
     data = torch.tensor(data.data.reshape(-1, 128, 16, 24), dtype=torch.float32)
@@ -295,7 +342,13 @@ def recreate_sample(sample, dataset):
         mlo = dataset.mlo, 
         ncol = dataset.permute_indices
     )).isel(ncol=np.argsort(dataset.permute_indices))
-    mu_stack = dataset.Ymean.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
-    sig_stack = dataset.Ystd.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
-    xrec = (xarr * sig_stack.mean(dim='ncol')) + mu_stack.mean(dim='ncol')
+    if "ncol" in dataset.Ymean.dims:
+        mu_stack = dataset.Ymean.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
+        sig_stack = dataset.Ystd.to_stacked_array(new_dim="mlo", sample_dims=('ncol',))
+        xrec = (xarr * sig_stack.mean(dim='ncol')) + mu_stack.mean(dim='ncol')
+    else:
+        mu_stack = dataset.Ymean.to_stacked_array(new_dim="mlo", sample_dims=())
+        sig_stack = dataset.Ystd.to_stacked_array(new_dim="mlo", sample_dims=())
+        xrec = (xarr * sig_stack) + mu_stack
+    
     return(xrec.transpose("time", "ncol", "mlo"))

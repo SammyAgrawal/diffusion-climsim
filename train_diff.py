@@ -111,3 +111,88 @@ if __name__ == "__main__":
     trainer.train(num_epochs=20, log=True)
     print("Done!")
     tru.log_event("run end", duration = time.time() - run_start_time)
+
+
+
+
+    def _update_gradnorm_weights(self, run_id, batch_losses):
+        params = self.training_configs[run_id].loss_weight_params
+        W = self.loss_weights[run_id]
+        losses = torch.stack([batch_losses[l].detach() for l in self.tracked_losses])
+        l0 = self.L0[run_id]['l0'].detach().clone()
+        if "VAR_IND" in batch_losses and batch_losses['VAR_IND'] in self.L0[run_id]:
+            i = self.tracked_losses.index("distribution")
+            l0[i] = self.L0[run_id][batch_losses['VAR_IND']]
+        loss_ratio = losses / l0
+        grads = []
+        param = self.models[run_id].get_param(params['gradnorm_layer'])
+        for i, loss_type in enumerate(self.tracked_losses):
+            grad = torch.autograd.grad(W[i] * batch_losses[loss_type], param, retain_graph=True, create_graph=True)[0]
+            grads.append(torch.norm(grad))
+        grads = torch.stack(grads)
+        target_grads = grads.detach().mean() * (loss_ratio / loss_ratio.mean()) ** params['alpha']
+        gradnorm_loss = self.gradnorm_loss_fn(grads, target_grads)
+        print("loss weights before update\n", self.loss_weights[run_id])
+        self.lw_optimizers[run_id].zero_grad()
+        gradnorm_loss.backward(retain_graph=True)
+        self.lw_optimizers[run_id].step()
+        with torch.no_grad():
+            if (W < 0).any():
+                W = torch.exp(W)
+            self.loss_weights[run_id] = torch.nn.Parameter((params['T'] * W/W.sum()).detach())
+            self.lw_optimizers[run_id] = torch.optim.SGD([self.loss_weights[run_id]], lr=params['lr'])
+            
+        print("loss weights after updat and norm\n", self.loss_weights[run_id])
+
+    def apply_loss(self, y_hat, x, y, batch_losses, run_id, step):
+        #model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
+        self.models[run_id].zero_grad()
+        VAR_IND = None
+        for loss_type in self.tracked_losses:
+            if(loss_type == "mse"):
+                loss = self.loss_fn(y_hat, y)
+            elif(loss_type == "distribution"):
+                loss, VAR_IND = distribution_loss(self, y_hat, y, run_id, step)
+                batch_losses[run_id]['VAR_IND'] = VAR_IND
+            elif(loss_type == "diffusion"):
+                loss = diffusion_loss(self, y_hat, run_id)
+            else:
+                raise ValueError(f"Invalid loss type: {loss_type}")
+            if(self._gradients_ops(run_id, loss_type, loss, step)):
+                self.nan_incidents[run_id][-1]['inputs'] = (x, y)
+                loss = torch.tensor(0)
+            batch_losses[run_id][loss_type] = loss
+        losses = torch.stack([batch_losses[run_id][l] for l in self.tracked_losses])
+        if('l0' not in self.L0[run_id]):
+            self.L0[run_id]['l0'] = torch.clamp(losses.detach().clone(), max=1000)
+        if VAR_IND is not None and VAR_IND not in self.L0[run_id]:
+            self.L0[run_id][VAR_IND] = batch_losses[run_id]['distribution']
+        return(losses)
+
+    def _run_batch(self, x, y, phase, step):
+        if self.log:
+            t0 = tru.log_event("run-batch start", step=step)
+        batch_losses = {}
+        for run_id in self.run_ids:
+            print("\n", run_id)
+            batch_losses[run_id] = {}
+            y_hat = self.models[run_id](x) 
+            losses = self.apply_loss(y_hat, x, y, batch_losses, run_id, step)
+            print("losses:", losses)
+            loss_weights = self.loss_weights[run_id].detach().clone()
+            print("loss_weights:", loss_weights)
+            total_loss = loss_weights @ losses
+            #if(step % self.training_configs[run_id].loss_weight_params['update_interval'] == 0):
+            if phase == 'train':
+                self.optimizers[run_id].zero_grad()
+                total_loss.backward(retain_graph=True)
+                if(self.training_configs[run_id].clip_gradients):
+                    total_grad_norm = torch.nn.utils.clip_grad_norm_(self.models[run_id].parameters(), max_norm=1.0)
+                self.optimizers[run_id].step()
+                if(self.lr_schedulers[run_id] is not None):
+                    self.lr_schedulers[run_id].step()
+                    self._update_gradnorm_weights(run_id, batch_losses[run_id])
+            batch_losses[run_id]['total'] = total_loss.item()
+        if(self.log):
+            tru.log_event("run-batch end", duration=time.time() - t0, step=step, loss=[batch_losses[run_id]['total'] for run_id in self.run_ids])
+        return(batch_losses)

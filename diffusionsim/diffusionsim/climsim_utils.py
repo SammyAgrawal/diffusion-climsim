@@ -178,10 +178,10 @@ def image_regridding(ds):
 def get_norm_info(style='image', sanitize=True):
 
     if(style == 'scale' or style == 'tendencies'):
-        input_mean = xr.open_dataset(get_path('input_mean.nc'))
-        input_max = xr.open_dataset(get_path('input_max.nc'))
-        input_min = xr.open_dataset(get_path('input_min.nc'))
-        output_scale = xr.open_dataset(get_path('output_scale.nc'))
+        input_mean = xr.open_dataset(get_path('input_mean.nc')).load()
+        input_max = xr.open_dataset(get_path('input_max.nc')).load()
+        input_min = xr.open_dataset(get_path('input_min.nc')).load()
+        output_scale = xr.open_dataset(get_path('output_scale.nc')).load()
         if(sanitize):
             input_max['pbuf_N2O'].data = input_max.pbuf_N2O.mean().item() * np.ones_like(input_max['pbuf_N2O'].data)
             input_min['pbuf_N2O'].data = input_min.pbuf_N2O.mean().item() * np.ones_like(input_min['pbuf_N2O'].data)
@@ -190,10 +190,10 @@ def get_norm_info(style='image', sanitize=True):
         return(input_mean, input_max, input_min, output_scale)
     
     else:
-        X_mean = xr.open_dataset(get_path("image_xmean.nc"))
-        X_std = xr.open_dataset(get_path("image_xstd.nc"))
-        Y_mean = xr.open_dataset(get_path("image_ymean.nc"))
-        Y_std = xr.open_dataset(get_path("image_ystd.nc"))
+        X_mean = xr.open_dataset(get_path("image_xmean.nc")).load()
+        X_std = xr.open_dataset(get_path("image_xstd.nc")).load()
+        Y_mean = xr.open_dataset(get_path("image_ymean.nc")).load()
+        Y_std = xr.open_dataset(get_path("image_ystd.nc")).load()
 
         if(sanitize):
             X_mean['state_q0002'].data = X_mean['state_q0002'].mean().item() * np.ones_like(X_mean['state_q0002'].data)
@@ -215,18 +215,17 @@ def expand_levels(self, ds, vars, dim_name):
 
 def imagify(x, dutils, variable='y', image_dim=2):
     if image_dim is None:
-        print("image_dim is None, returning original tensor")
         return(x)
     # X is tensor of shape (BS'=BS*ncol, feature_len) where batch size is multipled by 384
     assert variable in ['x', 'y'], "Variable must be either x or y"
     image_dim = int(image_dim)
     if(image_dim == 1):
-        # desired output is (BS', lev, C_var) where lev is 64 
+        # desired output is (BS', C_var, lev) where lev is 64 
         var_map = dutils.input_var_idx if variable == 'x' else dutils.target_var_idx
-        ximg = torch.zeros(x.size(0), 64, len(var_map))
+        ximg = torch.zeros(x.size(0), len(var_map), 64)
         i = 0
         for var, (start, stop) in var_map.items():
-            ximg[:,-60:,i] = x[:, start:stop] if stop-start>1 else x[:, start:stop].expand(-1, 60)
+            ximg[:,i, -60:] = x[:, start:stop] if stop-start>1 else x[:, start:stop].expand(-1, 60)
             i += 1
     elif(image_dim == 2):
         # desired output is (BS, C_mlv, H, W)
@@ -388,6 +387,21 @@ class data_utils:
                           'pbuf_CH4',
                           'pbuf_N2O']  # outside of the upper troposphere lower stratosphere (UTLS, corresponding to indices 5-21), variance in minimal for these last 3
 
+        self.v2_outputs = ['state_t',
+                           'state_q0001',
+                           'state_q0002',
+                           'state_q0003',
+                           'state_u',
+                           'state_v',
+                           'cam_out_NETSW',
+                           'cam_out_FLWDS',
+                           'cam_out_PRECSC',
+                           'cam_out_PRECC',
+                           'cam_out_SOLS',
+                           'cam_out_SOLL',
+                           'cam_out_SOLSD',
+                           'cam_out_SOLLD']
+
         self.prev_timestep_vars = [f'tm_{var}' for var in self.v2_inputs[:10]] + ['tm_pbuf_COSZRS']
         self.forcing_vars = []
         self.convective_mem_vars = []
@@ -403,22 +417,6 @@ class data_utils:
             self.var_lens[f'tm_{var}_dyn'] = self.num_levels
 
         self.other_expanded_vars = ['clat', 'icol', 'lat', 'lon', 'slat', 'state_pmid', 'tod', 'ymd']
-
-
-        self.v2_outputs = ['state_t',
-                           'state_q0001',
-                           'state_q0002',
-                           'state_q0003',
-                           'state_u',
-                           'state_v',
-                           'cam_out_NETSW',
-                           'cam_out_FLWDS',
-                           'cam_out_PRECSC',
-                           'cam_out_PRECC',
-                           'cam_out_SOLS',
-                           'cam_out_SOLL',
-                           'cam_out_SOLSD',
-                           'cam_out_SOLLD']
 
         self.all_inputs  = [v for v in self.v2_inputs]
         self.all_outputs = [v for v in self.v2_outputs]
