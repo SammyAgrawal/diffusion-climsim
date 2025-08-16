@@ -158,6 +158,8 @@ class AbstractTrainer(ABC):
     
     def finish_training(self, num_epochs, **kwargs):
         print(f"Finished training {self.number_of_models} model(s) for {num_epochs} epochs.", flush=True)
+        for run_id in self.run_ids:
+            self._save_checkpoint(run_id)
         losses = {}
         with open(self.log_file_path, "r") as f:
             master_dict = json.load(f)
@@ -400,14 +402,21 @@ class ClimsimTrainer(AbstractTrainer):
         with open(self.log_file_path, "r") as f:
             master_dict = json.load(f)
         for run_id in self.run_ids:
+            total_loss = 0.0
+            tconfig = self.training_configs['run_id']
             for loss_type in self.tracked_losses:
                 epoch_loss = self.losses[run_id][phase][loss_type][-self.logs_per_epoch[phase]:]
                 avg_loss = sum(epoch_loss) / len(epoch_loss)
                 print(f"avg {loss_type} loss for epoch {self.current_epoch}, {run_id=}: {avg_loss}", flush=True)
-                if(phase == 'train' and loss_type == 'total' and avg_loss < self.best_losses.setdefault(run_id, float('inf'))):
+                total_loss += tconfig.loss_weight_params['loss_weights'][loss_type] * avg_loss
+            
+            if(phase == 'train'): 
+                if total_loss < self.best_losses.setdefault(run_id, float('inf')):
+                    self._save_checkpoint(run_id, cid='best-')
                     print(f"new best! saving new checkpoint at epoch {self.current_epoch}", flush=True)
                     self.best_losses[run_id] = avg_loss
-                    self._save_checkpoint(run_id, cid='best-')
+                elif tconfig.checkpoint_every_epoch: # no need to save twice
+                    self._save_checkpoint(run_id, f"epoch-{self.current_epoch}")
             
             master_dict[run_id]['losses'] = self.losses[run_id]
             if self.track_loss_weights:
@@ -496,6 +505,9 @@ class DiffusionTrainer(AbstractTrainer):
             if(avg_loss < self.best_losses.setdefault(run_id, float('inf')) and phase=="train"):
                 self.best_losses[run_id] = avg_loss
                 self._save_checkpoint(run_id, cid='best-')
+                print(f"new best! saving new checkpoint at epoch {self.current_epoch}", flush=True)
+            elif self.training_configs[run_id].checkpoint_every_epoch and phase=="train": # no need to save twice
+                self._save_checkpoint(run_id, f"epoch-{self.current_epoch}")
             
             master_dict[run_id]['losses'] = self.losses[run_id]
             if(phase == 'train'):
@@ -592,11 +604,14 @@ def diffusion_loss(trainer, y_hat, run_id):
         return(xt)
     def decode(xt):
         with torch.no_grad():
-            for t in range(tconfig.diffusion_loss_noise_level, 0, -tconfig.diffusion_loss_decoding_interval):
+            for t in range(tconfig.diffusion_loss_noise_level, 0, -tconfig.diffusion_loss_decoding_stride):
                 eps_theta = trainer.unet(xt, t).sample
                 xt = scheduler.step(eps_theta, t, xt).prev_sample
         return(xt)
-    y_image_denoised = decode(encode(y_image))
+    if tconfig.diffusion_loss_encode:
+        y_image_denoised = decode(encode(y_image))
+    else:
+        y_image_denoised = decode(y_image)
     return(trainer.loss_fn(y_image_denoised, y_image))
     
                     

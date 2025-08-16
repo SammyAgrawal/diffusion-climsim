@@ -97,15 +97,17 @@ class TrainingConfig:
     mixed_precision = "fp16"
     max_T_sample: int = 100
     # logging params
-    save_best_epoch: bool = True
+    checkpoint_best_epoch: bool = True
+    checkpoint_every_epoch: bool = False
     batch_logging_interval: int = 16
     batch_checkpoint_interval: int = 10 # save checkpoint every 10 batches
     log_gradients: bool = False
     #save_image_epochs: int = 2
     push_to_hub: bool = False
     # distribution loss params
+    diffusion_loss_encode: bool = False
     diffusion_loss_noise_level: int = 10; 
-    diffusion_loss_decoding_interval: int = 1
+    diffusion_loss_decoding_stride int = 1
     distloss_type: str = "ksd"
     num_gaussians: List[int] = field(default_factory=lambda: [3, 2, 3, 2])
     num_distloss_samples: int = 8
