@@ -22,7 +22,7 @@ in_notebook = True
 
 
 def setup_diffusion_run(num_models, exp_id, base_run_id, data_vars='v1', image_dim=1, batch_size=128, shuffle_indices=False, use_tendencies=False):
-    dataset_type = "diffusion1d"
+    dataset_type = "climsim_diffusion1d"
     dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, shuffle_indices, dataset_type, batch_size, use_tendencies)
     dconfig.train_test_split = [0.8]
     tconfigs, mconfigs = [], []
@@ -40,7 +40,7 @@ def setup_diffusion_run(num_models, exp_id, base_run_id, data_vars='v1', image_d
     for i in range(num_models):
         tconfig = tru.TrainingConfig(exp_id=exp_id, run_id=f"{base_run_id}{lettering[i]}")
         tconfig.phases = ['train']
-        tconfig.learning_rate = 1e-5 * batch_size / REF_BATCH_SIZE
+        tconfig.learning_rate = learning_rates[i] * batch_size / REF_BATCH_SIZE
         tconfig.lr_scheduler = "cosine"
         tconfig.lr_warmup_steps = 200
         tconfig.max_T_sample = 51
@@ -79,13 +79,12 @@ def setup_diffusion_run(num_models, exp_id, base_run_id, data_vars='v1', image_d
 if __name__ == "__main__":
     num_models = 4
     exp_id = "diffusion_hp_search"
-    run_id = "diff_1d"
+    run_id = "diff_1d_v1"
     base_dir = os.path.join("/mnt/home/ssa2206/Climsim/experiments", exp_id)
-    tconfigs, mconfigs, dconfig = setup_diffusion_run(num_models, exp_id, run_id, data_vars = 'v2', batch_size = 256, use_tendencies=True)
+    tconfigs, mconfigs, dconfig = setup_diffusion_run(num_models, exp_id, run_id, data_vars = 'v1', batch_size = 256, use_tendencies=True)
     run_start_time = tru.log_event("run start", data_params = tru.asdict(dconfig.dataloader_params))
     t0 =  tru.log_event("setup start", run_id=run_id)
     #model = tru.load_model_from_ckpt("trial_1-ckpt.pt", mconfig, exp_id, EXP_DIR)
-    loss_fn = torch.nn.MSELoss()
     dataloaders, indices = tru.load_dataloaders(dconfig, log=False)
     trainer = DiffusionTrainer(dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id=run_id)
 

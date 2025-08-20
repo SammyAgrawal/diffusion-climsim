@@ -530,7 +530,7 @@ class SelfAttention1d(nn.Module):
         super().__init__()
         self.channels = in_channels
         self.group_norm = nn.GroupNorm(1, num_channels=in_channels)
-        self.num_heads = n_head
+        self.num_heads = max(n_head, 1)
 
         self.query = nn.Linear(self.channels, self.channels)
         self.key = nn.Linear(self.channels, self.channels)

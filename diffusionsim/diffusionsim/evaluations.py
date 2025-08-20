@@ -59,6 +59,11 @@ class Run:
             else:
                 print(f"Checkpoint {ckpt_dir} was deleted")
                 self.models[run_id] = None
+        
+        self.dconfig.dataloader_params.num_workers = 0
+        self.dconfig.dataloader_params.prefetch_factor = None
+        self.dconfig.dataloader_params.multiprocessing_context = None
+        self.dconfig.dataloader_params.persistent_workers = False
     
     def write_log(self):
         with open(self.log_file, 'w') as f:
@@ -86,8 +91,6 @@ class Run:
                         break
                 if not found:
                     print(f"Warning: Unknown config key '{k}', ignoring.")
-        
-                
         return data_class(**filtered_dict)
     
     def _get_config(self, config_dict, getter):
@@ -117,6 +120,8 @@ class Run:
             configs = self.tconfigs
         elif attr in inspect.signature(tru.ModelConfig).parameters:
             configs = self.mconfigs
+        elif attr in inspect.signature(tru.UNetParams).parameters:
+            return([u[attr] for u in self.get("unet")])
         if(configs is not None):
             if run_id is not None:
                 return(dataclasses.asdict(configs[run_id])[attr])

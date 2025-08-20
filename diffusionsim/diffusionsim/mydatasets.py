@@ -39,15 +39,15 @@ def load_dataset(dconfig, log=False, indices=None):
     dsets, indices = train_test_split(dsi, dso, dconfig.train_test_split, indices, shuffle=dconfig.shuffle_indices)
     datasets = []
     for (dsi, dso) in dsets:
-        match dconfig.dataset_type.lower():
-            case ds if "2d" in ds or "xbatch" in ds:
-                datasets.append(Diffusion2DDataset(dso.unify_chunks(), dutils, dconfig, log=log))
-            case ds if "1d" in ds or "diffusion" in ds:
-                datasets.append(Diffusion1DDataset(dso.unify_chunks(), dutils, dconfig, log))
-            case ds if "climsim" in ds:
-                datasets.append(ClimsimDataset(dsi.unify_chunks(), dso.unify_chunks(), dutils, dconfig, log))
-            case _:
-                return(dsets, indices)
+        datasets.append(ClimsimDataset(dsi.unify_chunks(), dso.unify_chunks(), dutils, dconfig, log))
+#        match dconfig.dataset_type.lower():
+#            case ds if "climsim" in ds:#
+#            case ds if "2d" in ds or "xbatch" in ds:#
+#                datasets.append(Diffusion2DDataset(dso.unify_chunks(), dutils, dconfig, log=log))
+#            case ds if "1d" in ds or "diffusion" in ds:
+#                datasets.append(Diffusion1DDataset(dso.unify_chunks(), dutils, dconfig, log))
+#            case _:
+#                return(dsets, indices)
     return(datasets, indices)
  
 def load_dataloaders(dconfig, log=False, indices=None):
@@ -114,9 +114,9 @@ def noise_batch(scheduler, clean_images, device):
     noisy_images = scheduler.add_noise(clean_images, noise, timesteps)
     return(noisy_images, timesteps, noise)
     
-
 class ClimsimDataset(torch.utils.data.Dataset):
     def __init__(self, dsi, dso, dutils, dconfig, log=False):
+        start = time.time()
         self.dataset_type = dconfig.dataset_type
         self.data_config = dconfig
         self.output_only = "diff" in self.dataset_type
@@ -125,77 +125,97 @@ class ClimsimDataset(torch.utils.data.Dataset):
             if dim in self.dataset_type:
                 self.image_dim = int(dim) 
                 break
-
         self.log = log
         self.dutils = dutils
-        self.dsi, self.dso = dsi, dso
+        self.dsi, self.dso = dsi.unify_chunks(), dso.unify_chunks()
         self.permute_indices = cut.image_regridding(dsi)
-        #assert self.dsi.sizes['time'] == self.dso.sizes['time'], "dsi and dso must have the same number of timesteps"
-
-        self.input_vars, self.target_vars = dutils.input_vars, dutils.target_vars
+        self.input_vars = dutils.input_vars 
+        self.target_vars = dutils.target_vars_tendencies if dutils.use_tendencies else dutils.target_vars
         self.input_len, self.target_len = dutils.input_feature_len, dutils.target_feature_len
-        set_ds_norm_info(self, dconfig.use_tendencies)
-        #self.xgen = xbatcher.BatchGenerator(self.dsi, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
-        #self.ygen = xbatcher.BatchGenerator(self.dso, input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False,)
+        if dconfig.use_tendencies:
+            self.xm, self.x_max, self.x_min, self.ys = cut.get_norm_info("scale")
+        else:
+            self.xm, self.xs, self.ym, self.ys = cut.get_norm_info("state")
+        self.mli = self.dsi[dutils.input_vars].to_stacked_array(new_dim="mli", sample_dims=("time", "ncol")).mli.data
+        self.mlo = self.dso[dutils.target_vars].to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol")).mlo.data
 
-        dsi = dsi.to_stacked_array(new_dim="mli", sample_dims=("time", "ncol"))
-        self.X = dsi.stack(sample=("time", "ncol")).transpose("sample", "mli")
-        dso = dso.to_stacked_array(new_dim="mlo", sample_dims=("time", "ncol"))
-        self.Y = dso.stack(sample=("time", "ncol")).transpose("sample", "mlo")
+        self.xgen = xbatcher.BatchGenerator(self.dsi[dutils.input_vars], input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=False)
+        self.ygen = xbatcher.BatchGenerator(self.dso[dutils.target_vars], input_dims=dict(time=dconfig.dataloader_params.batch_size, lev=60, ncol=384), preload_batch=True)
 
-        self.xgen = xbatcher.BatchGenerator(self.X, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mli=dutils.input_feature_len), preload_batch=False,)
-        self.ygen = xbatcher.BatchGenerator(self.Y, input_dims=dict(sample=dconfig.dataloader_params.batch_size, mlo=dutils.target_feature_len), preload_batch=False,)
-
-    def __getitem__(self, idx):
-        if(self.log):
+    def __getitem__(self, idx, debug=False):
+        if self.log: 
             t0 = log_event("get-item start", batch_idx=idx)
         y = self.ygen[idx].load()
         x = 0 if (self.output_only and not self.dutils.use_tendencies) else self.xgen[idx].load()
+        if(debug and self.log):
+            print("loading time", time.time() - t0)
         if(self.dutils.use_tendencies):
-            x_idx, y_idx = self.dutils.input_var_idx, self.dutils.target_var_idx
-            filter_xvar = lambda var: x[:, x_idx[var][0]:x_idx[var][1]].data
-            filter_yvar = lambda var: y[:, y_idx[var][0]:y_idx[var][1]].data
-
-            var_pairs = [('state_t', 'ptend_t'), ('state_q0001', 'ptend_q0001')]
-            if(self.dutils.full_vars):
-                var_pairs += [('state_q0002', 'ptend_q0002'), ('state_q0003', 'ptend_q0003'), ('state_u', 'ptend_u'), ('state_v', 'ptend_v')]
-            for (vx, vy) in var_pairs:
-                y[:, slice(*y_idx[vy])] = (filter_yvar(vy) - filter_xvar(vx))/1200
-        
-        y = torch.tensor(y.data, dtype=torch.float32)
-        x = 0 if self.output_only else torch.tensor(x.data, dtype=torch.float32)
+            vars = ['state_t', 'state_q0001']
+            if self.dutils.full_vars:
+                vars += ['state_q0002', 'state_q0003', 'state_u', 'state_v']
+            for v in vars:
+                y[v.replace('state', 'ptend')] = (y[v] - x[v]) / 1200
+            y = y[self.target_vars]
         x, y = self.normalize(x, y)
-        if(self.log):
-            log_event("get-item end", batch_idx=idx, duration=time.time() - t0)
-        if self.output_only:
-            return(cut.imagify(y, self.dutils, 'y', self.image_dim))
-        return(self.make_image(x,y))
-    
+        if(debug and self.log):
+            print("loading time", time.time() - t0)
 
+        if self.output_only:
+            y = self._make_image(y, "mlo")
+            if self.log:
+                log_event("get-item end", batch_idx=idx, duration=time.time() - t0)
+            return y
+        x, y = self._make_image(x, "mli"), self._make_image(y, "mlo")
+        if self.log:
+            log_event("get-item end", batch_idx=idx, duration=time.time() - t0)
+        return x, y
+
+    def _make_image(self, item, dim_name):
+        if dim_name == "mlo":
+            vars = self.target_vars
+            feature_len = self.dutils.target_feature_len
+        elif dim_name == "mli":
+            vars = self.input_vars
+            feature_len = self.dutils.input_feature_len
+        if self.image_dim is None:
+            item = item.to_stacked_array(new_dim=dim_name, sample_dims=("time", "ncol"))
+            item = item.stack(sample=("time", "ncol")).transpose("sample", dim_name)
+            item = torch.tensor(item.data, dtype=torch.float32)
+        elif self.image_dim == 1:
+            item = [item[var].expand_dims({'lev': item.lev}) if var in self.dutils.normal_variables else item[var] for var in vars]
+            item =  xr.concat(item, dim=dim_name)
+            item.assign_coords({dim_name : vars})
+            item = item.stack(sample=("time", "ncol")).transpose("sample", dim_name, "lev")
+            item = torch.tensor(item.data, dtype=torch.float32)
+            zero_pad = torch.zeros(item.size(0), item.size(1), 64-item.size(2))
+            item = torch.cat([zero_pad, item], dim=2)
+        elif self.image_dim == 2:
+            item = item.isel(ncol=self.permute_indices)
+            item = item.to_stacked_array(new_dim=dim_name, sample_dims=("time", "ncol"))
+            item = item.transpose("time", dim_name, "ncol")
+            item = torch.tensor(item.data.reshape(-1, feature_len, 16, 24), dtype=torch.float32)
+        return item
+    
     def normalize(self, x, y):
-        if(self.dutils.use_tendencies):
-            x = (x - self.xm) / (self.xmax - self.xmin)
+        if self.dutils.use_tendencies:
+            x = (x - self.xm) / (self.x_max - self.x_min)
             y = y * self.ys
-        else:  
+        else:
             x = (x - self.xm) / self.xs
             y = (y - self.ym) / self.ys
-        return(x, y)
-
+        return x, y
+    
     def denormalize(self, x, y):
-        if(not torch.is_tensor(x)):
-            x = torch.tensor(x)
-        if(not torch.is_tensor(y)):
-            y = torch.tensor(y)
         if(self.dutils.use_tendencies):
             x = x * (self.xmax - self.xmin) + self.xm
             y = y / self.ys
         else:  
             x = x * self.xs + self.xm
             y = y * self.ys + self.ym
-        return(x, y)        
+        return(x, y)
     
     def __len__(self):
-        return(len(self.xgen))
+        return(len(self.ygen))
 
     def index_var(self, var, level):
         mli, mlo = list(self.mli.values), list(self.mlo.values)
@@ -205,14 +225,6 @@ class ClimsimDataset(torch.utils.data.Dataset):
             return(mlo.index((var, level)))
         return(-1)
     
-    def make_image(self, x, y, denormalize=False, ):
-        # IMAGE : (BS, C, H, W)
-        # Denormalize using tensors
-        if(denormalize):
-            x, y = self.denormalize(x, y)
-        ximg = cut.imagify(x, self.dutils, 'x', self.image_dim)
-        yimg = cut.imagify(y, self.dutils, 'y', self.image_dim)
-        return ximg, yimg
 
 class Diffusion1DDataset(torch.utils.data.Dataset):
     def __init__(self, dso, dutils, dconfig, log=False):
@@ -226,7 +238,8 @@ class Diffusion1DDataset(torch.utils.data.Dataset):
             .stack(sample=("time", "ncol"))
             .transpose("sample",  "mlo", "lev")
         )
-
+        if(self.dutils.use_tendencies):
+            self.target_vars = self.dutils.target_vars_tendencies
         set_ds_norm_info(self, self.dutils.use_tendencies)
 
         self.bgen = xbatcher.BatchGenerator(self.data, input_dims=dict(

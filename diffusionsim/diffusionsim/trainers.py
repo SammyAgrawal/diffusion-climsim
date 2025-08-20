@@ -222,7 +222,7 @@ class ClimsimTrainer(AbstractTrainer):
             params = self.training_configs[run_id].loss_weight_params
             lws = [params['loss_weights'][k] for k in self.tracked_losses]
             if self.track_loss_weights:
-                lws = torch.tensor(lws, device=self.device, dtype=torch.float64).mul_(params['T'] / sum(lws))
+                lws = torch.tensor(lws, device=self.device, dtype=torch.float32).mul_(params['T'] / sum(lws))
                 self.loss_weights[run_id] = lws.requires_grad_(True)
                 self.lw_optimizers[run_id] = torch.optim.SGD([self.loss_weights[run_id]], lr=self.training_configs[run_id].loss_weight_params['lr'])
                 self.L0[run_id] = {}
@@ -248,7 +248,6 @@ class ClimsimTrainer(AbstractTrainer):
                 assert batch_losses is not None, "losses must be provided for gradnorm loss weight strategy"
                 retval = self.loss_weights[run_id].detach().clone()
                 #retval = torch.nn.functional.softmax(retval) * params['T']
-                self.lw_history[run_id].append(retval.numpy().tolist())
                 return(retval)
             
     def apply_loss(self, y_hat, x, y, batch_losses, run_id, step):
@@ -269,11 +268,12 @@ class ClimsimTrainer(AbstractTrainer):
                 self.nan_incidents[run_id][-1]['inputs'] = (x, y)
                 loss = torch.tensor(0)
             batch_losses[run_id][loss_type] = loss
-        losses = torch.stack([batch_losses[run_id][l] for l in self.tracked_losses])
+        losses = torch.stack([batch_losses[run_id][l] for l in self.tracked_losses]).float()
         if(self.track_loss_weights and 'l0' not in self.L0[run_id]):
-            self.L0[run_id]['l0'] = torch.clamp(losses.detach().clone(), max=1000)
-        if (self.track_loss_weights and VAR_IND is not None and VAR_IND not in self.L0[run_id]):
-            self.L0[run_id][VAR_IND] = batch_losses[run_id]['distribution'].detach().clone()
+            self.L0[run_id]['l0'] = torch.clamp(losses.detach().clone(), max=200)
+        if (self.track_loss_weights and VAR_IND is not None):
+            if (self.L0[run_id].get(VAR_IND, 200) >= 150 and batch_losses[run_id]['distribution'] < 150):
+                self.L0[run_id][VAR_IND] = batch_losses[run_id]['distribution'].detach().clone()
         return(losses)
 
     def _update_gradnorm_weights(self, run_id, batch_losses):
@@ -297,7 +297,7 @@ class ClimsimTrainer(AbstractTrainer):
         with torch.no_grad():
             W = W - params['lr'] * w_grad
             if (W < 0).any():
-                W = torch.exp(W)
+                W = torch.clamp(torch.exp(W), min=1e-3)
             self.loss_weights[run_id] = (params['T'] * W/W.sum()).detach().requires_grad_(True)
 
     def _run_batch(self, x, y, phase, step):
@@ -311,6 +311,7 @@ class ClimsimTrainer(AbstractTrainer):
             losses = self.apply_loss(y_hat, x, y, batch_losses, run_id, step)
             loss_weights = self._return_loss_weights(run_id, batch_losses[run_id])
             if(lw_params['strategy'] == "gradnorm" and step % lw_params['update_interval'] == 0):
+                self.lw_history[run_id].append(loss_weights.cpu().numpy().tolist())
                 self._update_gradnorm_weights(run_id, batch_losses[run_id])
             total_loss = loss_weights @ losses
 
@@ -411,9 +412,11 @@ class ClimsimTrainer(AbstractTrainer):
             
             master_dict[run_id]['losses'] = self.losses[run_id]
             if self.track_loss_weights:
-                master_dict[run_id]['loss_weights'] = self.loss_weights[run_id].detach().cpu().numpy().tolist()
+                loss_weights = self.loss_weights[run_id].detach().cpu().numpy().tolist()
+                self.lw_history[run_id].append(loss_weights)
                 master_dict[run_id]['L0'] = self.L0[run_id]
-                master_dict[run_id]['loss_weight_history'] = self.lw_history[run_id]
+                master_dict[run_id].setdefault('loss_weight_history', []).extend(self.lw_history[run_id])
+                self.lw_history[run_id] = []
             if(phase == 'train'):
                 master_dict[run_id]['gradients'] = self.gradients.get(run_id)
         with open(self.log_file_path, "w") as f:
@@ -459,13 +462,13 @@ class DiffusionTrainer(AbstractTrainer):
         with torch.set_grad_enabled(phase=='train'):
             if(self.distributed):
                 self.dataloaders[phase].sampler.set_epoch(self.current_epoch)
-            num_steps = len(self.dataloaders[phase])
+            num_steps = max(len(self.dataloaders[phase]), 4)
             for step, images in enumerate(self.dataloaders[phase]):
                 if(step % (num_steps // 4) == 0):
                     print("________________________________________________")
                     print(f"Currently at epoch {self.current_epoch}, step {step}/{num_steps}\n________________________________________________", flush=True) 
                 # Given a batch from a dataloader on the dataset, return a noised sample
-                batch_losses = self._run_batch(images.to(self.device), phase, step)
+                batch_losses = self._run_batch(images.to(self.device), phase)
                 self.log_step(batch_losses, step, phase)
                 del batch_losses
         if self.log:
@@ -480,7 +483,7 @@ class DiffusionTrainer(AbstractTrainer):
         
         if(step % self.bli == 0 or step+1 == len(self.dataloaders[phase])):
             for run_id in self.run_ids:
-                self.losses.setdefault(run_id, defaultdict(list))['phase'].append(batch_losses[run_id])
+                self.losses.setdefault(run_id, defaultdict(list))[phase].append(batch_losses[run_id])
 
         if ((step+1) % self.ckpt_interval == 0 and phase == 'train'): 
             for run_id in self.run_ids:
@@ -491,7 +494,7 @@ class DiffusionTrainer(AbstractTrainer):
             master_dict = json.load(f) 
         for run_id in self.run_ids:
             epoch_losses = self.losses[run_id][phase][-self.logs_per_epoch[phase]:]
-            avg_loss = sum(epoch_losses) / len(epoch_losses)
+            avg_loss = sum(epoch_losses) / max(len(epoch_losses), 1)
             print(f"avg loss for epoch {self.current_epoch}, {run_id=}: {avg_loss}", flush=True)
             if(avg_loss < self.best_losses.setdefault(run_id, float('inf')) and phase=="train"):
                 self.best_losses[run_id] = avg_loss
@@ -549,16 +552,20 @@ def select_distloss_var(tconfig, step, **kwargs):
         i = random.randrange(len(var_inds))
     return(var_inds[i], ng[i])
 
-
 def distribution_loss(trainer, y_hat, y, run_id, step, epsilon=1e-3):
     tconfig = trainer.training_configs[run_id]
     VAR_IND, num_gaussian = select_distloss_var(tconfig, step)
     assert isinstance(num_gaussian, int) and isinstance(VAR_IND, int), "num_gaussian and VAR_IND must be integers"
     GMM = GaussianMixture(n_components=num_gaussian, reg_covar=epsilon)
-    GMM.fit(y[:,VAR_IND].detach().cpu().numpy().reshape(-1, 1))
-    mu = torch.tensor(GMM.means_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
-    pi = torch.tensor(GMM.weights_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:] 
-    var = torch.tensor(GMM.covariances_.flatten(), dtype=torch.float64, device=y_hat.device)[None,:]
+    if torch.allclose(y[:,VAR_IND], y[0, VAR_IND]):
+        mu = y[0, VAR_IND].float()[None, None]
+        var = torch.tensor([[epsilon]], device=y_hat.device, dtype=torch.float32)
+        pi = torch.tensor([[1.0]], device=y_hat.device, dtype=torch.float32)
+    else:
+        GMM.fit(y[:,VAR_IND].detach().cpu().numpy().reshape(-1, 1))
+        mu = torch.tensor(GMM.means_.flatten(), device=y_hat.device).float()[None,:]
+        pi = torch.tensor(GMM.weights_.flatten(), device=y_hat.device).float()[None,:] 
+        var = torch.tensor(GMM.covariances_.flatten(), device=y_hat.device).float()[None,:]
     pi = torch.clamp(pi, min=epsilon)
     var = torch.clamp(var, min=epsilon)
     
@@ -585,7 +592,8 @@ def diffusion_loss(trainer, y_hat, run_id):
     # TODO: y and yhat are of size (B, 128) and somehow need to convert into images for diffusion loss
     tconfig = trainer.training_configs[run_id]
     scheduler = trainer.schedulers[run_id]
-    y_image = trainer._make_image(y_hat, image_dim=2)
+    image_dim = 2 if "2" in tconfig.diffusion_strategy else 1
+    y_image = trainer._make_image(y_hat, image_dim)
     def encode(sample):
         eps = torch.randn(sample.shape, device=sample.device) # BS x C x H x W
         xt = scheduler.add_noise(sample, eps, torch.LongTensor([tconfig.diffusion_loss_noise_level])) # noisy image
@@ -596,8 +604,10 @@ def diffusion_loss(trainer, y_hat, run_id):
                 eps_theta = trainer.unet(xt, t).sample
                 xt = scheduler.step(eps_theta, t, xt).prev_sample
         return(xt)
-    y_image_denoised = decode(encode(y_image))
-    return(trainer.loss_fn(y_image_denoised, y_image))
+    if "encode" in tconfig.diffusion_strategy:
+        y_image = encode(y_image)
+    y_image_denoised = decode(y_image)
+    return(tru.image_loss(tconfig)(y_image_denoised, y_image))
     
                     
 class VAETrainer(AbstractTrainer):

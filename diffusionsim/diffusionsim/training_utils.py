@@ -62,7 +62,6 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, shuffle_
     dconfig.shuffle_indices = shuffle_indices
 
     dl_params = DataLoaderParams()
-    dl_params.batch_size = batch_size * 384
     dl_params.shuffle = True
     if(torch.cuda.is_available() and batch_size > 16):
         dl_params.pin_memory = True
@@ -100,12 +99,15 @@ class TrainingConfig:
     max_T_sample: int = 100
     # logging params
     save_best_epoch: bool = True
+    save_every_epoch: bool = False
     batch_logging_interval: int = 16
     batch_checkpoint_interval: int = 10 # save checkpoint every 10 batches
     log_gradients: bool = False
     #save_image_epochs: int = 2
     push_to_hub: bool = False
     # distribution loss params
+    diffusion_strategy: str = "1d-encode-decode"
+    diffusion_image_loss: str = "1d-mse"
     diffusion_loss_noise_level: int = 10; 
     diffusion_loss_decoding_interval: int = 1
     distloss_type: str = "ksd"
@@ -231,19 +233,26 @@ def load_model_from_ckpt(ckpt_path, mconfig, baseline=False):
 
 
 model_table = {
-    'best_diffusion' : ('diffusion_hp_search', 'lr-explore', 'lr-explorea'),
-    'vintage_diffusion' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b'),
+    'best_diffusion_2d' : ('diffusion_hp_search', 'lr-explore', 'lr-explorea'),
+    'vintage_diffusion_2d' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b'),
+    'diff_1d' : ('diffusion_hp_search', 'diff_1d', 'diff_1da'),
 }
 
-def load_diffusion_model(model_id='best_diffusion', base_dir="/mnt/home/ssa2206/Climsim/experiments"):
+def load_diffusion_model(model_id='best_diffusion_2d', base_dir="/mnt/home/ssa2206/Climsim/experiments", cid='best'):
     exp_id, log_id, run_id = model_table[model_id]
     log_dict_path = os.path.join(base_dir, exp_id, f"{log_id}.json")
     with open(log_dict_path, 'r') as file:
         diff_logs = json.load(file)
     mconfig = diff_logs[run_id]['model_config']
-    ckpt = os.path.join(base_dir, exp_id, "checkpoints", f"best{run_id}-ckpt.pt")
+    ckpt = os.path.join(base_dir, exp_id, "checkpoints", f"{cid}{run_id}-ckpt.pt")
+    if not os.path.exists(ckpt):
+        ckpt = os.path.join(base_dir, exp_id, "checkpoints", log_id,f"{cid}{run_id}-ckpt.pt")
     model = load_model_from_ckpt(ckpt, mconfig)
     return(model)
+
+def image_loss(tconfig):
+    # return loss function L : denoised_image, og_image --> loss
+    return torch.nn.MSELoss()
 
 def load_lr_scheduler(tconfig, optim, dataloader):
     total_steps = len(dataloader) * tconfig.num_epochs

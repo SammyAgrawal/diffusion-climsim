@@ -176,7 +176,6 @@ def image_regridding(ds):
     return(sorted_indices[indices])
 
 def get_norm_info(style='image', sanitize=True):
-
     if(style == 'scale' or style == 'tendencies'):
         input_mean = xr.open_dataset(get_path('input_mean.nc')).load()
         input_max = xr.open_dataset(get_path('input_max.nc')).load()
@@ -222,7 +221,7 @@ def imagify(x, dutils, variable='y', image_dim=2):
     if(image_dim == 1):
         # desired output is (BS', C_var, lev) where lev is 64 
         var_map = dutils.input_var_idx if variable == 'x' else dutils.target_var_idx
-        ximg = torch.zeros(x.size(0), len(var_map), 64)
+        ximg = torch.zeros(x.size(0), len(var_map), 64, device=x.device)
         i = 0
         for var, (start, stop) in var_map.items():
             ximg[:,i, -60:] = x[:, start:stop] if stop-start>1 else x[:, start:stop].expand(-1, 60)
@@ -245,6 +244,7 @@ def imagify(x, dutils, variable='y', image_dim=2):
             i += 1
     else:
         print("invalid dim argument", image_dim, "must be 1, 2, or 3")
+    assert ximg.device == x.device, "Device mismatch"
     return(ximg)
 
 
@@ -420,11 +420,10 @@ class data_utils:
 
         self.all_inputs  = [v for v in self.v2_inputs]
         self.all_outputs = [v for v in self.v2_outputs]
-        
-        if(self.use_tendencies):
-            self.v1_outputs = [var.replace("state", "ptend") if 'state' in var else var for var in self.v1_outputs]
-            self.v2_outputs = [var.replace("state", "ptend") if 'state' in var else var for var in self.v2_outputs]
-        
+    
+        self.v1_output_tendencies = [var.replace("state", "ptend") if 'state' in var else var for var in self.v1_outputs]
+        self.v2_output_tendencies = [var.replace("state", "ptend") if 'state' in var else var for var in self.v2_outputs]
+    
 
         self.var_short_names = {'ptend_t':'$dT/dt$',
                                 'ptend_q0001':'$dq/dt$',
@@ -731,6 +730,7 @@ class data_utils:
         '''
         self.input_vars = self.v1_inputs
         self.target_vars = self.v1_outputs
+        self.target_vars_tendencies = self.v1_output_tendencies
         self.ps_index = 120
         self.input_feature_len = 124
         self.target_feature_len = 128
@@ -747,6 +747,7 @@ class data_utils:
         '''
         self.input_vars = self.v2_inputs
         self.target_vars = self.v2_outputs
+        self.target_vars_tendencies = self.v2_output_tendencies
         self.ps_index = 360
         self.input_feature_len = 557
         self.target_feature_len = 368
