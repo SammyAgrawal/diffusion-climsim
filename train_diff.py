@@ -8,25 +8,24 @@ import time
 import diffusionsim as diff
 import diffusionsim.training_utils as tru
 from diffusionsim.trainers import DiffusionTrainer
+import diffusionsim.evaluations as evals
 import torch
 import pprint
-os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 
-rank = 0
-device = f"cuda:{rank}" if torch.cuda.is_available() else 'cpu'
-print(f"Using device: {device}")
-
-REF_BATCH_SIZE = 128
-dataset_type = "xbatch"
-in_notebook = True
-
-
-def setup_diffusion_run(num_models, exp_id, base_run_id, data_vars='v1', image_dim=1, batch_size=128, shuffle_indices=False, use_tendencies=False):
-    dataset_type = "climsim_diffusion1d"
+def setup_diffusion_run(
+    num_models, exp_id, base_run_id, 
+    data_vars, 
+    image_dim,
+    batch_size=128, 
+    shuffle_indices=False, 
+    use_tendencies=False
+):
     dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, shuffle_indices, dataset_type, batch_size, use_tendencies)
-    dconfig.train_test_split = [0.8]
+    dconfig.train_test_split = [0.85]
+    dconfig.phases = ['train']
     tconfigs, mconfigs = [], []
-
+    dconfig.batch_checkpoint_interval = 32
+    dconfig.batch_logging_interval = 128
     learning_rates = [1e-5, 1e-5, 1e-5, 1e-5]
     unet_layers_per_block = [1, 1, 2, 2, 1]
     block_out_channels = [
@@ -75,20 +74,46 @@ def setup_diffusion_run(num_models, exp_id, base_run_id, data_vars='v1', image_d
         mconfigs.append(mconfig)
     return(tconfigs, mconfigs, dconfig)
 
+trainer = None
+num_epochs = 15
+REF_BATCH_SIZE = 128
+dataset_type = "climsim_diffusion1d"
+image_dim = 1
+data_vars = 'v2'
+in_notebook = True
 
+NUM_MODELS = 4
+
+RESTART_FROM_CKPT = False
+RERUN = False
+torch.set_grad_enabled(True)
+
+EXP_DIR = "/mnt/home/ssa2206/Climsim/experiments"
 if __name__ == "__main__":
-    num_models = 4
     exp_id = "diffusion_hp_search"
-    run_id = "diff_1d_v1"
-    base_dir = os.path.join("/mnt/home/ssa2206/Climsim/experiments", exp_id)
-    tconfigs, mconfigs, dconfig = setup_diffusion_run(num_models, exp_id, run_id, data_vars = 'v1', batch_size = 256, use_tendencies=True)
-    run_start_time = tru.log_event("run start", data_params = tru.asdict(dconfig.dataloader_params))
+    run_id = "diff_v2_1d"
+    run_start_time = tru.log_event("run start", exp_id=exp_id, run_id=run_id)
     t0 =  tru.log_event("setup start", run_id=run_id)
-    #model = tru.load_model_from_ckpt("trial_1-ckpt.pt", mconfig, exp_id, EXP_DIR)
-    dataloaders, indices = tru.load_dataloaders(dconfig, log=False)
-    trainer = DiffusionTrainer(dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id=run_id)
+    if(RERUN):
+        run = evals.Run(exp_id, run_id, climsim_run=False, cid='')
+        run.dconfig.dataloader_params.batch_size = 256
+        trainer = run.reconstruct_trainer(apply_checkpoints=True, apply_indices=True)
+    else:
+        base_dir = os.path.join(EXP_DIR, exp_id)
+        tconfigs, mconfigs, dconfig = setup_diffusion_run(
+            NUM_MODELS, exp_id, run_id, data_vars, image_dim, batch_size=256, shuffle_indices=True, use_tendencies=True
+        )
+        dataloaders, indices = tru.load_dataloaders(dconfig, log=True)
+        trainer = DiffusionTrainer(dataloaders, indices, mconfigs, tconfigs, base_dir, run_id)
+    
+    ckpt = "/mnt/home/ssa2206/Climsim/experiments/diffusion_hp_search/checkpoints/diff_1d/diff_1da-ckpt.pt"
+    state = torch.load(ckpt, weights_only=True, map_location=trainer.device)
+    trainer.models[trainer.run_ids[0]].load_state_dict(state)
 
     tru.log_event("setup end", duration=time.time() - t0)
-    trainer.train(num_epochs=20, log=True)
-    print("Done!")
+    if (RESTART_FROM_CKPT):
+        trainer.restart_from_ckpt(num_epochs, log=True, cid='')
+    else:
+        trainer.train(num_epochs, log=True)
+    print("Done!", flush=True)
     tru.log_event("run end", duration = time.time() - run_start_time)

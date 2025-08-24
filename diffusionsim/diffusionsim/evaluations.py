@@ -90,7 +90,7 @@ class Run:
                         filtered_dict[dp][k] = v
                         break
                 if not found:
-                    print(f"Warning: Unknown config key '{k}', ignoring.")
+                    print(f"Warning: Unknown config key '{k}' in {data_class.__name__}, ignoring.")
         return data_class(**filtered_dict)
     
     def _get_config(self, config_dict, getter):
@@ -171,8 +171,8 @@ class Run:
         
         for tid, rid in zip(trainer.run_ids, self.run_ids):
             trainer.losses[tid] = self.logs[rid]['losses']
-        if apply_checkpoints:
-            trainer.models = self.models
+            if apply_checkpoints and self.models[rid]:
+                trainer.models[tid] = self.models[rid]
 
         return(trainer)
 

@@ -13,7 +13,6 @@ from dataclasses import dataclass, asdict, field
 from diffusionsim.trainers import ClimsimTrainer
 import diffusionsim.evaluations as evals
 import pprint
-os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=/srv/conda/envs/notebook'
 
 trainer = None
 num_epochs = 10
@@ -26,12 +25,18 @@ NUM_MODELS = 5
 os.environ['WANDB_NAME'] = ""
 os.environ['WANDB_NOTES'] = ""
 
+RESTART_FROM_CKPT = False
+RERUN = False
+torch.set_grad_enabled(True)
 
-def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_size=128):
-    shuffle_indices = True
+
+def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_size=128, shuffle_indices = True):
     dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, shuffle_indices, 
                              dataset_type, batch_size, use_tendencies=False)
     dconfig.train_test_split = [0.25, 0.10]
+    dconfig.log_gradients = True
+    dconfig.batch_checkpoint_interval = 50
+    dconfig.batch_logging_interval = 16
     tconfigs, mconfigs = [], []
 
     learning_rates = [5e-5, 1e-4, 5e-4, 1e-3, 2.5e-3]
@@ -66,10 +71,6 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
         tconfig.distloss_var_sel = "uniform"
 
         tconfig.diffusion_loss_noise_level = 20
-
-        tconfig.log_gradients = True
-        tconfig.batch_checkpoint_interval = 50
-        tconfig.batch_logging_interval = 16
         tconfigs.append(tconfig)
         
         mconfig = tru.ModelConfig(unet=tru.UNetParams(), scheduler=tru.SchedulerParams())
@@ -84,10 +85,6 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
 
     return(tconfigs, mconfigs, dconfig)
 
-
-RESTART_FROM_CKPT = False
-RERUN = False
-torch.set_grad_enabled(True)
 
 EXP_DIR = "/mnt/home/ssa2206/Climsim/experiments"
 if __name__ == "__main__":
@@ -104,7 +101,7 @@ if __name__ == "__main__":
         base_dir = os.path.join(EXP_DIR, exp_id)
         tconfigs, mconfigs, dconfig = setup_climsim_run(NUM_MODELS, exp_id, run_id, data_vars='v1', batch_size=256)
         dataloaders, indices = tru.load_dataloaders(dconfig, log=True)
-        trainer = ClimsimTrainer(dataloaders, indices, mconfigs, tconfigs, base_dir, run_id, rank=0)
+        trainer = ClimsimTrainer(dataloaders, indices, mconfigs, tconfigs, base_dir, run_id)
     
     tru.log_event("setup end", duration=time.time() - t0)
     if (RESTART_FROM_CKPT):

@@ -248,6 +248,51 @@ def imagify(x, dutils, variable='y', image_dim=2):
     return(ximg)
 
 
+def deimagify(ximg, dutils, variable='y', image_dim=2):
+    assert variable in ['x', 'y'], "Variable must be either x or y"
+    if image_dim is None:
+        image_dim = 0
+    match int(image_dim):
+        case 1:
+            var_map = dutils.input_var_idx if variable == 'x' else dutils.target_var_idx
+            feature_len = dutils.input_feature_len if variable == 'x' else dutils.target_feature_len
+            x = torch.zeros(ximg.size(0), feature_len, device=ximg.device)
+            i = 0
+            for var, (start, stop) in var_map.items():
+                if stop - start > 1:
+                    x[:, start:stop] = ximg[:, i, -60:]
+                else:
+                    x[:, start:stop] = ximg[:, i, -60:-59]  # collapse expanded dim
+                i += 1
+        case 2:
+            feature_len = dutils.input_feature_len if variable == 'x' else dutils.target_feature_len
+            unpermute = torch.argsort(torch.tensor(dutils.permute_indices))
+            x = ximg.permute(0, 2, 3, 1).reshape(-1, 384, feature_len)[:, unpermute, :]  # undo permute
+            x = x.reshape(-1, feature_len)  # final shape (N, feature_len)
+        case 3:
+            var_map = dutils.input_var_idx if variable == 'x' else dutils.target_var_idx
+            feature_len = dutils.input_feature_len if variable == 'x' else dutils.target_feature_len
+            N, C, _, H, W = ximg.shape
+            x = torch.zeros(N, 384, feature_len, device=ximg.device)
+
+            i = 0
+            for var, (start, stop) in var_map.items():
+                row = ximg[:, i, -60:, :, :]  # N, 60, H, W
+                row = row.permute(0, 2, 3, 1) # N, H, W, lev
+                if stop - start > 1:
+                    x[:, :, :, start:stop] = row
+                else:
+                    x[:, :, :, start:stop] = row[..., :1]  # collapse expanded lev
+                i += 1
+
+            # Undo spatial permutation
+            x = x.reshape(-1, 384, feature_len)
+            x = x[:, torch.argsort(torch.tensor(dutils.permute_indices)), :]
+            x = x.reshape(-1, feature_len)
+        case _:
+            print("invalid dim argument", image_dim, "must be 1, 2, or 3")
+    return(x)
+
 
 MLBackendType = Literal["tensorflow", "pytorch"]
 

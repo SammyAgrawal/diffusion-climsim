@@ -33,6 +33,8 @@ class DataConfig:
     climsim_type: str = "expanded-low-res"
     source: str = "local-vzarr"
     data_dir: str = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
+    num_epochs: int = 10
+    phases: List[str] = field(default_factory=lambda: ['train', 'eval'])
     train_test_split: List[int] = field(default_factory=lambda: [1.0, 0.0])
     dataloader_params: DataLoaderParams = field(default_factory=lambda: DataLoaderParams())
     #xarr_subsamples: Tuple[int, int, int] = (36,210240, 144)
@@ -42,6 +44,15 @@ class DataConfig:
     chunksize: Dict = field(default_factory=lambda:{})
     log_batching: bool = True
     shuffle_indices: bool = True
+    distributed_training: bool = False
+    # logging params
+    checkpoint_best_epoch: bool = True
+    checkpoint_every_epoch: bool = False
+    batch_logging_interval: int = 32
+    batch_checkpoint_interval: int = 50 # save checkpoint every 10 batches
+    log_gradients: bool = False
+
+    
     def __post_init__(self):
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = DataLoaderParams(**self.dataloader_params)
@@ -78,10 +89,6 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, shuffle_
 class TrainingConfig:
     exp_id: str
     run_id: str
-    # data params
-    num_epochs: int = 5
-    phases: List[str] = field(default_factory=lambda: ['train', 'eval'])
-    distributed_training: bool = False
     # learning parameters
     optimizer: str = 'adam'
     learning_rate_params: Dict = field(default_factory=lambda: {
@@ -97,19 +104,12 @@ class TrainingConfig:
     gradient_accumulation_steps = 1
     mixed_precision = "fp16"
     max_T_sample: int = 100
-    # logging params
-    save_best_epoch: bool = True
-    save_every_epoch: bool = False
-    batch_logging_interval: int = 16
-    batch_checkpoint_interval: int = 10 # save checkpoint every 10 batches
-    log_gradients: bool = False
-    #save_image_epochs: int = 2
     push_to_hub: bool = False
     # distribution loss params
     diffusion_strategy: str = "1d-encode-decode"
     diffusion_image_loss: str = "1d-mse"
     diffusion_loss_noise_level: int = 10; 
-    diffusion_loss_decoding_interval: int = 1
+    diffusion_loss_decoding_stride: int = 1
     distloss_type: str = "ksd"
     num_gaussians: List[int] = field(default_factory=lambda: [3, 2, 3, 2])
     num_distloss_samples: int = 8
@@ -190,6 +190,14 @@ class ModelLens:
             return self.params[self.param_names[getter]]
         raise ValueError(f"Invalid getter: {getter}")
     
+    def log_gradients(self, gdict):
+        for n, p in self.params.items():
+            if p.grad is not None and torch.isfinite(p.grad).all():
+                gdict.setdefault(n, []).append((p.grad.mean().item(), p.grad.std().item()))
+            else:
+                return( dict(param_name=n, grad=p.grad, state_dict={k: v.clone().cpu() for k, v in self.params.items()}) )
+        return(0)
+    
     def __getattr__(self, name):
         return getattr(self.model, name)
     def __call__(self, *args):
@@ -254,8 +262,8 @@ def image_loss(tconfig):
     # return loss function L : denoised_image, og_image --> loss
     return torch.nn.MSELoss()
 
-def load_lr_scheduler(tconfig, optim, dataloader):
-    total_steps = len(dataloader) * tconfig.num_epochs
+def load_lr_scheduler(tconfig, optim, dataloader, num_epochs=10):
+    total_steps = len(dataloader) * num_epochs
     params = tconfig.learning_rate_params
     match params['lr_scheduler']:
         # -------------------- HuggingFace/Diffusers schedulers --------------------

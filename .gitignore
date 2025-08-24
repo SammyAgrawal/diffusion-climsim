@@ -129,7 +129,9 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-
+.vscode/
+*.vscode/
+data/
 # Spyder project settings
 .spyderproject
 .spyproject
