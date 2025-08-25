@@ -232,7 +232,7 @@ def load_model_from_ckpt(ckpt_path, mconfig, baseline=False):
     model.load_state_dict(torch.load(ckpt_path, map_location=torch.device('cpu'), weights_only=True))
     return(model)
 
-
+leap_base_dir = '/home/jovyan/Samarth/ClimsimProjectWork/diffusion-climsim/experiments'
 model_table = {
     'best_diffusion_2d' : ('diffusion_hp_search', 'lr-explore', 'lr-explorea', "best"),
     'vintage_diffusion_2d' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b', ""),

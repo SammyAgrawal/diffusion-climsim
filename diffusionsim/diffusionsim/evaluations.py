@@ -27,7 +27,7 @@ exp_dir = "/mnt/home/ssa2206/Climsim/experiments"
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class Run:
-    def __init__(self, exp_id, base_run_id, climsim_run= True, cid: str = 'best-'):
+    def __init__(self, exp_id, base_run_id, climsim_run= True, cid: str = 'best-', exp_dir=exp_dir):
         self.base_dir = os.path.join(exp_dir, exp_id)
         self.base_run_id = base_run_id
         self.log_file = os.path.join(self.base_dir, f"{base_run_id}.json")
