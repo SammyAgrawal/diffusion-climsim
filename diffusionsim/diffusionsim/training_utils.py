@@ -64,10 +64,10 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=True, shuffle_i
         dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
 
     dl_params = DataLoaderParams(batch_size=batch_size)
-    dconfig.checkpoint_every_epoch = True if "climsim" in dataset_type else False
-    dconfig.batch_logging_interval = 16 if "climsim" in dataset_type else 128
-    dconfig.batch_checkpoint_interval = 50 if "climsim" in dataset_type else 100
-    dconfig.log_gradients = True if "climsim" in dataset_type else False
+    dconfig.checkpoint_every_epoch = False if "diffusion" in dataset_type else True
+    dconfig.batch_logging_interval = 128 if "diffusion" in dataset_type else 16
+    dconfig.batch_checkpoint_interval = 100 if "diffusion" in dataset_type else 50
+    dconfig.log_gradients = False if "diffusion" in dataset_type else True
     
     if(torch.cuda.is_available() and batch_size > 16 and not in_notebook):
         dl_params.pin_memory = True
