@@ -14,67 +14,70 @@ from diffusionsim.trainers import ClimsimTrainer
 import diffusionsim.evaluations as evals
 import pprint
 
-trainer = None
-num_epochs = 10
-
-REF_BATCH_SIZE = 128
-dataset_type="climsim"
-in_notebook = True
-
-NUM_MODELS = 5
 os.environ['WANDB_NAME'] = ""
 os.environ['WANDB_NOTES'] = ""
 
-RESTART_FROM_CKPT = False
-RERUN = False
+num_epochs = 10
+REF_BATCH_SIZE = 128
+dataset_type="climsim"
+in_notebook = True
 torch.set_grad_enabled(True)
 
 
-def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_size=128, shuffle_indices = True):
-    dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, shuffle_indices, 
-                             dataset_type, batch_size, use_tendencies=False)
-    dconfig.train_test_split = [0.25, 0.10]
-    dconfig.log_gradients = True
-    dconfig.batch_checkpoint_interval = 50
-    dconfig.batch_logging_interval = 16
+def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_size=128, use_tendencies=True, shuffle_indices=False):
+    dataset_type = "climsim"
+    #dconfig = tru.my_dconfig("local_vzarr", "v1", in_notebook, False, "climsim")
+    dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, shuffle_indices,
+                                dataset_type, batch_size, use_tendencies,
+                             )
+    dconfig.batch_logging_interval = 1
+    dconfig.train_test_split = [0.002, 0.001]
     tconfigs, mconfigs = [], []
 
-    learning_rates = [5e-5, 1e-4, 5e-4, 1e-3, 2.5e-3]
-    #diffloss_weights = [5.0, 5.0, 5.0, 5.0]
-    #distloss_weights = [0.1, 0.1, 0.1, 0.1]
-    target_variables_distloss = [73, 59, 123]
-    num_gaussians = [2, 2, 2]
-    
-    #run_ids = f"{base_run_id}-mse {base_run_id}-diff {base_run_id}-dist {base_run_id}-joint".split()
-    lettering = "abcdefghijklmnopqrstuvwxyz"
-    run_ids = [f"{base_run_id}-{lettering[i]}" for i in range(num_models)]
-    for i in range(num_models):
-        tconfig = tru.TrainingConfig(exp_id=exp_id, run_id=run_ids[i])
-        tconfig.phases = ['train', 'eval']
-        tconfig.learning_rate_params.update({
-            "base_learning_rate" : learning_rates[i] * batch_size / REF_BATCH_SIZE,
-            "step_size" : 500,
-            "gamma" : 0.95,
-            "scheduler_type" : "steplr",
-        })
-        tconfig.loss_weight_params.update({
-            "strategy" : "gradnorm",
-            "update_interval" : 10,
-            "alpha" : 0.5,
-            "weights" : {'mse': 1.0, 'distribution': 0.1, 'diffusion': 5.0},
-            "schedule" : {'mse': [0,100], 'distribution': 2 , 'diffusion': 2}
-        })
-        tconfig.clip_gradients = False
-        
-        tconfig.distloss_var_inds = target_variables_distloss
-        tconfig.num_gaussians = num_gaussians
-        tconfig.distloss_var_sel = "uniform"
+    learning_rates = [1e-3, 1e-3, 1e-3, 1e-3] + [1e-3] * max(0, num_models - 4)
+    mse_weights = [1.0,] * num_models
+    distloss_weights = [0.1,] * num_models
+    diffloss_weights = [20.0,] * num_models
 
-        tconfig.diffusion_loss_noise_level = 20
+    image_dim = 1
+    target_variables_distloss = [68, 73, 82] # previously included 60 asw
+    num_gaussians = [3, 2, 3, 2]
+
+    lettering = 'abcdefghijklmnopqrstuvwxyz'
+    for i in range(num_models):
+        tconfig = tru.TrainingConfig(exp_id=exp_id, run_id=f"{base_run_id}{lettering[i]}")
+        tconfig.learning_rate_params.update(dict(
+            learning_rate = learning_rates[i] * batch_size / REF_BATCH_SIZE,
+            lr_scheduler="steplr",
+            step_size=500,
+            gamma=0.95,
+            lr_warmup_steps=20,
+        ))
+
+        loss_weights = {'mse': mse_weights[i], 'distribution': distloss_weights[i], 'diffusion': diffloss_weights[i]}
+        loss_schedule = {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100]}
+        tconfig.loss_weight_params.update(dict(
+            loss_weights=loss_weights,
+            loss_schedule=loss_schedule,
+            alpha=0.5, 
+            strategy="gradnorm",
+            update_interval=10,
+        ))
+
+        tconfig.clip_gradients = True
+        tconfig.distloss_var_inds = target_variables_distloss
+        tconfig.num_gaussians = num_gaussians[:len(target_variables_distloss)]
+        
+        tconfig.diffusion_image_dim = image_dim
+        tconfig.diffusion_loss_noise_level = 10
+        tconfig.diffusion_strategy = "1d-encode-decode"
+        #tconfig.diffusion_image_loss = "1d-mse"
         tconfigs.append(tconfig)
         
-        mconfig = tru.ModelConfig(unet=tru.UNetParams(), scheduler=tru.SchedulerParams())
-        mconfig.data_vars = data_vars
+        mconfig = tru.ModelConfig(scheduler=tru.SchedulerParams(
+            prediction_type="epsilon",
+            beta_schedule="linear",
+        ))
         if("climsim" in dataset_type):
             mconfig.model_type = "baseline"
         # define baseline model
@@ -84,6 +87,13 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
         mconfigs.append(mconfig)
 
     return(tconfigs, mconfigs, dconfig)
+
+
+trainer = None
+
+NUM_MODELS = 4
+RESTART_FROM_CKPT = False
+RERUN = False
 
 
 EXP_DIR = "/mnt/home/ssa2206/Climsim/experiments"

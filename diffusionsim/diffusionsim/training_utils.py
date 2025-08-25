@@ -30,7 +30,7 @@ class DataLoaderParams:
 @dataclass
 class DataConfig:
     dataset_type: str = "XBatchDataset"
-    climsim_type: str = "expanded-low-res"
+    climsim_type: str = "low-res-expanded" 
     source: str = "local-vzarr"
     data_dir: str = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
     num_epochs: int = 10
@@ -42,7 +42,6 @@ class DataConfig:
     use_tendencies: bool = False
     norm_info: str = "image"
     chunksize: Dict = field(default_factory=lambda:{})
-    log_batching: bool = True
     shuffle_indices: bool = True
     distributed_training: bool = False
     # logging params
@@ -57,32 +56,26 @@ class DataConfig:
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = DataLoaderParams(**self.dataloader_params)
 
-def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=False, shuffle_indices=True,
+def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=True, shuffle_indices=True,
                dataset_type="climsim", batch_size=128, use_tendencies = True, **kwargs):
-    dconfig = DataConfig(**kwargs)
-    dconfig.source = source# # specify from raw cloud bucket
-    dconfig.climsim_type = "low-res-expanded" 
-    dconfig.dataset_type = dataset_type
-    dconfig.data_dir = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
-    if "train_test_split" in kwargs:
-        dconfig.train_test_split = kwargs["train_test_split"]
-    else:
+    dconfig = DataConfig(source=source, dataset_type=dataset_type, shuffle_indices=shuffle_indices, data_vars=data_vars, use_tendencies=use_tendencies, **kwargs)
+    dconfig.phases = ['train', 'eval'] if "climsim" in dataset_type else ['train']
+    if "train_test_split" not in kwargs:
         dconfig.train_test_split = [0.45, 0.20] if "climsim" in dataset_type else [1.0]
-    dconfig.data_vars = data_vars
-    dconfig.use_tendencies = use_tendencies
-    dconfig.shuffle_indices = shuffle_indices
 
-    dl_params = DataLoaderParams()
-    dl_params.shuffle = True
-    if(torch.cuda.is_available() and batch_size > 16):
+    dl_params = DataLoaderParams(batch_size=batch_size)
+    dconfig.checkpoint_every_epoch = True if "climsim" in dataset_type else False
+    dconfig.batch_logging_interval = 16 if "climsim" in dataset_type else 128
+    dconfig.batch_checkpoint_interval = 50 if "climsim" in dataset_type else 100
+    dconfig.log_gradients = True if "climsim" in dataset_type else False
+    
+    if(torch.cuda.is_available() and batch_size > 16 and not in_notebook):
         dl_params.pin_memory = True
     if(not in_notebook):
         dl_params.num_workers = 4
         dl_params.prefetch_factor = 3
         dl_params.persistent_workers = True
         dl_params.multiprocessing_context = "forkserver"
-
-    dconfig.dataloader_params = dl_params
     return(dconfig)
             
 @dataclass
@@ -150,11 +143,11 @@ class SchedulerParams:
     clip_sample: bool = False
     clip_sample_range: float = 4.0
     beta_end: float = 0.02
+    prediction_type: str = 'epsilon'
 
 @dataclass
 class ModelConfig:
     model_type: str = "ddpm_diffusion"
-    data_vars: str = "v1"
     scheduler_type: str = 'ddpm'
     unet: UNetParams = field(default_factory=lambda: UNetParams())
     scheduler: SchedulerParams = field(default_factory=lambda:SchedulerParams())
@@ -241,13 +234,14 @@ def load_model_from_ckpt(ckpt_path, mconfig, baseline=False):
 
 
 model_table = {
-    'best_diffusion_2d' : ('diffusion_hp_search', 'lr-explore', 'lr-explorea'),
-    'vintage_diffusion_2d' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b'),
-    'diff_1d' : ('diffusion_hp_search', 'diff_1d', 'diff_1da'),
+    'best_diffusion_2d' : ('diffusion_hp_search', 'lr-explore', 'lr-explorea', "best"),
+    'vintage_diffusion_2d' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b', ""),
+    'diff_1d_v2' : ('diffusion_hp_search', 'diff_1d', 'diff_1da', ""),
+    'diff_1d_v1' : ('diffusion_hp_search', 'diff_1d_v1', 'diff_1d_v1a', "best-"),
 }
 
-def load_diffusion_model(model_id='best_diffusion_2d', base_dir="/mnt/home/ssa2206/Climsim/experiments", cid='best'):
-    exp_id, log_id, run_id = model_table[model_id]
+def load_diffusion_model(model_id='best_diffusion_2d', base_dir="/mnt/home/ssa2206/Climsim/experiments"):
+    exp_id, log_id, run_id, cid = model_table[model_id]
     log_dict_path = os.path.join(base_dir, exp_id, f"{log_id}.json")
     with open(log_dict_path, 'r') as file:
         diff_logs = json.load(file)
@@ -255,7 +249,7 @@ def load_diffusion_model(model_id='best_diffusion_2d', base_dir="/mnt/home/ssa22
     ckpt = os.path.join(base_dir, exp_id, "checkpoints", f"{cid}{run_id}-ckpt.pt")
     if not os.path.exists(ckpt):
         ckpt = os.path.join(base_dir, exp_id, "checkpoints", log_id,f"{cid}{run_id}-ckpt.pt")
-    model = load_model_from_ckpt(ckpt, mconfig)
+    model = tru.load_model_from_ckpt(ckpt, mconfig)
     return(model)
 
 def image_loss(tconfig):
