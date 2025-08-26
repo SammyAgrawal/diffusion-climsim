@@ -363,59 +363,19 @@ class ScriptableAttentionOp(torch.nn.Module):
         w = torch.einsum("ncq,nck->nqk", q.float(), k_scaled.float()).softmax(dim=2)
         return w.to(dtype=q.dtype)
 
-class UNetBlock(torch.nn.Module):
-    """
-    Unified U-Net block with optional up/downsampling and self-attention. Represents
-    the union of all features employed by the DDPM++, NCSN++, and ADM architectures.
 
-    Parameters:
-    -----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    emb_channels : int
-        Number of embedding channels.
-    up : bool, optional
-        If True, applies upsampling in the forward pass. By default False.
-    down : bool, optional
-        If True, applies downsampling in the forward pass. By default False.
-    attention : bool, optional
-        If True, enables the self-attention mechanism in the block. By default False.
-    num_heads : int, optional
-        Number of attention heads. If None, defaults to `out_channels // 64`.
-    channels_per_head : int, optional
-        Number of channels per attention head. By default 64.
-    dropout : float, optional
-        Dropout probability. By default 0.0.
-    skip_scale : float, optional
-        Scale factor applied to skip connections. By default 1.0.
-    eps : float, optional
-        Epsilon value used for normalization layers. By default 1e-5.
-    resample_filter : List[int], optional
-        Filter for resampling layers. By default [1, 1].
-    resample_proj : bool, optional
-        If True, resampling projection is enabled. By default False.
-    adaptive_scale : bool, optional
-        If True, uses adaptive scaling in the forward pass. By default True.
-    init : dict, optional
-        Initialization parameters for convolutional and linear layers.
-    init_zero : dict, optional
-        Initialization parameters with zero weights for certain layers. By default
-        {'init_weight': 0}.
-    init_attn : dict, optional
-        Initialization parameters specific to attention mechanism layers.
-        Defaults to 'init' if not provided.
-    """
+class UNetBlock(torch.nn.Module):
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         emb_channels: int = 0,
+        kernel_size: int = 3,
         up: bool = False,
         down: bool = False,
         attention: bool = False,
+        use_scriptable_attention: bool = True,
         num_heads: int = None,
         channels_per_head: int = 64,
         dropout: float = 0.0,
@@ -448,7 +408,7 @@ class UNetBlock(torch.nn.Module):
         self.conv0 = Conv1d(
             in_channels=in_channels,
             out_channels=out_channels,
-            kernel=3,
+            kernel=kernel_size,
             up=up,
             down=down,
             resample_filter=resample_filter,
@@ -460,8 +420,9 @@ class UNetBlock(torch.nn.Module):
         #     **init,
         # )
         self.norm1 = GroupNorm(num_channels=out_channels, eps=eps)
+        
         self.conv1 = Conv1d(
-            in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero
+            in_channels=out_channels, out_channels=out_channels, kernel=kernel_size, **init_zero
         )
 
         self.skip = None
@@ -491,9 +452,10 @@ class UNetBlock(torch.nn.Module):
                 kernel=1,
                 **init_zero,
             )
-
+            if use_scriptable_attention:
+                self.attentionop = ScriptableAttentionOp()
     def forward(self, x):
-        orig = x
+        skip_res = self.skip(x) if self.skip is not None else x
         x = self.conv0(silu(self.norm0(x)))
 
         # params = self.affine(emb).unsqueeze(2).to(x.dtype)
@@ -507,7 +469,7 @@ class UNetBlock(torch.nn.Module):
         x = self.conv1(
             torch.nn.functional.dropout(x, p=self.dropout, training=self.training)
         )
-        x = x.add_(self.skip(orig) if self.skip is not None else orig)
+        x = x.add_(skip_res)
         x = x * self.skip_scale
 
         if self.num_heads:
@@ -518,64 +480,26 @@ class UNetBlock(torch.nn.Module):
                 )
                 .unbind(2)
             )
-            w = AttentionOp.apply(q, k)
+            if self.attentionop is not None:
+                w = self.attentionop(q, k)
+            else:
+                w = AttentionOp.apply(q, k)
             a = torch.einsum("nqk,nck->ncq", w, v)
             x = self.proj(a.reshape(*x.shape)).add_(x)
             # batch_size, channels, length = x.size()
             # x = self.proj(a.reshape(batch_size, channels, length)).add_(x)
             x = x * self.skip_scale
         return x
-    
-class UNetBlock_noatten(torch.nn.Module):
-    """
-    Unified U-Net block with optional up/downsampling and self-attention. Represents
-    the union of all features employed by the DDPM++, NCSN++, and ADM architectures.
+        
 
-    Parameters:
-    -----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    emb_channels : int
-        Number of embedding channels.
-    up : bool, optional
-        If True, applies upsampling in the forward pass. By default False.
-    down : bool, optional
-        If True, applies downsampling in the forward pass. By default False.
-    attention : bool, optional
-        If True, enables the self-attention mechanism in the block. By default False.
-    num_heads : int, optional
-        Number of attention heads. If None, defaults to `out_channels // 64`.
-    channels_per_head : int, optional
-        Number of channels per attention head. By default 64.
-    dropout : float, optional
-        Dropout probability. By default 0.0.
-    skip_scale : float, optional
-        Scale factor applied to skip connections. By default 1.0.
-    eps : float, optional
-        Epsilon value used for normalization layers. By default 1e-5.
-    resample_filter : List[int], optional
-        Filter for resampling layers. By default [1, 1].
-    resample_proj : bool, optional
-        If True, resampling projection is enabled. By default False.
-    adaptive_scale : bool, optional
-        If True, uses adaptive scaling in the forward pass. By default True.
-    init : dict, optional
-        Initialization parameters for convolutional and linear layers.
-    init_zero : dict, optional
-        Initialization parameters with zero weights for certain layers. By default
-        {'init_weight': 0}.
-    init_attn : dict, optional
-        Initialization parameters specific to attention mechanism layers.
-        Defaults to 'init' if not provided.
-    """
+class UNetBlock_noatten(UNetBlock):
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         emb_channels: int = 0,
+        kernel_size: int = 3,
         up: bool = False,
         down: bool = False,
         attention: bool = False,
@@ -591,125 +515,23 @@ class UNetBlock_noatten(torch.nn.Module):
         init_zero: Dict[str, Any] = dict(init_weight=0),
         init_attn: Any = None,
     ):
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.emb_channels = emb_channels
-        self.num_heads = (
-            0
-            if not attention
-            else num_heads
-            if num_heads is not None
-            else out_channels // channels_per_head
-        )
-        self.dropout = dropout
-        self.skip_scale = skip_scale
-        self.adaptive_scale = adaptive_scale
-
-        self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
-        self.conv0 = Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel=3,
-            up=up,
-            down=down,
-            resample_filter=resample_filter,
-            **init,
-        )
-        # self.affine = Linear(
-        #     in_features=emb_channels,
-        #     out_features=out_channels * (2 if adaptive_scale else 1),
-        #     **init,
-        # )
-        self.norm1 = GroupNorm(num_channels=out_channels, eps=eps)
-        self.conv1 = Conv1d(
-            in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero
-        )
-
-        self.skip = None
-        if out_channels != in_channels or up or down:
-            kernel = 1 if resample_proj or out_channels != in_channels else 0
-            self.skip = Conv1d(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel=kernel,
-                up=up,
-                down=down,
-                resample_filter=resample_filter,
-                **init,
-            )
+        super().__init__(
+            in_channels, out_channels, emb_channels, kernel_size,
+            up, down,
+            False, False, None, channels_per_head,
+            dropout, skip_scale,
+            eps, resample_filter, resample_proj, adaptive_scale,
+            init, init_zero, None)
 
 
-    def forward(self, x):
-        orig = x
-        x = self.conv0(silu(self.norm0(x)))
-
-        # params = self.affine(emb).unsqueeze(2).to(x.dtype)
-        # if self.adaptive_scale:
-        #     scale, shift = params.chunk(chunks=2, dim=1)
-        #     x = silu(torch.addcmul(shift, self.norm1(x), scale + 1))
-        # else:
-        #     x = silu(self.norm1(x.add_(params)))
-
-        x = self.norm1(x)
-        x = self.conv1(
-            torch.nn.functional.dropout(x, p=self.dropout, training=self.training)
-        )
-        x = x.add_(self.skip(orig) if self.skip is not None else orig)
-        x = x * self.skip_scale
-        return x
-    
-class UNetBlock_atten(torch.nn.Module):
-    """
-    Unified U-Net block with optional up/downsampling and self-attention. Represents
-    the union of all features employed by the DDPM++, NCSN++, and ADM architectures.
-
-    Parameters:
-    -----------
-    in_channels : int
-        Number of input channels.
-    out_channels : int
-        Number of output channels.
-    emb_channels : int
-        Number of embedding channels.
-    up : bool, optional
-        If True, applies upsampling in the forward pass. By default False.
-    down : bool, optional
-        If True, applies downsampling in the forward pass. By default False.
-    attention : bool, optional
-        If True, enables the self-attention mechanism in the block. By default False.
-    num_heads : int, optional
-        Number of attention heads. If None, defaults to `out_channels // 64`.
-    channels_per_head : int, optional
-        Number of channels per attention head. By default 64.
-    dropout : float, optional
-        Dropout probability. By default 0.0.
-    skip_scale : float, optional
-        Scale factor applied to skip connections. By default 1.0.
-    eps : float, optional
-        Epsilon value used for normalization layers. By default 1e-5.
-    resample_filter : List[int], optional
-        Filter for resampling layers. By default [1, 1].
-    resample_proj : bool, optional
-        If True, resampling projection is enabled. By default False.
-    adaptive_scale : bool, optional
-        If True, uses adaptive scaling in the forward pass. By default True.
-    init : dict, optional
-        Initialization parameters for convolutional and linear layers.
-    init_zero : dict, optional
-        Initialization parameters with zero weights for certain layers. By default
-        {'init_weight': 0}.
-    init_attn : dict, optional
-        Initialization parameters specific to attention mechanism layers.
-        Defaults to 'init' if not provided.
-    """
+class UNetBlock_atten(UNetBlock):
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         emb_channels: int = 0,
+        kernel_size: int = 3,
         up: bool = False,
         down: bool = False,
         num_heads: int = 1,
@@ -725,112 +547,12 @@ class UNetBlock_atten(torch.nn.Module):
         init_attn: Any = None,
         attention: bool = True,
     ):
-        super().__init__()
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.emb_channels = emb_channels
-        self.num_heads = (
-            num_heads
-            if num_heads is not None
-            else out_channels // channels_per_head
-        )
-        self.dropout = dropout
-        self.skip_scale = skip_scale
-        self.adaptive_scale = adaptive_scale
-
-        self.norm0 = GroupNorm(num_channels=in_channels, eps=eps)
-        self.conv0 = Conv1d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel=3,
-            up=up,
-            down=down,
-            resample_filter=resample_filter,
-            **init,
-        )
-        # self.affine = Linear(
-        #     in_features=emb_channels,
-        #     out_features=out_channels * (2 if adaptive_scale else 1),
-        #     **init,
-        # )
-        self.norm1 = GroupNorm(num_channels=out_channels, eps=eps)
-        self.conv1 = Conv1d(
-            in_channels=out_channels, out_channels=out_channels, kernel=3, **init_zero
-        )
-
-        self.skip = None
-        if out_channels != in_channels or up or down:
-            kernel = 1 if resample_proj or out_channels != in_channels else 0
-            self.skip = Conv1d(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel=kernel,
-                up=up,
-                down=down,
-                resample_filter=resample_filter,
-                **init,
-            )
-
-        if self.num_heads:
-            self.norm2 = GroupNorm(num_channels=out_channels, eps=eps)
-            self.qkv = Conv1d(
-                in_channels=out_channels,
-                out_channels=out_channels * 3,
-                kernel=1,
-                **(init_attn if init_attn is not None else init),
-            )
-            self.proj = Conv1d(
-                in_channels=out_channels,
-                out_channels=out_channels,
-                kernel=1,
-                **init_zero,
-            )
-        
-        self.attentionop = ScriptableAttentionOp()
-
-    def forward(self, x):
-        orig = x
-        x = self.conv0(silu(self.norm0(x)))
-
-        # params = self.affine(emb).unsqueeze(2).to(x.dtype)
-        # if self.adaptive_scale:
-        #     scale, shift = params.chunk(chunks=2, dim=1)
-        #     x = silu(torch.addcmul(shift, self.norm1(x), scale + 1))
-        # else:
-        #     x = silu(self.norm1(x.add_(params)))
-
-        x = self.norm1(x)
-        x = self.conv1(
-            torch.nn.functional.dropout(x, p=self.dropout, training=self.training)
-        )
-        x = x.add_(self.skip(orig) if self.skip is not None else orig)
-        x = x * self.skip_scale
-
-        if self.num_heads:
-            q, k, v = (
-                self.qkv(self.norm2(x))
-                .reshape(
-                    x.shape[0] * self.num_heads, x.shape[1] // self.num_heads, 3, -1
-                )
-                .unbind(2)
-            )
-            w = self.attentionop(q, k)
-            a = torch.einsum("nqk,nck->ncq", w, v)
-            # x = self.proj(a.reshape(*x.shape)).add_(x)
-            batch_size, channels, length = x.size()
-            x = self.proj(a.reshape(batch_size, channels, length)).add_(x)
-            x = x * self.skip_scale
-        return x
-
-
-
-
-
-
-
-
-
+        super().__init__(
+            in_channels, out_channels, emb_channels, kernel_size,
+            up, down,
+            True, True, num_heads, channels_per_head,
+            dropout, skip_scale, eps, resample_filter, resample_proj, adaptive_scale,
+            init, init_zero, init_attn)
 
 
 """
