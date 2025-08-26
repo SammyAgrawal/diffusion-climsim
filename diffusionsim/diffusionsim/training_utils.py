@@ -76,6 +76,7 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=True, shuffle_i
         dl_params.prefetch_factor = 3
         dl_params.persistent_workers = True
         dl_params.multiprocessing_context = "forkserver"
+    dconfig.dataloader_params = dl_params
     return(dconfig)
             
 @dataclass
