@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from torch.nn.functional import silu
 import einops
-import einsum
 from collections import OrderedDict
 
 
@@ -139,6 +138,7 @@ class Linear(torch.nn.Module):
             x = x.add_(self.bias.to(dtype=x.dtype, device=x.device))
         return x
 
+
 class Conv1d(torch.nn.Module):
     """
     A custom 1D convolutional layer implementation with support for up-sampling,
@@ -229,7 +229,55 @@ class Conv1d(torch.nn.Module):
         f = torch.tensor(resample_filter, dtype=torch.float32).unsqueeze(0).unsqueeze(1) / sum(resample_filter)
         self.register_buffer("resample_filter", f if up or down else None)
 
-    def forward(self, x):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel: int,
+        bias: bool = True,
+        up: bool = False,
+        down: bool = False,
+        resample_filter: Optional[List[int]] = None,
+        fused_resample: bool = False,
+        init_mode: str = "kaiming_normal",
+        init_weight: float = 1.0,
+        init_bias: float = 0.0,
+    ):
+        if up and down:
+            raise ValueError("Both 'up' and 'down' cannot be true at the same time.")
+
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel = kernel
+        resample_filter = resample_filter if resample_filter is not None else [1, 1] 
+        self.up = up
+        self.down = down
+        self.fused_resample = fused_resample
+        init_kwargs = dict(
+            mode=init_mode,
+            fan_in=in_channels * kernel,
+            fan_out=out_channels * kernel,
+        )
+        self.weight = (
+            torch.nn.Parameter(
+                weight_init([out_channels, in_channels, kernel], **init_kwargs)
+                * init_weight
+            )
+            if kernel
+            else None
+        )
+        self.bias = (
+            torch.nn.Parameter(weight_init([out_channels], **init_kwargs) * init_bias)
+            if kernel and bias
+            else None
+        )
+        # f = torch.as_tensor(resample_filter, dtype=torch.float32)
+        # f = f.unsqueeze(0).unsqueeze(1) / f.sum()
+        f = torch.tensor(resample_filter, dtype=torch.float32).unsqueeze(0).unsqueeze(1) / sum(resample_filter)
+        self.register_buffer("resample_filter", f if up or down else None)
+
+    def forward(self, x, conditioning_signals={}):
         w = self.weight.to(dtype=x.dtype, device=x.device) if self.weight is not None else None
         b = self.bias.to(dtype=x.dtype, device=x.device) if self.bias is not None else None
 
@@ -437,7 +485,7 @@ class UNetCondEmbedding(torch.nn.Module):
                     self.emb_linear = torch.nn.Sequential(Linear(embed_dim, embed_dim), act_fn, Linear(embed_dim, num_channels))
                 else:
                     assert embed_dim == num_channels, "no projection specified but channel dimension mismatch"
-                self.emb_linear = None
+                    self.emb_linear = None
             case t if "attention" in t or "attn" in t:
                 raise NotImplementedError("Attention embedding not implemented")
             case _:
@@ -469,7 +517,6 @@ class UNetCondEmbedding(torch.nn.Module):
 
 
 class UNetBlock(torch.nn.Module):
-
     def __init__(
         self,
         in_channels: int,
@@ -496,7 +543,7 @@ class UNetBlock(torch.nn.Module):
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.embedding_blocks = embedding_blocks
+        self.embedding_blocks = nn.ModuleDict(embedding_blocks) if embedding_blocks is not None else None
         self.num_heads = (
             0
             if not attention
@@ -599,13 +646,15 @@ class UNetBlock(torch.nn.Module):
         return x
 
 
+
+
 class UNetBlock_noatten(UNetBlock):
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
-        emb_channels: int = 0,
+        embedding_blocks: OrderedDict[str, UNetCondEmbedding] = None,
         kernel_size: int = 3,
         up: bool = False,
         down: bool = False,
@@ -623,7 +672,7 @@ class UNetBlock_noatten(UNetBlock):
         init_attn: Any = None,
     ):
         super().__init__(
-            in_channels, out_channels, emb_channels, kernel_size,
+            in_channels, out_channels, embedding_blocks, kernel_size,
             up, down,
             False, False, None, channels_per_head,
             dropout, skip_scale,
@@ -637,6 +686,7 @@ class UNetBlock_atten(UNetBlock):
         self,
         in_channels: int,
         out_channels: int,
+        embedding_blocks: OrderedDict[str, UNetCondEmbedding] = None,
         emb_channels: int = 0,
         kernel_size: int = 3,
         up: bool = False,
@@ -655,11 +705,12 @@ class UNetBlock_atten(UNetBlock):
         attention: bool = True,
     ):
         super().__init__(
-            in_channels, out_channels, emb_channels, kernel_size,
+            in_channels, out_channels, embedding_blocks, kernel_size,
             up, down,
             True, True, num_heads, channels_per_head,
             dropout, skip_scale, eps, resample_filter, resample_proj, adaptive_scale,
             init, init_zero, init_attn)
+
 
 
 """
@@ -713,9 +764,9 @@ class ClimsimUnet(modulus.Module):
             loc_embedding: bool = False,
             loc_embedding_dim: int = 8,
             skip_conv: bool = False,
+            kernel_size: int = 3,
             prev_2d: bool = False
         ):
-        
         super().__init__(meta=ClimsimUnetMetaData())
         # check if hidden_dims is a list of hidden_dims
         if diffusion_mode:
@@ -775,6 +826,7 @@ class ClimsimUnet(modulus.Module):
         block_kwargs = dict(
             # emb_channels=emb_channels,
             num_heads=1,
+            kernel_size=kernel_size,
             dropout=dropout,
             skip_scale=0.5**0.5,
             eps=1e-6,
@@ -837,14 +889,13 @@ class ClimsimUnet(modulus.Module):
                 self.enc[f"{res}_block{idx}"] = block_select[attn](
                     in_channels=cin, 
                     out_channels=cout, 
-                    emb_channels=0,
                     up=False,
                     down=False,
                     embedding_blocks=embedding_blocks,
                     channels_per_head=64,
                     **block_kwargs
                 )
-        
+
         skips = [
             block.out_channels for name, block in self.enc.items() if "aux" not in name
         ]
@@ -912,7 +963,7 @@ class ClimsimUnet(modulus.Module):
                 self.dec_aux_conv[f"{res}_aux_conv"] = Conv1d(
                     in_channels=cout, out_channels=self.out_channels, kernel=3, **init_zero
                 )
-    
+
     def return_embedding_blocks(self, res, out_channels):
         embedding_blocks = OrderedDict()
         assert res in self.conditioning_resolutions, f"Resolution {res} not found in conditioning_resolutions"
@@ -922,13 +973,12 @@ class ClimsimUnet(modulus.Module):
                 embedding_blocks[cond_type] = UNetCondEmbedding(
                     num_channels=out_channels, embed_dim=self.time_embedding_dim, embedding_type="fourier", emb_method="add"
                 )
-            elif cond_type == "loc":
-                
-                embedding_blocks[cond_type] = 
             else:
                 raise ValueError(f"Conditioning type {cond_type} not supported")
+        if len(embedding_blocks) == 0:
+            return None
         return embedding_blocks
-    
+
     def forward(self, x, timestep=None, loc=None):
 
         # if self.qinput_prune:
@@ -972,11 +1022,7 @@ class ClimsimUnet(modulus.Module):
                 loc = torch.tensor(loc, dtype=torch.int16, device=x.device)
             x = self.loc_embedding(x, loc)
 
-        # print('2:', x.shape)
-        # x = torch.cat((x_profile, x_scalar), dim=1)
-        
         x = torch.nn.functional.pad(x, self.input_padding, "constant", 0.0)
-        # print('3:', x.shape)
         # pass the concatenated tensor through the Unet
 
         # Encoder.
@@ -993,7 +1039,6 @@ class ClimsimUnet(modulus.Module):
                 # x = block(x, emb) if isinstance(block, UNetBlock) else block(x)
                 x = block(x, conditioning_signals={"timesteps":timesteps})
                 skips.append(x)
-
         new_skips = []
         # for x_tmp, conv_tmp in zip(skips, self.skip_conv_layer):
         #     x_tmp = conv_tmp(x_tmp)
@@ -1010,7 +1055,11 @@ class ClimsimUnet(modulus.Module):
             if x.shape[1] != block.in_channels:
                 # skip_ind = len(skips) - 1
                 # skip_conv = self.skip_conv_layer[skip_ind]
-                x = torch.cat([x, new_skips.pop()], dim=1)
+                skip_tensor = new_skips.pop()
+                if skip_tensor.shape[-1] != x.shape[-1]: # results from padding
+                    min_len = min(skip_tensor.shape[-1], x.shape[-1])
+                    skip_tensor, x = skip_tensor[..., -min_len:], x[...,-min_len:]
+                x = torch.cat([x, skip_tensor], dim=1)
             # x = block(x, emb)
             x = block(x, conditioning_signals={"timesteps":timesteps})
             # else:
