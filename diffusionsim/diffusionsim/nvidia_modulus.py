@@ -1,7 +1,6 @@
 import torch.nn as nn
 from dataclasses import dataclass
-import modulus
-import nvtx
+import physicsnemo as modulus
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -572,11 +571,12 @@ class ClimsimUnetMetaData(modulus.ModelMetaData):
 
 class ClimsimUnet(modulus.Module):
     def __init__(
-            self, 
+            self,
             num_vars_profile: int,
             num_vars_scalar: int, 
             num_vars_profile_out: int,
-            num_vars_scalar_out: int, 
+            num_vars_scalar_out: int,
+            diffusion_mode: bool,
             seq_resolution: int = 64,
             label_dim: int = 0,
             augment_dim: int = 0,
@@ -603,10 +603,15 @@ class ClimsimUnet(modulus.Module):
         
         super().__init__(meta=ClimsimUnetMetaData())
         # check if hidden_dims is a list of hidden_dims
-        self.num_vars_profile = num_vars_profile
-        self.num_vars_scalar = num_vars_scalar
+        if diffusion_mode:
+            self.num_vars_profile = num_vars_profile_out
+            self.num_vars_scalar = num_vars_scalar_out
+        else:
+            self.num_vars_profile = num_vars_profile
+            self.num_vars_scalar = num_vars_scalar
         self.num_vars_profile_out = num_vars_profile_out
         self.num_vars_scalar_out = num_vars_scalar_out
+        self.diffusion_mode = diffusion_mode
         self.model_channels = model_channels
 
         self.in_channels = num_vars_profile + num_vars_scalar + 7 # +(8-1)=7 for the location embedding
@@ -901,6 +906,8 @@ class ClimsimUnet(modulus.Module):
         for name, block in self.dec_aux_conv.items():
             tmp = block(silu(tmp))
             aux = tmp if aux is None else tmp + aux
+        if self.diffusion_mode:
+            return True
 
         # here x should be (batch, output_channels, seq_resolution)
         # remember that self.input_padding = (seq_resolution-n_model_levels,0)
