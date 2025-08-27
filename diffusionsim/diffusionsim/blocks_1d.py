@@ -24,15 +24,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-ACT2CLS = {
-    "swish": nn.SiLU,
-    "silu": nn.SiLU,
-    "mish": nn.Mish,
-    "gelu": nn.GELU,
-    "relu": nn.ReLU,
-}
-
 _kernels = {
     "linear": [1 / 8, 3 / 8, 3 / 8, 1 / 8],
     "cubic": [-0.01171875, -0.03515625, 0.11328125, 0.43359375, 0.43359375, 0.11328125, -0.03515625, -0.01171875],
@@ -63,6 +54,13 @@ def get_activation(act_fn: str) -> nn.Module:
     Returns:
         nn.Module: Activation function.
     """
+    ACT2CLS = {
+        "swish": nn.SiLU,
+        "silu": nn.SiLU,
+        "mish": nn.Mish,
+        "gelu": nn.GELU,
+        "relu": nn.ReLU,
+    }
 
     act_fn = act_fn.lower()
     if act_fn in ACT2CLS:
@@ -158,7 +156,6 @@ class ResnetDownsample1D(nn.Module): # Resnet defined version
         assert inputs.shape[1] == self.channels
         return self.conv(inputs)
 
-
 class ResnetUpsample1D(nn.Module):
     """A 1D upsampling layer with an optional convolution.
 
@@ -208,8 +205,6 @@ class ResnetUpsample1D(nn.Module):
 
         return outputs
 
-
-
 class Downsample1d(nn.Module):
     def __init__(self, kernel: str = "linear", pad_mode: str = "reflect"):
         super().__init__()
@@ -225,7 +220,6 @@ class Downsample1d(nn.Module):
         kernel = self.kernel.to(weight)[None, :].expand(hidden_states.shape[1], -1)
         weight[indices, indices] = kernel
         return F.conv1d(hidden_states, weight, stride=2)
-
 
 class Upsample1d(nn.Module):
     def __init__(self, kernel: str = "linear", pad_mode: str = "reflect"):
@@ -284,8 +278,8 @@ class ResidualTemporalBlock1D(nn.Module):
         returns:
             out : [ batch_size x out_channels x horizon ]
         """
-        t = self.time_emb_act(t)
-        t = self.time_emb(t)
+        t = self.time_emb_act(t) # activation function
+        t = self.time_emb(t) # Linear projection from embed_dim to channels
         out = self.conv_in(inputs) + rearrange_dims(t)
         out = self.conv_out(out)
         return out + self.residual_conv(inputs)
