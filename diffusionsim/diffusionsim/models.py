@@ -291,11 +291,11 @@ class ClimsimUNet1DModel(diffusers.models.ModelMixin, diffusers.configuration_ut
             )
             timestep_input_dim = time_embed_dim
         elif time_embedding_type == "positional":
-            time_embed_dim = time_embedding_dim or block_out_channels[0] * 4
+            time_embed_dim = time_embedding_dim or block_out_channels[0]
             self.time_proj = Timesteps(
-                block_out_channels[0], flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift
+                time_embed_dim, flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift
             )
-            timestep_input_dim = block_out_channels[0]
+            timestep_input_dim = time_embed_dim
         else:
             raise ValueError(
                 f"{time_embedding_type} does not exist. Please make sure to use one of `fourier` or `positional`."
