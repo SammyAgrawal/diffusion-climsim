@@ -1,12 +1,41 @@
+from re import X
 import torch.nn as nn
 from dataclasses import dataclass
 import modulus
 import nvtx
 from typing import Any, Dict, List, Optional
-
+from diffusers.models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 import numpy as np
 import torch
 from torch.nn.functional import silu
+import einops
+import einsum
+from collections import OrderedDict
+
+
+def get_activation(act_fn: str) -> nn.Module:
+    """Helper function to get activation function from string.
+
+    Args:
+        act_fn (str): Name of activation function.
+
+    Returns:
+        nn.Module: Activation function.
+    """
+    ACT2CLS = {
+        "swish": nn.SiLU,
+        "silu": nn.SiLU,
+        "mish": nn.Mish,
+        "gelu": nn.GELU,
+        "relu": nn.ReLU,
+    }
+
+    act_fn = act_fn.lower()
+    if act_fn in ACT2CLS:
+        return ACT2CLS[act_fn]()
+    else:
+        raise ValueError(f"activation function {act_fn} not found in ACT2FN mapping {list(ACT2CLS.keys())}")
+
 
 def weight_init(shape: tuple, mode: str, fan_in: int, fan_out: int):
     """
@@ -110,7 +139,6 @@ class Linear(torch.nn.Module):
         if self.bias is not None:
             x = x.add_(self.bias.to(dtype=x.dtype, device=x.device))
         return x
-
 
 class Conv1d(torch.nn.Module):
     """
@@ -364,13 +392,90 @@ class ScriptableAttentionOp(torch.nn.Module):
         return w.to(dtype=q.dtype)
 
 
+class UNetCondEmbedding(torch.nn.Module):
+    def __init__(
+        self, 
+        num_channels: int, 
+        embed_dim: int = 0, 
+        embedding_type: str = "positional",
+        emb_method: str = "concat", 
+        activation: str = "",
+        projection_method: str = "linear",
+        **kwargs
+    ):
+        super().__init__()
+        self.act_fn = get_activation(activation) if activation else None
+        self.num_channels = num_channels
+        self.embed_dim = embed_dim
+        self.emb_method = emb_method
+
+        # create embedding
+        # create a 385x8 trainable weight embedding for the input
+        match embedding_type:
+            case "fourier" | "gaussian":
+                assert embed_dim % 2 == 0, f"`time_embed_dim` should be divisible by 2, but is {embed_dim}."
+                self.emb_proj = GaussianFourierProjection(embedding_size=embed_dim // 2, set_W_to_weight=False, log=False)
+            case "positional":
+                self.emb_proj = Timesteps(embed_dim, flip_sin_to_cos=False, downscale_freq_shift=0.0)
+            case "discrete_embedding":
+                self.emb_proj = torch.nn.Embedding(num_embeddings=num_channels, embedding_dim=embed_dim)
+            case "sinusoidal":
+                raise NotImplementedError("Sinusoidal embedding not implemented")
+            case _:
+                self.emb_proj = None
+
+        # define how embedding is injected into the sample        
+        match emb_method:
+            case "concat":
+                pass
+            case "add":
+                if not embed_dim:
+                    embed_dim = num_channels
+                if projection_method == "linear":
+                    self.emb_linear = Linear(embed_dim, num_channels)
+                elif projection_method == "mlp":
+                    act_fn = self.act_fn if self.act_fn else torch.nn.SiLU()
+                    self.emb_linear = torch.nn.Sequential(Linear(embed_dim, embed_dim), act_fn, Linear(embed_dim, num_channels))
+                else:
+                    assert embed_dim == num_channels, "no projection specified but channel dimension mismatch"
+                self.emb_linear = None
+            case t if "attention" in t or "attn" in t:
+                raise NotImplementedError("Attention embedding not implemented")
+            case _:
+                raise ValueError(f"Embedding method {emb_method} not supported")
+    
+    def forward(self, sample, embed):
+        assert embed.shape[0] == sample.shape[0], "Batch size of sample and embed must match"
+        self.sample_dims = sample.shape
+        if self.act_fn:
+            embed = self.act_fn(embed)
+        
+        if self.emb_proj:
+            embed = self.emb_proj(embed)
+        
+        match self.emb_method:
+            case "concat":
+                pattern = 'b e -> b e ' + ' '.join([f'd{i}' for i in range(len(sample.shape) - 2)])
+                embed = einops.repeat(embed, pattern, **{f'd{i}': s for i, s in enumerate(sample.shape[2:])})
+                return torch.cat([sample, embed], dim=1)
+            case "add":
+                if self.emb_linear is not None:
+                    embed = self.emb_linear(embed)
+                embed = einops.rearrange(embed, "b c -> b c" + " 1" * (len(self.sample_dims) - len(embed.shape)))
+                return sample + embed
+            case t if "attention" in t or "attn" in t:
+                raise NotImplementedError("Attention embedding not implemented")
+            case _:
+                raise ValueError(f"Embedding method {self.emb_method} not supported")
+
+
 class UNetBlock(torch.nn.Module):
 
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
-        emb_channels: int = 0,
+        embedding_blocks: OrderedDict[str, UNetCondEmbedding] = None,
         kernel_size: int = 3,
         up: bool = False,
         down: bool = False,
@@ -392,7 +497,7 @@ class UNetBlock(torch.nn.Module):
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.emb_channels = emb_channels
+        self.embedding_blocks = embedding_blocks
         self.num_heads = (
             0
             if not attention
@@ -414,13 +519,8 @@ class UNetBlock(torch.nn.Module):
             resample_filter=resample_filter,
             **init,
         )
-        # self.affine = Linear(
-        #     in_features=emb_channels,
-        #     out_features=out_channels * (2 if adaptive_scale else 1),
-        #     **init,
-        # )
+        # self.affine = Linear(in_features=embed_dims, out_features=out_channels * (2 if adaptive_scale else 1),  **init)
         self.norm1 = GroupNorm(num_channels=out_channels, eps=eps)
-        
         self.conv1 = Conv1d(
             in_channels=out_channels, out_channels=out_channels, kernel=kernel_size, **init_zero
         )
@@ -454,7 +554,8 @@ class UNetBlock(torch.nn.Module):
             )
             if use_scriptable_attention:
                 self.attentionop = ScriptableAttentionOp()
-    def forward(self, x):
+    
+    def forward(self, x, conditioning_signals={}):
         skip_res = self.skip(x) if self.skip is not None else x
         x = self.conv0(silu(self.norm0(x)))
 
@@ -466,6 +567,13 @@ class UNetBlock(torch.nn.Module):
         #     x = silu(self.norm1(x.add_(params)))
 
         x = self.norm1(x)
+        if self.embedding_blocks is not None:
+            for embed_name, embedding in conditioning_signals.items():
+                if embed_name in self.embedding_blocks:
+                    x = self.embedding_blocks[embed_name](x, embedding)
+                else:
+                    print(f"Warning: {embed_name} not found in embedding_blocks")
+            
         x = self.conv1(
             torch.nn.functional.dropout(x, p=self.dropout, training=self.training)
         )
@@ -490,7 +598,7 @@ class UNetBlock(torch.nn.Module):
             # x = self.proj(a.reshape(batch_size, channels, length)).add_(x)
             x = x * self.skip_scale
         return x
-        
+
 
 class UNetBlock_noatten(UNetBlock):
 
@@ -570,24 +678,30 @@ class ClimsimUnetMetaData(modulus.ModelMetaData):
     amp_cpu: bool = True
     amp_gpu: bool = True
 
+
 class ClimsimUnet(modulus.Module):
     def __init__(
-            self, 
+            self,
             num_vars_profile: int,
             num_vars_scalar: int, 
             num_vars_profile_out: int,
-            num_vars_scalar_out: int, 
+            num_vars_scalar_out: int,
+            diffusion_mode: bool,
             seq_resolution: int = 64,
-            label_dim: int = 0,
-            augment_dim: int = 0,
             model_channels: int = 128,
             channel_mult: List[int] = [1, 2, 2, 2],
-            channel_mult_emb: int = 4,
             num_blocks: int = 4,
             attn_resolutions: List[int] = [16],
+            conditioning_resolutions: Dict[int, List[str]] = {
+                64: ["timesteps"],
+                32: ["timesteps"],
+                16: ["timesteps"],
+                8: ["timesteps"],
+                4: ["timesteps"],
+                2: ["timesteps"],
+                1: ["timesteps"],
+            },
             dropout: float = 0.10,
-            label_dropout: float = 0.0,
-            embedding_type: str = "positional",
             channel_mult_noise: int = 1,
             encoder_type: str = "standard",
             decoder_type: str = "standard",
@@ -596,46 +710,51 @@ class ClimsimUnet(modulus.Module):
             # qinput_prune=False, 
             output_prune=False, 
             strato_lev=12,
+            time_embedding_dim: int = 32,
             loc_embedding: bool = False,
+            loc_embedding_dim: int = 8,
             skip_conv: bool = False,
             prev_2d: bool = False
-            ):
+        ):
         
         super().__init__(meta=ClimsimUnetMetaData())
         # check if hidden_dims is a list of hidden_dims
-        self.num_vars_profile = num_vars_profile
-        self.num_vars_scalar = num_vars_scalar
+        if diffusion_mode:
+            self.num_vars_profile = num_vars_profile_out
+            self.num_vars_scalar = num_vars_scalar_out
+        else:
+            self.num_vars_profile = num_vars_profile
+            self.num_vars_scalar = num_vars_scalar
+        
+
+        
         self.num_vars_profile_out = num_vars_profile_out
         self.num_vars_scalar_out = num_vars_scalar_out
+        self.diffusion_mode = diffusion_mode
         self.model_channels = model_channels
 
-        self.in_channels = num_vars_profile + num_vars_scalar + 7 # +(8-1)=7 for the location embedding
+        self.in_channels = self.num_vars_profile + self.num_vars_scalar # + 7 # +(8-1)=7 for the location embedding
         self.out_channels = num_vars_profile_out + num_vars_scalar_out
         # print('1: out_channels', self.out_channels)
 
         # valid_encoder_types = ["standard", "skip", "residual"]
         valid_encoder_types = ["standard"]
-        if encoder_type not in valid_encoder_types:
-            raise ValueError(
-                f"Invalid encoder_type: {encoder_type}. Must be one of {valid_encoder_types}."
-            )
+        assert encoder_type in valid_encoder_types, f"Invalid encoder_type: {encoder_type}. Must be one of {valid_encoder_types}."
 
         # valid_decoder_types = ["standard", "skip"]
         valid_decoder_types = ["standard"]
-        if decoder_type not in valid_decoder_types:
-            raise ValueError(
-                f"Invalid decoder_type: {decoder_type}. Must be one of {valid_decoder_types}."
+        assert decoder_type in valid_decoder_types, f"Invalid decoder_type: {decoder_type}. Must be one of {valid_decoder_types}."
+        self.conditioning_resolutions = conditioning_resolutions
+        self.time_embedding_dim = time_embedding_dim
+        self.use_loc_embedding = loc_embedding
+        if loc_embedding:
+            assert loc_embedding_dim > 0, f"Location embedding dimension {loc_embedding_dim} is not valid" 
+            self.loc_embedding = UNetCondEmbedding(
+                    num_channels=384, embed_dim=loc_embedding_dim, embedding_type="discrete_embedding", emb_method="concat"
             )
-
-        self.label_dropout = label_dropout
-        self.embedding_type = embedding_type
-
+            self.in_channels += loc_embedding_dim
         self.seq_resolution = seq_resolution
-        self.label_dim = label_dim
-        self.augment_dim = augment_dim
-        self.model_channels = model_channels
         self.channel_mult = channel_mult
-        self.channel_mult_emb = channel_mult_emb
         self.num_blocks = num_blocks
         self.attn_resolutions = attn_resolutions
         self.dropout = dropout
@@ -644,15 +763,14 @@ class ClimsimUnet(modulus.Module):
         self.decoder_type = decoder_type
         self.resample_filter = resample_filter
         self.n_model_levels = n_model_levels
-        self.input_padding = (seq_resolution-n_model_levels,0)
+        self.input_padding = (seq_resolution-n_model_levels, 0)
         # self.qinput_prune=qinput_prune
         self.output_prune=output_prune
         self.strato_lev=strato_lev
-        self.loc_embedding = loc_embedding
         self.skip_conv = skip_conv
         self.prev_2d = prev_2d
 
-        # emb_channels = model_channels * channel_mult_emb
+        # emb_channels = model_channels * channel_mult_emb # channel_mult_emb used to be input param
         # self.emb_channels = emb_channels
         # noise_channels = model_channels * channel_mult_noise
         init = dict(init_mode="xavier_uniform")
@@ -677,8 +795,9 @@ class ClimsimUnet(modulus.Module):
         self.enc = torch.nn.ModuleDict()
         cout = self.in_channels
         caux = self.in_channels
+        
         for level, mult in enumerate(channel_mult):
-            res = seq_resolution >> level
+            res = seq_resolution >> level # halves the resolution at each level
             if level == 0:
                 cin = cout
                 cout = model_channels
@@ -716,28 +835,20 @@ class ClimsimUnet(modulus.Module):
             for idx in range(num_blocks):
                 cin = cout
                 cout = model_channels * mult
-                attn = res in attn_resolutions
-                if attn:
-                    self.enc[f"{res}_block{idx}"] = UNetBlock_atten(
-                        in_channels=cin, 
-                        out_channels=cout, 
-                        emb_channels=0,
-                        up=False,
-                        down=False,
-                        channels_per_head=64,
-                        **block_kwargs
-                    )
-                else:
-                    self.enc[f"{res}_block{idx}"] = UNetBlock_noatten(
-                        in_channels=cin, 
-                        out_channels=cout, 
-                        attention=attn,
-                        emb_channels=0,
-                        up=False,
-                        down=False,
-                        channels_per_head=64,
-                        **block_kwargs
-                    )
+                attn = res in attn_resolutions # attn_resolutions specifies the block levels at which attention is used
+                block_select = {True : UNetBlock_atten, False : UNetBlock_noatten}
+                embedding_blocks = self.return_embedding_blocks(res, cout) if self.diffusion_mode else None
+                self.enc[f"{res}_block{idx}"] = block_select[attn](
+                    in_channels=cin, 
+                    out_channels=cout, 
+                    emb_channels=0,
+                    up=False,
+                    down=False,
+                    embedding_blocks=embedding_blocks,
+                    channels_per_head=64,
+                    **block_kwargs
+                )
+        
         skips = [
             block.out_channels for name, block in self.enc.items() if "aux" not in name
         ]
@@ -752,6 +863,7 @@ class ClimsimUnet(modulus.Module):
                 conv.weight.requires_grad = False
                 conv.bias.requires_grad = False
             self.skip_conv_layer.append(conv)
+        
         self.skip_conv_layer = torch.nn.ModuleList(self.skip_conv_layer)
             # XX doulbe check if the above is correct
 
@@ -776,14 +888,17 @@ class ClimsimUnet(modulus.Module):
                 cin = cout + skips.pop()
                 cout = model_channels * mult
                 attn = idx == num_blocks and res in attn_resolutions
+                
+                embedding_blocks = self.return_embedding_blocks(res, cout) if self.diffusion_mode else None
                 if attn:
                     self.dec[f"{res}_block{idx}"] = UNetBlock_atten(
-                        in_channels=cin, out_channels=cout, attention=attn, **block_kwargs
+                        in_channels=cin, out_channels=cout, attention=attn, embedding_blocks=embedding_blocks, **block_kwargs
                     )
                 else:
                     self.dec[f"{res}_block{idx}"] = UNetBlock_noatten(
                         in_channels=cin, out_channels=cout, attention=attn, **block_kwargs
                     )
+            
             if decoder_type == "skip" or level == 0:
                 # if decoder_type == "skip" and level < len(channel_mult) - 1:
                 #     self.dec[f"{res}_aux_up"] = Conv1d(
@@ -801,16 +916,24 @@ class ClimsimUnet(modulus.Module):
                 self.dec_aux_conv[f"{res}_aux_conv"] = Conv1d(
                     in_channels=cout, out_channels=self.out_channels, kernel=3, **init_zero
                 )
-
-        # create a 385x8 trainable weight embedding for the input
-        self.emb_loc = torch.nn.Parameter(torch.randn(385, 8), requires_grad=True)
-                       
-    def forward(self, x):
-        '''
-        x: (batch, num_vars_profile*levels+num_vars_scalar)
-        # x_profile: (batch, num_vars_profile, levels)
-        # x_scalar: (batch, num_vars_scalar)
-        '''
+    
+    def return_embedding_blocks(self, res, out_channels):
+        embedding_blocks = OrderedDict()
+        assert res in self.conditioning_resolutions, f"Resolution {res} not found in conditioning_resolutions"
+        for cond_type in self.conditioning_resolutions[res]:
+            if cond_type == "timesteps":
+                assert self.time_embedding_dim > 0 and self.time_embedding_dim % 2 == 0, f"Time embedding dimension {self.time_embedding_dim} is not valid"
+                embedding_blocks[cond_type] = UNetCondEmbedding(
+                    num_channels=out_channels, embed_dim=self.time_embedding_dim, embedding_type="fourier", emb_method="add"
+                )
+            elif cond_type == "loc":
+                
+                embedding_blocks[cond_type] = 
+            else:
+                raise ValueError(f"Conditioning type {cond_type} not supported")
+        return embedding_blocks
+    
+    def forward(self, x, timestep=None, loc=None):
 
         # if self.qinput_prune:
         #     x = x.clone()  # Clone the tensor to ensure you're not modifying the original tensor in-place
@@ -818,35 +941,41 @@ class ClimsimUnet(modulus.Module):
         #     x[:, 120:120+self.strato_lev] = x[:, 120:120+self.strato_lev].clone().zero_()  # Set stratosphere q2 to 0
         #     x[:, 180:180+self.strato_lev] = x[:, 180:180+self.strato_lev].clone().zero_()  # Set stratosphere q3 to 0
 
-        if not self.prev_2d:
-            x = x.clone()
-            x[:,-8:-3] = x[:,-8:-3].clone().zero_()
+        
+        if self.diffusion_mode:
+            assert timestep is not None, "Timestep is required for diffusion model"
+            if not torch.is_tensor(timestep):
+                timesteps = torch.tensor([timestep], dtype=torch.long, device=x.device)
+                if timesteps.shape[0] != x.shape[0]:
+                    timesteps = timesteps.repeat(x.shape[0])
+            else:
+                timesteps = timestep.to(dtype=torch.long, device=x.device)
+            assert timesteps.shape[0] == x.shape[0], "Timestep shape mismatch"
+        else:
+            assert len(x.shape == 2), "Need input shape of (batch, num_vars_profile*levels+num_vars_scalar)"
+            if not self.prev_2d:
+                x = x.clone()
+                x[:,-8:-3] = x[:,-8:-3].clone().zero_()
+            # split x into x_profile and x_scalar
+            # x_profile: (batch, num_vars_profile, levels)
+            # x_scalar: (batch, num_vars_scalar)
+            x_profile = x[:,:self.num_vars_profile*self.n_model_levels]
+            x_scalar = x[:,self.num_vars_profile*self.n_model_levels:]
+    
+            # print(x_profile.shape, x_scalar.shape, x_loc.shape)
 
-        # split x into x_profile and x_scalar
-        x_profile = x[:,:self.num_vars_profile*self.n_model_levels]
-        x_scalar = x[:,self.num_vars_profile*self.n_model_levels:-1]
-        x_loc = x[:,-1] # location index
+            # reshape x_profile to (batch, num_vars_profile, levels)
+            x_profile = x_profile.reshape(-1, self.num_vars_profile, self.n_model_levels)
+            # broadcast x_scalar to (batch, num_vars_scalar, levels)
+            x_scalar = x_scalar.unsqueeze(2).expand(-1, -1, self.n_model_levels)
+            x = torch.cat((x_profile, x_scalar), dim=1) #concatenate x_profile, x_scalar to (batch, num_vars_profile+num_vars_scalar, levels)
+        
+        if self.use_loc_embedding:
+            assert loc is not None, "Location embedding is enabled, must pass in ncol"
+            if not torch.is_tensor(loc):
+                loc = torch.tensor(loc, dtype=torch.int16, device=x.device)
+            x = self.loc_embedding(x, loc)
 
-        # right now x_loc is only 1-384, use 0 to represent not using position embedding
-        if not self.loc_embedding:
-            x_loc[:] = 0.0*x_loc[:]
-        #convert x_loc to embedding, first use one-hot encoding to convert x_loc to (batch, 385)
-        # convert x_loc to one-hot encoding
-        x_loc = torch.nn.functional.one_hot(x_loc.to(torch.int64), num_classes=385)
-        # convert x_loc from int to float
-        x_loc = x_loc.to(torch.float32)
-        # convert x_loc to embedding
-        x_loc = torch.matmul(x_loc, self.emb_loc) # (batch, 8)
-
-        # print(x_profile.shape, x_scalar.shape, x_loc.shape)
-
-        # reshape x_profile to (batch, num_vars_profile, levels)
-        x_profile = x_profile.reshape(-1, self.num_vars_profile, self.n_model_levels)
-        # broadcast x_scalar to (batch, num_vars_scalar, levels)
-        x_scalar = x_scalar.unsqueeze(2).expand(-1, -1, self.n_model_levels)
-
-        #concatenate x_profile, x_scalar, x_loc to (batch, num_vars_profile+num_vars_scalar+8, levels)
-        x = torch.cat((x_profile, x_scalar, x_loc.unsqueeze(2).expand(-1, -1, self.n_model_levels)), dim=1)
         # print('2:', x.shape)
         # x = torch.cat((x_profile, x_scalar), dim=1)
         
@@ -859,14 +988,14 @@ class ClimsimUnet(modulus.Module):
         aux = x
         for name, block in self.enc.items():
             if "aux_down" in name:
-                aux = block(aux)
+                aux = block(aux, conditioning_signals={"timesteps":timesteps})
             elif "aux_skip" in name:
-                x = skips[-1] = x + block(aux)
+                x = skips[-1] = x + block(aux, conditioning_signals={"timesteps":timesteps})
             elif "aux_residual" in name:
-                x = skips[-1] = aux = (x + block(aux)) / 2**0.5
+                x = skips[-1] = aux = (x + block(aux, conditioning_signals={"timesteps":timesteps})) / 2**0.5
             else:
                 # x = block(x, emb) if isinstance(block, UNetBlock) else block(x)
-                x = block(x)
+                x = block(x, conditioning_signals={"timesteps":timesteps})
                 skips.append(x)
 
         new_skips = []
@@ -887,7 +1016,7 @@ class ClimsimUnet(modulus.Module):
                 # skip_conv = self.skip_conv_layer[skip_ind]
                 x = torch.cat([x, new_skips.pop()], dim=1)
             # x = block(x, emb)
-            x = block(x)
+            x = block(x, conditioning_signals={"timesteps":timesteps}))
             # else:
             #     # if "aux_up" in name:
             #     #     aux = block(aux)
@@ -901,10 +1030,11 @@ class ClimsimUnet(modulus.Module):
         for name, block in self.dec_aux_conv.items():
             tmp = block(silu(tmp))
             aux = tmp if aux is None else tmp + aux
-
         # here x should be (batch, output_channels, seq_resolution)
         # remember that self.input_padding = (seq_resolution-n_model_levels,0)
         x = aux
+        if self.diffusion_mode:
+            return x
         # print('7:', x.shape)
         if self.input_padding[1]==0:
             y_profile = x[:,:self.num_vars_profile_out,self.input_padding[0]:]
