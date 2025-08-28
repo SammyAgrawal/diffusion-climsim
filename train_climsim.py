@@ -30,18 +30,21 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
     dconfig = tru.my_dconfig("local-vzarr", data_vars, in_notebook, shuffle_indices,
                                 dataset_type, batch_size, use_tendencies,
                              )
-    dconfig.batch_logging_interval = 1
-    dconfig.train_test_split = [0.002, 0.001]
+    dconfig.train_test_split = [0.20, 0.10]
+    dconfig.checkpoint_every_epoch = True
+    dconfig.phases = ['train', 'eval']
+    dconfig.log_gradients = True
     tconfigs, mconfigs = [], []
 
-    learning_rates = [1e-3, 1e-3, 1e-3, 1e-3] + [1e-3] * max(0, num_models - 4)
-    mse_weights = [1.0,] * num_models
-    distloss_weights = [0.1,] * num_models
-    diffloss_weights = [20.0,] * num_models
+    learning_rates = [1e-3] * num_models
+    mse_weights = [1.0, 1.0, 1.0]
+    distloss_weights = [0.0] * num_models
+    diffloss_weights = [0.0, 10.0, 10.0]
+    diff_start_epochs = [11, 3, 0]
 
     image_dim = 1
     target_variables_distloss = [68, 73, 82] # previously included 60 asw
-    num_gaussians = [3, 2, 3, 2]
+    num_gaussians = [3, 2, 3]
 
     lettering = 'abcdefghijklmnopqrstuvwxyz'
     for i in range(num_models):
@@ -49,28 +52,27 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
         tconfig.learning_rate_params.update(dict(
             learning_rate = learning_rates[i] * batch_size / REF_BATCH_SIZE,
             lr_scheduler="steplr",
-            step_size=500,
-            gamma=0.95,
-            lr_warmup_steps=20,
+            step_size=1,
+            gamma=0.85,
+            min_lr=1e-6,
         ))
 
-        loss_weights = {'mse': mse_weights[i], 'distribution': distloss_weights[i], 'diffusion': diffloss_weights[i]}
+        loss_weights = {'mse': 1.0, 'distribution': 0.0, 'diffusion': 10.0}
         loss_schedule = {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100]}
         tconfig.loss_weight_params.update(dict(
             loss_weights=loss_weights,
             loss_schedule=loss_schedule,
             alpha=0.5, 
             strategy="gradnorm",
-            update_interval=10,
+            update_interval=20,
         ))
 
         tconfig.clip_gradients = True
         tconfig.distloss_var_inds = target_variables_distloss
         tconfig.num_gaussians = num_gaussians[:len(target_variables_distloss)]
         
-        tconfig.diffusion_image_dim = image_dim
         tconfig.diffusion_loss_noise_level = 10
-        tconfig.diffusion_strategy = "1d-encode-decode"
+        tconfig.diffusion_strategy = "1d-decode-only" if i<2 else "1d-encode-decode"
         #tconfig.diffusion_image_loss = "1d-mse"
         tconfigs.append(tconfig)
         
@@ -78,8 +80,7 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
             prediction_type="epsilon",
             beta_schedule="linear",
         ))
-        if("climsim" in dataset_type):
-            mconfig.model_type = "baseline"
+        mconfig.model_type = "baseline"
         # define baseline model
         mconfig.bl_hidden_dims = [256, 256, 256] if data_vars == "v1" else [512, 256, 256]
         mconfig.bl_input_size = 124 if data_vars == "v1" else 557
@@ -91,7 +92,7 @@ def setup_climsim_run(num_models, exp_id, base_run_id, data_vars='v1', batch_siz
 
 trainer = None
 
-NUM_MODELS = 4
+NUM_MODELS = 3
 RESTART_FROM_CKPT = False
 RERUN = False
 
@@ -100,10 +101,11 @@ EXP_DIR = "/mnt/home/ssa2206/Climsim/experiments"
 if __name__ == "__main__":
     #typer.run(main)
     #typer.run(test_args)
-    exp_id = "MultiTask"
-    run_id = "lr-sweep2"
+    exp_id = "DiffLossTesting"
+    run_id = "decode-only"
     run_start_time = tru.log_event("run start", exp_id=exp_id, run_id=run_id)
     t0 = tru.log_event("setup start")
+    unet = tru.load_diffusion_model(model_id='diff_1d_v1', base_dir="/mnt/home/ssa2206/Climsim/experiments")
     if(RERUN):
         run = evals.Run(exp_id, run_id)
         trainer = run.reconstruct_trainer(apply_checkpoints=False, apply_indices=False)
@@ -111,13 +113,13 @@ if __name__ == "__main__":
         base_dir = os.path.join(EXP_DIR, exp_id)
         tconfigs, mconfigs, dconfig = setup_climsim_run(NUM_MODELS, exp_id, run_id, data_vars='v1', batch_size=256)
         dataloaders, indices = tru.load_dataloaders(dconfig, log=True)
-        trainer = ClimsimTrainer(dataloaders, indices, mconfigs, tconfigs, base_dir, run_id)
+        trainer = ClimsimTrainer(dataloaders, indices, mconfigs, tconfigs, base_dir, run_id, unet=unet)
     
     tru.log_event("setup end", duration=time.time() - t0)
     if (RESTART_FROM_CKPT):
         trainer.restart_from_ckpt(num_epochs, log=True, cid='')
     else:
-        trainer.train(num_epochs, log=True)
+        trainer.train(num_epochs, log=True, run_eval_epoch=True)
     
     print("Done!", flush=True)
     tru.log_event("run end", duration = time.time() - run_start_time)

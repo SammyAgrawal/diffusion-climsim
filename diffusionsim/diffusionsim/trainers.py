@@ -207,7 +207,7 @@ class ClimsimTrainer(AbstractTrainer):
             self.schedulers = dict(zip(self.run_ids, scheds))
         #if ("distribution" in self.tracked_losses):
         
-    def _make_image(self, y, image_dim=2):
+    def _make_image(self, y, image_dim=1):
         if not torch.is_tensor(y):
             y = torch.tensor(y)
         ds = self.dataloaders['train'].dataset
@@ -393,6 +393,7 @@ class ClimsimTrainer(AbstractTrainer):
                     self.best_losses[run_id] = total_loss
                 elif tconfig.checkpoint_every_epoch: # no need to save twice
                     self._save_checkpoint(run_id, f"epoch-{self.current_epoch}")
+        self.update_log_file()
     
 
 class DiffusionTrainer(AbstractTrainer):

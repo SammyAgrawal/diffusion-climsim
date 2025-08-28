@@ -135,6 +135,7 @@ class UNetParams:
     act_fn: str = "silu" # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L27
     freq_shift: float = 0.0 # fourier freq shift
     use_timestep_embedding: bool = True
+    time_embedding_dim: int = 32
 
 # scheduler params
 @dataclass
@@ -250,7 +251,7 @@ def load_diffusion_model(model_id='best_diffusion_2d', base_dir="/mnt/home/ssa22
     ckpt = os.path.join(base_dir, exp_id, "checkpoints", f"{cid}{run_id}-ckpt.pt")
     if not os.path.exists(ckpt):
         ckpt = os.path.join(base_dir, exp_id, "checkpoints", log_id,f"{cid}{run_id}-ckpt.pt")
-    model = tru.load_model_from_ckpt(ckpt, mconfig)
+    model = load_model_from_ckpt(ckpt, mconfig)
     return(model)
 
 def image_loss(tconfig):
