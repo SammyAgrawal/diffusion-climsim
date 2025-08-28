@@ -49,15 +49,23 @@ class Run:
             log = self.logs[run_id]
             self.mconfigs[run_id] = self.pass_params(tru.ModelConfig, log['model_config'])
             self.tconfigs[run_id] = self.pass_params(tru.TrainingConfig, log['training_config'])
-            brid = self.base_run_id[:-1] if self.base_run_id[-1].isdigit() else self.base_run_id
-            ckpt_dir = os.path.join(self.base_dir, "checkpoints", brid, f"{cid}{run_id}-ckpt.pt")
-            if not os.path.exists(ckpt_dir):
-                ckpt_dir = os.path.join(self.base_dir, "checkpoints", f"{cid}{run_id}-ckpt.pt")
-            if (os.path.exists(ckpt_dir)):
-                model = tru.load_model_from_ckpt(ckpt_dir, self.mconfigs[run_id], baseline=climsim_run).to(device)
-                self.models[run_id] = tru.ModelLens(model)
+            if self.base_run_id[-1].isdigit() and self.base_run_id[-2] != 'v':
+                brid = self.base_run_id[:-1]
             else:
-                print(f"Checkpoint {ckpt_dir} was deleted")
+                brid = self.base_run_id
+            try:
+                ckpt_dir = os.path.join(self.base_dir, "checkpoints", brid, f"{cid}{run_id}-ckpt.pt")
+                if not os.path.exists(ckpt_dir):
+                    print(f"Checkpoint {ckpt_dir} DNE")
+                    ckpt_dir = os.path.join(self.base_dir, "checkpoints", f"{cid}{run_id}-ckpt.pt")
+                if (os.path.exists(ckpt_dir)):
+                    model = tru.load_model_from_ckpt(ckpt_dir, self.mconfigs[run_id], baseline=climsim_run).to(device)
+                    self.models[run_id] = tru.ModelLens(model)
+                else:
+                    print(f"Checkpoint {ckpt_dir} DNE")
+                    self.models[run_id] = None
+            except:
+                print(f"Checkpoint mismatch to model at {run_id}")
                 self.models[run_id] = None
         
         self.dconfig.dataloader_params.num_workers = 0
