@@ -264,79 +264,6 @@ def hist(data, title, **kwargs):
         plt.legend()
     plt.title(title)
 
-
-def parse_log(fname):
-    with open(fname) as f:
-        lines = f.readlines()
-    messages = []
-    for line in lines:
-        try:
-            messages.append(json.loads(line.strip()))
-        except json.JSONDecodeError:
-            pass
-    return messages
-
-def plot_wait_time(messages, ax, title="Time waiting"):
-    if title:
-        ax.set_title(title)
-
-    wait_times = []
-    end = None
-    for m in messages:
-        if m["event"] == "training end":
-            end = m["time"]
-        if m["event"] == "training start" and end is not None:
-            wait_times.append(m["time"] - end)
-
-    wait_times = np.array(wait_times)
-    max_show = wait_times.mean() + 3 * wait_times.std()
-
-    print("average wait time", wait_times.mean())
-
-    ax.hist(wait_times, bins=np.linspace(0, max_show, 100), color="#6D0EDB")[-1]
-    ax.set_xlabel("time (sec)")
-
-
-def plot_log(messages, ax, title=""):
-    origin = messages[0]["time"]
-    # Define the rows for each event type you want to visualize
-    rows = {"setup": 4, "get-item": 3, "run-batch": 2, "train": 1, "epoch": 0}
-    ax.set_yticks(list(rows.values()), labels=list(rows))
-    if title:
-        ax.set_title(title)
-    data = {"batches": [], "getitem": []}
-    for m in messages:
-        t = m["time"] - origin
-        if m["event"] == "setup end":
-            ax.barh(
-                rows["setup"], m["duration"], left=t - m["duration"], edgecolor="k", linewidth=0.1, color="#6D0EDB", zorder=1,
-            )
-        elif m["event"] == "get-item end":
-            ax.barh(
-                rows["get-item"], m["duration"], left=t - m["duration"], color="#F9C846", zorder=1,
-            )
-            data["getitem"].append(m["duration"])
-        elif m["event"] == "run-batch end":
-            ax.barh(
-                rows["run-batch"], m["duration"], left=t - m["duration"], color="#C396F9", zorder=1,
-            )
-            data["batches"].append(m["duration"])
-        elif m["event"] == "training end":
-            ax.barh(
-                rows["train"], m["duration"], left=t - m["duration"], color="#FF6554", zorder=1,
-            )
-        elif m["event"] == "epoch end":
-            ax.barh(
-                rows["epoch"], m["duration"], left=t - m["duration"], edgecolor="k", linewidth=0.1, color="#FF9E0D", zorder=1,
-            )
-
-    ax.grid(axis="x", zorder=0, alpha=0.5)
-    ax.set_xlabel("time (sec)")
-
-    print("average batch duration", np.mean(data["batches"]))
-    print("average get-item duration", np.mean(data["getitem"]))
-
-
 def plot_run(fname):
     messages = parse_log(fname)
     fig, axes = plt.subplots(ncols=2, nrows=1, figsize=(16, 6), width_ratios=[3, 1], dpi=400)
@@ -399,6 +326,33 @@ def plot_gmm_distribution(data, gmm, n_points=1000, components=False):
     plt.show()
     return(ret[0])
 
+def plot_profile(data, var_index=None, ax=None, title='', ds=None, **kwargs):
+    if torch.is_tensor(data):
+        data = data.detach().cpu().numpy()
+    assert data.ndim < 4, "no more than 3d"
+    if data.ndim == 3:
+        assert var_index is not None, "need to specify variable"
+        data = data[:, var_index, :]
+    elif(data.ndim == 2 and 5 <= data.shape[0] <= 16):
+        data = data[var_index]
+    levels = np.arange(data.shape[-1])
+    if ax is None:
+        fig, ax = plt.subplots()
+    if data.ndim == 1:
+        im = ax.plot(data, levels, **kwargs)
+    else:
+        if 'labels' in kwargs and len(kwargs['labels']) == len(data):
+            labels = kwargs['labels']
+            print(labels)
+        for i, profile in enumerate(data): 
+            im = ax.plot(profile, levels, label=labels[i])
+    plt.legend()
+    ax.invert_yaxis()
+    ax.set_ylabel("Level index (0 = top)")
+    ax.set_title(title)
+    if var_index is not None: 
+        ax.set_xlabel(ds.target_vars[var_index])
+    return(im)
 
 def denoising_history(history, dataset, cmap='plasma'):
     # Define interactive plot function
@@ -504,3 +458,75 @@ timestep_funcs = {
     "mean_dist": mean_dist,
     "x0_deviation_dist": x0_deviation_dist
 }
+
+
+def parse_log(fname):
+    with open(fname) as f:
+        lines = f.readlines()
+    messages = []
+    for line in lines:
+        try:
+            messages.append(json.loads(line.strip()))
+        except json.JSONDecodeError:
+            pass
+    return messages
+
+def plot_wait_time(messages, ax, title="Time waiting"):
+    if title:
+        ax.set_title(title)
+
+    wait_times = []
+    end = None
+    for m in messages:
+        if m["event"] == "training end":
+            end = m["time"]
+        if m["event"] == "training start" and end is not None:
+            wait_times.append(m["time"] - end)
+
+    wait_times = np.array(wait_times)
+    max_show = wait_times.mean() + 3 * wait_times.std()
+
+    print("average wait time", wait_times.mean())
+
+    ax.hist(wait_times, bins=np.linspace(0, max_show, 100), color="#6D0EDB")[-1]
+    ax.set_xlabel("time (sec)")
+
+
+def plot_log(messages, ax, title=""):
+    origin = messages[0]["time"]
+    # Define the rows for each event type you want to visualize
+    rows = {"setup": 4, "get-item": 3, "run-batch": 2, "train": 1, "epoch": 0}
+    ax.set_yticks(list(rows.values()), labels=list(rows))
+    if title:
+        ax.set_title(title)
+    data = {"batches": [], "getitem": []}
+    for m in messages:
+        t = m["time"] - origin
+        if m["event"] == "setup end":
+            ax.barh(
+                rows["setup"], m["duration"], left=t - m["duration"], edgecolor="k", linewidth=0.1, color="#6D0EDB", zorder=1,
+            )
+        elif m["event"] == "get-item end":
+            ax.barh(
+                rows["get-item"], m["duration"], left=t - m["duration"], color="#F9C846", zorder=1,
+            )
+            data["getitem"].append(m["duration"])
+        elif m["event"] == "run-batch end":
+            ax.barh(
+                rows["run-batch"], m["duration"], left=t - m["duration"], color="#C396F9", zorder=1,
+            )
+            data["batches"].append(m["duration"])
+        elif m["event"] == "training end":
+            ax.barh(
+                rows["train"], m["duration"], left=t - m["duration"], color="#FF6554", zorder=1,
+            )
+        elif m["event"] == "epoch end":
+            ax.barh(
+                rows["epoch"], m["duration"], left=t - m["duration"], edgecolor="k", linewidth=0.1, color="#FF9E0D", zorder=1,
+            )
+
+    ax.grid(axis="x", zorder=0, alpha=0.5)
+    ax.set_xlabel("time (sec)")
+
+    print("average batch duration", np.mean(data["batches"]))
+    print("average get-item duration", np.mean(data["getitem"]))

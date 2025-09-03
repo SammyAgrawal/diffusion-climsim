@@ -7,14 +7,10 @@ import diffusers
 import gcsfs
 import json
 import torch
-
-from .models import load_model, build_baseline_model
+from .models import MODEL_REGISTRY
 from .mydatasets import load_dataset, load_dataloaders, load_scheduler, log_event
 from .climsim_utils import imagify
-from dataclasses import dataclass, asdict, field
-from typing import List, Dict, Tuple
-
-
+from .configs import DataConfig, DataLoaderParams, TrainingConfig, ModelConfig, load_config
 
 
 @dataclass
@@ -26,6 +22,7 @@ class DataLoaderParams:
     persistent_workers: bool = False
     multiprocessing_context: str = None
     pin_memory: bool = False
+
 
 @dataclass
 class DataConfig:
@@ -56,6 +53,39 @@ class DataConfig:
         if isinstance(self.dataloader_params, dict):
             self.dataloader_params = DataLoaderParams(**self.dataloader_params)
 
+@dataclass
+class TrainingConfig:
+    exp_id: str
+    run_id: str
+    # learning parameters
+    optimizer: str = 'adam'
+    learning_rate_params: Dict = field(default_factory=lambda: {
+        "learning_rate" : 1e-4, "lr_scheduler" : None, "patience" : 5, "betas" : (0.9, 0.999),
+        "lr_warmup_steps" : 20, "step_size" : 100, "gamma" : 0.9, "min_lr" : 1e-6,
+    })
+    loss_weight_params: Dict = field(default_factory=lambda: {
+                    "strategy": "gradnorm", "lr": 1.0, "alpha": 0.5, "gradnorm_layer" : -2, "T" : 3.0, "update_interval": 5,
+                    "loss_weights":{'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2},
+                    "loss_schedule" : {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]}
+    })
+    clip_gradients: bool = True
+    gradient_accumulation_steps = 1
+    mixed_precision = "fp16"
+    max_T_sample: int = 100
+    push_to_hub: bool = False
+    # distribution loss params
+    diffusion_strategy: str = "1d-encode-decode"
+    diffusion_image_loss: str = "1d-mse"
+    diffusion_loss_noise_level: int = 10; 
+    diffusion_loss_decoding_stride: int = 1
+    distloss_type: str = "ksd"
+    num_gaussians: List[int] = field(default_factory=lambda: [3, 2, 3, 2])
+    num_distloss_samples: int = 8
+    distloss_bs: int = 1152 # 384 * 8
+    distloss_var_inds: List[int] = field(default_factory=lambda: [68, 60, 73, 82])
+    distloss_var_sel: str = 'uniform'
+
+
 def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=True, shuffle_indices=True,
                dataset_type="climsim", batch_size=128, use_tendencies = True, **kwargs):
     dconfig = DataConfig(source=source, dataset_type=dataset_type, shuffle_indices=shuffle_indices, data_vars=data_vars, use_tendencies=use_tendencies, **kwargs)
@@ -78,130 +108,7 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=True, shuffle_i
         dl_params.multiprocessing_context = "forkserver"
     dconfig.dataloader_params = dl_params
     return(dconfig)
-            
-@dataclass
-class TrainingConfig:
-    exp_id: str
-    run_id: str
-    # learning parameters
-    optimizer: str = 'adam'
-    learning_rate_params: Dict = field(default_factory=lambda: {
-        "learning_rate" : 1e-4, "lr_scheduler" : None, "patience" : 5, "betas" : (0.9, 0.999),
-        "lr_warmup_steps" : 20, "step_size" : 100, "gamma" : 0.9, "min_lr" : 1e-6,
-    })
-    loss_weight_params: Dict = field(default_factory=lambda: {
-                    "strategy": "gradnorm", "lr": 0.025, "alpha": 0.5, "gradnorm_layer" : -2, "T" : 3.0, "update_interval": 5,
-                    "loss_weights":{'mse': 1.0, 'distribution': 0.0, 'diffusion': 0.0, "kl_div": 0.2},
-                    "loss_schedule" : {'mse': [0,100], 'distribution': [0,100], 'diffusion': [0,100], "kl_div": [0,100]}
-                    })
-    clip_gradients: bool = True
-    gradient_accumulation_steps = 1
-    mixed_precision = "fp16"
-    max_T_sample: int = 100
-    push_to_hub: bool = False
-    # distribution loss params
-    diffusion_strategy: str = "1d-encode-decode"
-    diffusion_image_loss: str = "1d-mse"
-    diffusion_loss_noise_level: int = 10; 
-    diffusion_loss_decoding_stride: int = 1
-    distloss_type: str = "ksd"
-    num_gaussians: List[int] = field(default_factory=lambda: [3, 2, 3, 2])
-    num_distloss_samples: int = 8
-    distloss_bs: int = 1152 # 384 * 8
-    distloss_var_inds: List[int] = field(default_factory=lambda: [68, 60, 73, 82])
-    distloss_var_sel: str = 'uniform'
 
-@dataclass
-class UNetParams:
-    sample_size: Tuple[int, int] = field(default_factory=lambda: (16, 24))
-    in_channels: int = 128
-    out_channels: int = 128
-    extra_in_channels: int = 0
-    block_out_channels: Tuple = field(default_factory=lambda: (32, 64, 64, 128))  # num output channel for each UNet block
-    down_block_types: Tuple = field(default_factory=lambda: (
-        "DownBlock2D",  # a regular ResNet downsampling block
-        "DownBlock2D",
-        "AttnDownBlock2D",  # a ResNet downsampling block with spatial self-attention
-        "DownBlock2D",
-    ))
-    up_block_types: Tuple = field(default_factory=lambda: (
-        "UpBlock2D",  # a regular ResNet upsampling block
-        "AttnUpBlock2D",  # a ResNet upsampling block with spatial self-attention
-        "UpBlock2D",
-        "UpBlock2D",
-    ))
-    layers_per_block: int = 1
-    norm_num_groups: int = 2
-    act_fn: str = "silu" # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L27
-    freq_shift: float = 0.0 # fourier freq shift
-    use_timestep_embedding: bool = True
-    time_embedding_dim: int = 32
-
-# scheduler params
-@dataclass
-class SchedulerParams:
-    num_train_timesteps: int = 100
-    beta_schedule: str = 'linear'
-    clip_sample: bool = False
-    clip_sample_range: float = 4.0
-    beta_end: float = 0.02
-    prediction_type: str = 'epsilon'
-
-@dataclass
-class ModelConfig:
-    model_type: str = "ddpm_diffusion"
-    scheduler_type: str = 'ddpm'
-    unet: UNetParams = field(default_factory=lambda: UNetParams())
-    scheduler: SchedulerParams = field(default_factory=lambda:SchedulerParams())
-    scheduler_inference_steps: int = 100
-    # VAE params
-    num_channels: int = 128
-    latent_dims: int = 16
-    ae_hidden_dims: List[int] = field(default_factory=lambda: [64, 32, 16])
-    disable_enc_logstd_bias: bool = True
-    # Baseline Model Params
-    bl_model_dir: str = "/mnt/home/ssa2206/Climsim/climsim-online/storage/shared_e3sm/saved_models/wrapper"
-    bl_load_model_name: str = None
-    bl_input_size: int = 124
-    bl_output_size: int = 128
-    bl_hidden_dims: List[int] = field(default_factory=lambda: [256, 256, 256]) 
-    def __post_init__(self):
-        if isinstance(self.unet, dict):
-            self.unet = UNetParams(**self.unet)
-        if isinstance(self.scheduler, dict):
-            self.scheduler = SchedulerParams(**self.scheduler)  
-
-
-class ModelLens:
-    def __init__(self, model: torch.nn.Module):
-        self.model = model
-        self.params = dict(model.named_parameters())
-        self.param_names = [p for p in self.params]
-    
-    def get_param(self, getter):
-        if isinstance(getter, str):
-            return self.params[getter]
-        elif isinstance(getter, int):
-            return self.params[self.param_names[getter]]
-        raise ValueError(f"Invalid getter: {getter}")
-    
-    def log_gradients(self, gdict):
-        for n, p in self.params.items():
-            if p.grad is not None and torch.isfinite(p.grad).all():
-                gdict.setdefault(n, []).append((p.grad.mean().item(), p.grad.std().item()))
-            else:
-                return( dict(param_name=n, grad=p.grad, state_dict={k: v.clone().cpu() for k, v in self.params.items()}) )
-        return(0)
-    
-    def __getattr__(self, name):
-        return getattr(self.model, name)
-    def __call__(self, *args):
-        return self.model(*args)
-
-    def __repr__(self):
-        return repr(self.model)
-    def __str__(self):
-        return str(self.model)
 
 def load_config(fname, expid, base_dir="experiments/"):
     if 'json' not in fname:

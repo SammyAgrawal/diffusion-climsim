@@ -1,450 +1,25 @@
-from re import X
-import torch.nn as nn
-from dataclasses import dataclass
-import physicsnemo as modulus
-from typing import Any, Dict, List, Optional
-from diffusers.models.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
-import numpy as np
 import torch
-from torch.nn.functional import silu
-import einops
+import torch.nn as nn
+import torch.nn.functional as F
+import diffusers
+from diffusers import UNet2DModel
+import physicsnemo as modulus
+import dataclasses
 from collections import OrderedDict
+import einops
+from typing import Any, Dict, List, Optional, Tuple
+from .conv_blocks import *
 
-
-def get_activation(act_fn: str) -> nn.Module:
-    """Helper function to get activation function from string.
-
-    Args:
-        act_fn (str): Name of activation function.
-
-    Returns:
-        nn.Module: Activation function.
-    """
-    ACT2CLS = {
-        "swish": nn.SiLU,
-        "silu": nn.SiLU,
-        "mish": nn.Mish,
-        "gelu": nn.GELU,
-        "relu": nn.ReLU,
-    }
-
-    act_fn = act_fn.lower()
-    if act_fn in ACT2CLS:
-        return ACT2CLS[act_fn]()
-    else:
-        raise ValueError(f"activation function {act_fn} not found in ACT2FN mapping {list(ACT2CLS.keys())}")
-
-
-def weight_init(shape: tuple, mode: str, fan_in: int, fan_out: int):
-    """
-    Unified routine for initializing weights and biases.
-    This function provides a unified interface for various weight initialization
-    strategies like Xavier (Glorot) and Kaiming (He) initializations.
-
-    Parameters
-    ----------
-    shape : tuple
-        The shape of the tensor to initialize. It could represent weights or biases
-        of a layer in a neural network.
-    mode : str
-        The mode/type of initialization to use. Supported values are:
-        - "xavier_uniform": Xavier (Glorot) uniform initialization.
-        - "xavier_normal": Xavier (Glorot) normal initialization.
-        - "kaiming_uniform": Kaiming (He) uniform initialization.
-        - "kaiming_normal": Kaiming (He) normal initialization.
-    fan_in : int
-        The number of input units in the weight tensor. For convolutional layers,
-        this typically represents the number of input channels times the kernel height
-        times the kernel width.
-    fan_out : int
-        The number of output units in the weight tensor. For convolutional layers,
-        this typically represents the number of output channels times the kernel height
-        times the kernel width.
-
-    Returns
-    -------
-    torch.Tensor
-        The initialized tensor based on the specified mode.
-
-    Raises
-    ------
-    ValueError
-        If the provided `mode` is not one of the supported initialization modes.
-    """
-    if mode == "xavier_uniform":
-        return np.sqrt(6 / (fan_in + fan_out)) * (torch.rand(*shape) * 2 - 1)
-    if mode == "xavier_normal":
-        return np.sqrt(2 / (fan_in + fan_out)) * torch.randn(*shape)
-    if mode == "kaiming_uniform":
-        return np.sqrt(3 / fan_in) * (torch.rand(*shape) * 2 - 1)
-    if mode == "kaiming_normal":
-        return np.sqrt(1 / fan_in) * torch.randn(*shape)
-    raise ValueError(f'Invalid init mode "{mode}"')
-
-class Linear(torch.nn.Module):
-    """
-    A fully connected (dense) layer implementation. The layer's weights and biases can
-    be initialized using custom initialization strategies like "kaiming_normal",
-    and can be further scaled by factors `init_weight` and `init_bias`.
-
-    Parameters
-    ----------
-    in_features : int
-        Size of each input sample.
-    out_features : int
-        Size of each output sample.
-    bias : bool, optional
-        The biases of the layer. If set to `None`, the layer will not learn an additive
-        bias. By default True.
-    init_mode : str, optional (default="kaiming_normal")
-        The mode/type of initialization to use for weights and biases. Supported modes
-        are:
-        - "xavier_uniform": Xavier (Glorot) uniform initialization.
-        - "xavier_normal": Xavier (Glorot) normal initialization.
-        - "kaiming_uniform": Kaiming (He) uniform initialization.
-        - "kaiming_normal": Kaiming (He) normal initialization.
-        By default "kaiming_normal".
-    init_weight : float, optional
-        A scaling factor to multiply with the initialized weights. By default 1.
-    init_bias : float, optional
-        A scaling factor to multiply with the initialized biases. By default 0.
-    """
-
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        bias: bool = True,
-        init_mode: str = "kaiming_normal",
-        init_weight: int = 1,
-        init_bias: int = 0,
-    ):
-        super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        init_kwargs = dict(mode=init_mode, fan_in=in_features, fan_out=out_features)
-        self.weight = torch.nn.Parameter(
-            weight_init([out_features, in_features], **init_kwargs) * init_weight
-        )
-        self.bias = (
-            torch.nn.Parameter(weight_init([out_features], **init_kwargs) * init_bias)
-            if bias
-            else None
-        )
-
-    def forward(self, x):
-        x = x @ self.weight.to(dtype=x.dtype, device=x.device).t()
-        if self.bias is not None:
-            x = x.add_(self.bias.to(dtype=x.dtype, device=x.device))
-        return x
-
-
-class Conv1d(torch.nn.Module):
-    """
-    A custom 1D convolutional layer implementation with support for up-sampling,
-    down-sampling, and custom weight and bias initializations. The layer's weights
-    and biases canbe initialized using custom initialization strategies like
-    "kaiming_normal", and can be further scaled by factors `init_weight` and
-    `init_bias`.
-
-    Parameters
-    ----------
-    in_channels : int
-        Number of channels in the input image.
-    out_channels : int
-        Number of channels produced by the convolution.
-    kernel : int
-        Size of the convolving kernel.
-    bias : bool, optional
-        The biases of the layer. If set to `None`, the layer will not learn an
-        additive bias. By default True.
-    up : bool, optional
-        Whether to perform up-sampling. By default False.
-    down : bool, optional
-        Whether to perform down-sampling. By default False.
-    resample_filter : List[int], optional
-        Filter to be used for resampling. By default [1, 1].
-    fused_resample : bool, optional
-        If True, performs fused up-sampling and convolution or fused down-sampling
-        and convolution. By default False.
-    init_mode : str, optional (default="kaiming_normal")
-        init_mode : str, optional (default="kaiming_normal")
-        The mode/type of initialization to use for weights and biases. Supported modes
-        are:
-        - "xavier_uniform": Xavier (Glorot) uniform initialization.
-        - "xavier_normal": Xavier (Glorot) normal initialization.
-        - "kaiming_uniform": Kaiming (He) uniform initialization.
-        - "kaiming_normal": Kaiming (He) normal initialization.
-        By default "kaiming_normal".
-    init_weight : float, optional
-        A scaling factor to multiply with the initialized weights. By default 1.0.
-    init_bias : float, optional
-        A scaling factor to multiply with the initialized biases. By default 0.0.
-    """
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel: int,
-        bias: bool = True,
-        up: bool = False,
-        down: bool = False,
-        resample_filter: Optional[List[int]] = None,
-        fused_resample: bool = False,
-        init_mode: str = "kaiming_normal",
-        init_weight: float = 1.0,
-        init_bias: float = 0.0,
-    ):
-        if up and down:
-            raise ValueError("Both 'up' and 'down' cannot be true at the same time.")
-
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel = kernel
-        resample_filter = resample_filter if resample_filter is not None else [1, 1] 
-        self.up = up
-        self.down = down
-        self.fused_resample = fused_resample
-        init_kwargs = dict(
-            mode=init_mode,
-            fan_in=in_channels * kernel,
-            fan_out=out_channels * kernel,
-        )
-        self.weight = (
-            torch.nn.Parameter(
-                weight_init([out_channels, in_channels, kernel], **init_kwargs)
-                * init_weight
-            )
-            if kernel
-            else None
-        )
-        self.bias = (
-            torch.nn.Parameter(weight_init([out_channels], **init_kwargs) * init_bias)
-            if kernel and bias
-            else None
-        )
-        # f = torch.as_tensor(resample_filter, dtype=torch.float32)
-        # f = f.unsqueeze(0).unsqueeze(1) / f.sum()
-        f = torch.tensor(resample_filter, dtype=torch.float32).unsqueeze(0).unsqueeze(1) / sum(resample_filter)
-        self.register_buffer("resample_filter", f if up or down else None)
-
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        kernel: int,
-        bias: bool = True,
-        up: bool = False,
-        down: bool = False,
-        resample_filter: Optional[List[int]] = None,
-        fused_resample: bool = False,
-        init_mode: str = "kaiming_normal",
-        init_weight: float = 1.0,
-        init_bias: float = 0.0,
-    ):
-        if up and down:
-            raise ValueError("Both 'up' and 'down' cannot be true at the same time.")
-
-        super().__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel = kernel
-        resample_filter = resample_filter if resample_filter is not None else [1, 1] 
-        self.up = up
-        self.down = down
-        self.fused_resample = fused_resample
-        init_kwargs = dict(
-            mode=init_mode,
-            fan_in=in_channels * kernel,
-            fan_out=out_channels * kernel,
-        )
-        self.weight = (
-            torch.nn.Parameter(
-                weight_init([out_channels, in_channels, kernel], **init_kwargs)
-                * init_weight
-            )
-            if kernel
-            else None
-        )
-        self.bias = (
-            torch.nn.Parameter(weight_init([out_channels], **init_kwargs) * init_bias)
-            if kernel and bias
-            else None
-        )
-        # f = torch.as_tensor(resample_filter, dtype=torch.float32)
-        # f = f.unsqueeze(0).unsqueeze(1) / f.sum()
-        f = torch.tensor(resample_filter, dtype=torch.float32).unsqueeze(0).unsqueeze(1) / sum(resample_filter)
-        self.register_buffer("resample_filter", f if up or down else None)
-
-    def forward(self, x, conditioning_signals={}):
-        w = self.weight.to(dtype=x.dtype, device=x.device) if self.weight is not None else None
-        b = self.bias.to(dtype=x.dtype, device=x.device) if self.bias is not None else None
-
-        # f = self.resample_filter if self.resample_filter is not None else torch.tensor([], dtype=x.dtype, device=x.device)
-        # w_pad = w.shape[-1] // 2 if w is not None else 0
-        # f_pad = (f.size(-1) - 1) // 2 if f.numel() > 0 else 0  # Check for empty tensor
-
-        # Directly use self.resample_filter without creating an empty tensor
-        f = self.resample_filter
-
-        w_pad = w.shape[-1] // 2 if w is not None else 0
-        # Adjust f_pad calculation based on whether f is None or not
-        f_pad = (f.size(-1) - 1) // 2 if f is not None else 0  # Use f directly
-        # Adjust convolution operations based on the existence of f
-        if f is not None:
-
-            if self.fused_resample and self.up and w is not None:
-                x = torch.nn.functional.conv_transpose1d(
-                    x,
-                    f.repeat(self.in_channels, 1, 1) * 2,
-                    groups=self.in_channels,
-                    stride=2,
-                    padding=max(f_pad - w_pad, 0),
-                )
-                x = torch.nn.functional.conv1d(x, w, padding=max(w_pad - f_pad, 0))
-            elif self.fused_resample and self.down and w is not None:
-                x = torch.nn.functional.conv1d(x, w, padding=w_pad + f_pad)
-                x = torch.nn.functional.conv1d(
-                    x,
-                    f.repeat(self.out_channels, 1, 1),
-                    groups=self.out_channels,
-                    stride=2,
-                )
-            else:
-                if self.up:
-                    x = torch.nn.functional.conv_transpose1d(
-                        x,
-                        f.repeat(self.in_channels, 1, 1) * 2,
-                        groups=self.in_channels,
-                        stride=2,
-                        padding=f_pad,
-                    )
-                if self.down:
-                    x = torch.nn.functional.conv1d(
-                        x,
-                        f.repeat(self.in_channels, 1, 1),
-                        groups=self.in_channels,
-                        stride=2,
-                        padding=f_pad,
-                    )
-                if w is not None:
-                    x = torch.nn.functional.conv1d(x, w, padding=w_pad)
-
-        else:            
-            if w is not None:
-                x = torch.nn.functional.conv1d(x, w, padding=w_pad)
-        if b is not None:
-            x = x.add_(b.reshape(1, -1, 1))
-        return x
-
-class GroupNorm(torch.nn.Module):
-    """
-    A custom Group Normalization layer implementation.
-
-    Group Normalization (GN) divides the channels of the input tensor into groups and
-    normalizes the features within each group independently. It does not require the
-    batch size as in Batch Normalization, making itsuitable for batch sizes of any size
-    or even for batch-free scenarios.
-
-    Parameters
-    ----------
-    num_channels : int
-        Number of channels in the input tensor.
-    num_groups : int, optional
-        Desired number of groups to divide the input channels, by default 32.
-        This might be adjusted based on the `min_channels_per_group`.
-    min_channels_per_group : int, optional
-        Minimum channels required per group. This ensures that no group has fewer
-        channels than this number. By default 4.
-    eps : float, optional
-        A small number added to the variance to prevent division by zero, by default
-        1e-5.
-
-    Notes
-    -----
-    If `num_channels` is not divisible by `num_groups`, the actual number of groups
-    might be adjusted to satisfy the `min_channels_per_group` condition.
-    """
-
-    def __init__(
-        self,
-        num_channels: int,
-        num_groups: int = 32,
-        min_channels_per_group: int = 4,
-        eps: float = 1e-5,
-    ):
-        super().__init__()
-        self.num_groups = min(num_groups, num_channels // min_channels_per_group)
-        self.eps = eps
-        self.weight = torch.nn.Parameter(torch.ones(num_channels))
-        self.bias = torch.nn.Parameter(torch.zeros(num_channels))
-
-    def forward(self, x):
-        x = torch.nn.functional.group_norm(
-            x,
-            num_groups=self.num_groups,
-            weight=self.weight.to(dtype=x.dtype, device=x.device),
-            bias=self.bias.to(dtype=x.dtype, device=x.device),
-            eps=self.eps,
-        )
-        return x
-
-class AttentionOp(torch.autograd.Function):
-    """
-    Attention weight computation, i.e., softmax(Q^T * K).
-    Performs all computation using FP32, but uses the original datatype for
-    inputs/outputs/gradients to conserve memory.
-    """
-
-    @staticmethod
-    def forward(ctx, q, k):
-        w = (
-            torch.einsum(
-                "ncq,nck->nqk",
-                q.to(dtype=torch.float32, device=q.device),
-                (k / (k.shape[1]**0.5)).to(dtype=torch.float32, device=k.device),
-            )
-            .softmax(dim=2)
-            .to(dtype=q.dtype, device=q.device)
-        )
-        ctx.save_for_backward(q, k, w)
-        return w
-
-    @staticmethod
-    def backward(ctx, dw):
-        q, k, w = ctx.saved_tensors
-        db = torch._softmax_backward_data(
-            grad_output=dw.to(dtype=torch.float32, device=dw.device),
-            output=w.to(dtype=torch.float32, device=w.device),
-            dim=2,
-            input_dtype=torch.float32,
-        )
-        dq = torch.einsum("nck,nqk->ncq", k.to(dtype=torch.float32, device=k.device), db).to(
-            dtype=q.dtype, device=q.device
-        ) / (k.shape[1]**0.5)
-        dk = torch.einsum("ncq,nqk->nck", q.to(dtype=torch.float32, device=q.device), db).to(
-            dtype=k.dtype, device=k.device
-        ) / (k.shape[1]**0.5)
-        return dq, dk
-
-class ScriptableAttentionOp(torch.nn.Module):
-    def __init__(self):
-        super(ScriptableAttentionOp, self).__init__()
-
-    def forward(self, q, k):
-        scale_factor = k.shape[1] ** 0.5
-        k_scaled = k / scale_factor
-        w = torch.einsum("ncq,nck->nqk", q.float(), k_scaled.float()).softmax(dim=2)
-        return w.to(dtype=q.dtype)
-
+"""
+Contains the code for the Unet and its training.
+"""
 
 class UNetCondEmbedding(torch.nn.Module):
     def __init__(
         self, 
         num_channels: int, 
         embed_dim: int = 0, 
-        embedding_type: str = "positional",
+        embedding_type: str = "",
         emb_method: str = "concat", 
         activation: str = "",
         projection_method: str = "linear",
@@ -461,15 +36,24 @@ class UNetCondEmbedding(torch.nn.Module):
         match embedding_type:
             case "fourier" | "gaussian":
                 assert embed_dim % 2 == 0, f"`time_embed_dim` should be divisible by 2, but is {embed_dim}."
-                self.emb_proj = GaussianFourierProjection(embedding_size=embed_dim // 2, set_W_to_weight=False, log=False)
+                self.emb_proj = diffusers.models.embeddings.GaussianFourierProjection(embedding_size=embed_dim // 2, set_W_to_weight=False, log=False)
             case "positional":
-                self.emb_proj = Timesteps(embed_dim, flip_sin_to_cos=False, downscale_freq_shift=0.0)
+                self.emb_proj = diffusers.models.embeddings.Timesteps(embed_dim, flip_sin_to_cos=False, downscale_freq_shift=0.0)
             case "discrete_embedding":
                 self.emb_proj = torch.nn.Embedding(num_embeddings=num_channels, embedding_dim=embed_dim)
             case "sinusoidal":
                 raise NotImplementedError("Sinusoidal embedding not implemented")
             case _:
                 self.emb_proj = None
+        """
+        self.affine = Linear(in_features=embed_dims, out_features=out_channels * (2 if adaptive_scale else 1),  **init)
+        # params = self.affine(emb).unsqueeze(2).to(x.dtype)
+        # if self.adaptive_scale:
+        #     scale, shift = params.chunk(chunks=2, dim=1)
+        #     x = F.silu(torch.addcmul(shift, self.norm1(x), scale + 1))
+        # else:
+        #     x = F.silu(self.norm1(x.add_(params)))
+        """
 
         # define how embedding is injected into the sample        
         match emb_method:
@@ -514,7 +98,6 @@ class UNetCondEmbedding(torch.nn.Module):
                 raise NotImplementedError("Attention embedding not implemented")
             case _:
                 raise ValueError(f"Embedding method {self.emb_method} not supported")
-
 
 class UNetBlock(torch.nn.Module):
     def __init__(
@@ -565,7 +148,6 @@ class UNetBlock(torch.nn.Module):
             resample_filter=resample_filter,
             **init,
         )
-        # self.affine = Linear(in_features=embed_dims, out_features=out_channels * (2 if adaptive_scale else 1),  **init)
         self.norm1 = GroupNorm(num_channels=out_channels, eps=eps)
         self.conv1 = Conv1d(
             in_channels=out_channels, out_channels=out_channels, kernel=kernel_size, **init_zero
@@ -603,15 +185,7 @@ class UNetBlock(torch.nn.Module):
     
     def forward(self, x, conditioning_signals={}):
         skip_res = self.skip(x) if self.skip is not None else x
-        x = self.conv0(silu(self.norm0(x)))
-
-        # params = self.affine(emb).unsqueeze(2).to(x.dtype)
-        # if self.adaptive_scale:
-        #     scale, shift = params.chunk(chunks=2, dim=1)
-        #     x = silu(torch.addcmul(shift, self.norm1(x), scale + 1))
-        # else:
-        #     x = silu(self.norm1(x.add_(params)))
-
+        x = self.conv0(F.silu(self.norm0(x)))
         x = self.norm1(x)
         if self.embedding_blocks is not None:
             for embed_name, embedding in conditioning_signals.items():
@@ -645,9 +219,6 @@ class UNetBlock(torch.nn.Module):
             x = x * self.skip_scale
         return x
 
-
-
-
 class UNetBlock_noatten(UNetBlock):
 
     def __init__(
@@ -678,7 +249,6 @@ class UNetBlock_noatten(UNetBlock):
             dropout, skip_scale,
             eps, resample_filter, resample_proj, adaptive_scale,
             init, init_zero, None)
-
 
 class UNetBlock_atten(UNetBlock):
 
@@ -711,15 +281,270 @@ class UNetBlock_atten(UNetBlock):
             dropout, skip_scale, eps, resample_filter, resample_proj, adaptive_scale,
             init, init_zero, init_attn)
 
+class DownBlock1D(nn.Module):
+    def __init__(
+        self, 
+        out_channels: int, 
+        in_channels: int, 
+        mid_channels: Optional[int] = None, 
+        use_down=False,
+        use_up=False, 
+        concat_temb=False,
+        attention=False,
+    ):
+        super().__init__()
+        mid_channels = out_channels if mid_channels is None else mid_channels
+        in_channels = 2 * in_channels if attention else in_channels
+        self.down = Downsample1d("cubic") if use_down else None
+        self.up = Upsample1d(kernel="cubic") if use_up else None
+        
+        self.resnets = nn.ModuleList([
+            ResConvBlock(in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels),
+        ])
+        self.attentions = None
+        if attention:
+            self.attentions = nn.ModuleList([
+                SelfAttention1d(mid_channels, mid_channels // 32),
+                SelfAttention1d(mid_channels, mid_channels // 32),
+                SelfAttention1d(out_channels, out_channels // 32),
+            ])
+            
+        self.time_embedding = UNetCondEmbedding(in_channels, emb_method="concat") if concat_temb else None
+
+    def forward(
+            self, 
+            hidden_states: torch.Tensor, 
+            res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+            temb: Optional[torch.Tensor] = None
+        ) -> torch.Tensor:
+        
+        hidden_states = self.down(hidden_states) if self.down is not None else hidden_states
+        hidden_states = self.time_embedding(hidden_states, temb) if self.time_embedding is not None else hidden_states
+        hidden_states = torch.cat([hidden_states, res_hidden_states_tuple[-1]], dim=1) if self.attentions is not None else hidden_states
+
+        for i, resnet in enumerate(self.resnets):
+            hidden_states = resnet(hidden_states)
+            if self.attentions is not None:
+                hidden_states = self.attentions[i](hidden_states)
+        
+        hidden_states = self.up(hidden_states) if self.up is not None else hidden_states
+
+        return hidden_states, (hidden_states,)
+
+class UpBlock1D(nn.Module):
+    def __init__(
+            self, 
+            in_channels: int, 
+            out_channels: int, 
+            mid_channels: Optional[int] = None, 
+            use_up=True,
+            attention=False
+        ):
+        super().__init__()
+        mid_channels = in_channels if mid_channels is None else mid_channels
+
+        self.resnets = nn.ModuleList([
+            ResConvBlock(2 * in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels),
+        ])
+        self.attentions = None
+        if attention:
+            self.attentions = nn.ModuleList([
+                SelfAttention1d(mid_channels, mid_channels // 32),
+                SelfAttention1d(mid_channels, mid_channels // 32),
+                SelfAttention1d(out_channels, out_channels // 32),
+            ])
+        
+        self.up = Upsample1d(kernel="cubic") if use_up else None
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Tuple[torch.Tensor, ...],
+        temb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        res_hidden_states = res_hidden_states_tuple[-1]
+        hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+
+        for i, resnet in enumerate(self.resnets):
+            hidden_states = resnet(hidden_states)
+            if self.attentions is not None:
+                hidden_states = self.attentions[i](hidden_states)
+
+        hidden_states = self.up(hidden_states) if self.up else hidden_states
+
+        return hidden_states
+
+class DownResnetBlock1D(nn.Module): # composed of ResidualTemporalBlocks
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        num_layers: int = 1,
+        conv_shortcut: bool = False,
+        temb_channels: int = 32,
+        groups: int = 32,
+        groups_out: Optional[int] = None,
+        non_linearity: Optional[str] = None,
+        time_embedding_norm: str = "default",
+        output_scale_factor: float = 1.0,
+        add_downsample: bool = True,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+        self.use_conv_shortcut = conv_shortcut
+        self.time_embedding_norm = time_embedding_norm
+        self.add_downsample = add_downsample
+        self.output_scale_factor = output_scale_factor
+
+        if groups_out is None:
+            groups_out = groups
+
+        # there will always be at least one resnet
+        resnets = [ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=temb_channels)]
+
+        for _ in range(num_layers):
+            resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels))
+
+        self.resnets = nn.ModuleList(resnets)
+
+        self.nonlinearity = None if non_linearity is None else get_activation(non_linearity)
+
+        self.downsample = None
+        if add_downsample:
+            self.downsample = Conv1d(out_channels, out_channels, kernel=3, bias=False, stride=2, padding=1)
+
+    def forward(self, hidden_states: torch.Tensor, temb: Optional[torch.Tensor] = None) -> torch.Tensor:
+        output_states = ()
+        hidden_states = self.resnets[0](hidden_states, temb) 
+        for resnet in self.resnets[1:]:
+            hidden_states = resnet(hidden_states, temb)
+
+        if self.nonlinearity is not None:
+            hidden_states = self.nonlinearity(hidden_states)
+
+        if self.downsample is not None:
+            hidden_states = self.downsample(hidden_states)
+        
+        output_states += (hidden_states,)
+
+        return hidden_states, output_states
+
+class UpResnetBlock1D(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        num_layers: int = 1,
+        temb_channels: int = 32,
+        groups: int = 32,
+        groups_out: Optional[int] = None,
+        non_linearity: Optional[str] = None,
+        time_embedding_norm: str = "default",
+        output_scale_factor: float = 1.0,
+        add_upsample: bool = True,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+        self.time_embedding_norm = time_embedding_norm
+        self.add_upsample = add_upsample
+        self.output_scale_factor = output_scale_factor
+
+        if groups_out is None:
+            groups_out = groups
+
+        # there will always be at least one resnet
+        resnets = [ResidualTemporalBlock1D(2 * in_channels, out_channels, embed_dim=temb_channels)]
+
+        for _ in range(num_layers):
+            resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels))
+
+        self.resnets = nn.ModuleList(resnets)
+
+        if non_linearity is None:
+            self.nonlinearity = None
+        else:
+            self.nonlinearity = get_activation(non_linearity)
+
+        self.upsample = None
+        if add_upsample:
+            self.upsample = nn.ConvTranspose1d(out_channels, out_channels, 4, 2, 1)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        res_hidden_states_tuple: Optional[Tuple[torch.Tensor, ...]] = None,
+        temb: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if res_hidden_states_tuple is not None:
+            res_hidden_states = res_hidden_states_tuple[-1]
+            hidden_states = torch.cat((hidden_states, res_hidden_states), dim=1)
+
+        hidden_states = self.resnets[0](hidden_states, temb)
+        for resnet in self.resnets[1:]:
+            hidden_states = resnet(hidden_states, temb)
+
+        if self.nonlinearity is not None:
+            hidden_states = self.nonlinearity(hidden_states)
+
+        if self.upsample is not None:
+            hidden_states = self.upsample(hidden_states)
+
+        return hidden_states
+
+def get_down_block(
+    down_block_type: str,
+    num_layers: int,
+    in_channels: int,
+    out_channels: int,
+    temb_channels: int,
+    add_downsample: bool,
+) -> Union[DownResnetBlock1D, DownBlock1D, UNetBlock]:
+    if down_block_type == "DownResnetBlock1D":
+        return DownResnetBlock1D(
+            in_channels=in_channels,
+            num_layers=num_layers,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            add_downsample=add_downsample,
+        )
+    elif down_block_type == "DownBlock1D":
+        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, use_down=True, use_up=False, concat_temb=False, attention=False)
+    elif down_block_type == "AttnDownBlock1D":
+        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, use_down=False, use_up=True, concat_temb=False, attention=True)
+    elif down_block_type == "DownBlock1DNoSkip":
+        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, use_down=False, use_up=False, concat_temb=True, attention=False)
+    raise ValueError(f"{down_block_type} does not exist.")
 
 
-"""
-Contains the code for the Unet and its training.
-"""
+def get_up_block(
+    up_block_type: str, num_layers: int, in_channels: int, out_channels: int, temb_channels: int, add_upsample: bool
+) -> Union[UpResnetBlock1D, UpBlock1D, UNetBlock]:
+    if up_block_type == "UpResnetBlock1D":
+        return UpResnetBlock1D(
+            in_channels=in_channels,
+            num_layers=num_layers,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            add_upsample=add_upsample,
+        )
+    elif up_block_type == "UpBlock1D":
+        return UpBlock1D(in_channels=in_channels, out_channels=out_channels, use_up=True, attention=False)
+    elif up_block_type == "AttnUpBlock1D":
+        return UpBlock1D(in_channels=in_channels, out_channels=out_channels, use_up=True, attention=True)
+    elif up_block_type == "UpBlock1DNoSkip":
+        return UpBlock1D(in_channels=in_channels, out_channels=out_channels, use_up=False, attention=False)
+    raise ValueError(f"{up_block_type} does not exist.")
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-@dataclass
+@dataclasses.dataclass
 class ClimsimUnetMetaData(modulus.ModelMetaData):
     name: str = "ClimsimUnet"
     # Optimization
@@ -727,7 +552,6 @@ class ClimsimUnetMetaData(modulus.ModelMetaData):
     cuda_graphs: bool = True
     amp_cpu: bool = True
     amp_gpu: bool = True
-
 
 class ClimsimUnet(modulus.Module):
     def __init__(
@@ -752,7 +576,6 @@ class ClimsimUnet(modulus.Module):
                 1: ["timesteps"],
             },
             dropout: float = 0.10,
-            channel_mult_noise: int = 1,
             encoder_type: str = "standard",
             decoder_type: str = "standard",
             resample_filter: List[int] = [1, 1],
@@ -765,7 +588,7 @@ class ClimsimUnet(modulus.Module):
             loc_embedding_dim: int = 8,
             skip_conv: bool = False,
             kernel_size: int = 3,
-            prev_2d: bool = False
+            output_scale_type: str = '',
         ):
         super().__init__(meta=ClimsimUnetMetaData())
         # check if hidden_dims is a list of hidden_dims
@@ -775,6 +598,7 @@ class ClimsimUnet(modulus.Module):
         else:
             self.num_vars_profile = num_vars_profile
             self.num_vars_scalar = num_vars_scalar
+        
         self.num_vars_profile_out = num_vars_profile_out
         self.num_vars_scalar_out = num_vars_scalar_out
         self.diffusion_mode = diffusion_mode
@@ -805,7 +629,6 @@ class ClimsimUnet(modulus.Module):
         self.num_blocks = num_blocks
         self.attn_resolutions = attn_resolutions
         self.dropout = dropout
-        self.channel_mult_noise = channel_mult_noise
         self.encoder_type = encoder_type
         self.decoder_type = decoder_type
         self.resample_filter = resample_filter
@@ -815,7 +638,6 @@ class ClimsimUnet(modulus.Module):
         self.output_prune=output_prune
         self.strato_lev=strato_lev
         self.skip_conv = skip_conv
-        self.prev_2d = prev_2d
 
         # emb_channels = model_channels * channel_mult_emb # channel_mult_emb used to be input param
         # self.emb_channels = emb_channels
@@ -963,6 +785,15 @@ class ClimsimUnet(modulus.Module):
                 self.dec_aux_conv[f"{res}_aux_conv"] = Conv1d(
                     in_channels=cout, out_channels=self.out_channels, kernel=3, **init_zero
                 )
+        
+        if output_scale_type == 'affine' or "bias" in output_scale_type:
+            self.scale_output = ChannelAffine(self.out_channels, cross_channel=False, bias=True)
+        elif output_scale_type == 'scale-only' or output_scale_type == 'linear':
+            self.scale_output = ChannelAffine(self.out_channels, cross_channel=False, bias=False)
+        elif 'cross' in output_scale_type or 'mixed' in output_scale_type:
+            self.scale_output = ChannelAffine(self.out_channels, cross_channel=True, bias=False)
+        else:
+            self.scale_output = None
 
     def return_embedding_blocks(self, res, out_channels):
         embedding_blocks = OrderedDict()
@@ -980,13 +811,11 @@ class ClimsimUnet(modulus.Module):
         return embedding_blocks
 
     def forward(self, x, timestep=None, loc=None):
-
         # if self.qinput_prune:
         #     x = x.clone()  # Clone the tensor to ensure you're not modifying the original tensor in-place
         #     x[:, 60:60+self.strato_lev] = x[:, 60:60+self.strato_lev].clone().zero_()  # Set stratosphere q1 to 0
         #     x[:, 120:120+self.strato_lev] = x[:, 120:120+self.strato_lev].clone().zero_()  # Set stratosphere q2 to 0
         #     x[:, 180:180+self.strato_lev] = x[:, 180:180+self.strato_lev].clone().zero_()  # Set stratosphere q3 to 0
-
         
         if self.diffusion_mode:
             assert timestep is not None, "Timestep is required for diffusion model"
@@ -999,9 +828,9 @@ class ClimsimUnet(modulus.Module):
             assert timesteps.shape[0] == x.shape[0], "Timestep shape mismatch"
         else:
             assert len(x.shape == 2), "Need input shape of (batch, num_vars_profile*levels+num_vars_scalar)"
-            if not self.prev_2d:
-                x = x.clone()
-                x[:,-8:-3] = x[:,-8:-3].clone().zero_()
+            #if not self.prev_2d:
+            #    x = x.clone()
+            #    x[:,-8:-3] = x[:,-8:-3].clone().zero_()
             # split x into x_profile and x_scalar
             # x_profile: (batch, num_vars_profile, levels)
             # x_scalar: (batch, num_vars_scalar)
@@ -1024,7 +853,6 @@ class ClimsimUnet(modulus.Module):
 
         x = torch.nn.functional.pad(x, self.input_padding, "constant", 0.0)
         # pass the concatenated tensor through the Unet
-
         # Encoder.
         skips = []
         aux = x
@@ -1050,7 +878,6 @@ class ClimsimUnet(modulus.Module):
         aux = None
         tmp = None
         for name, block in self.dec.items():
-#             print(name)
             # if "aux" not in name:
             if x.shape[1] != block.in_channels:
                 # skip_ind = len(skips) - 1
@@ -1066,18 +893,20 @@ class ClimsimUnet(modulus.Module):
             #     # if "aux_up" in name:
             #     #     aux = block(aux)
             #     if "aux_conv" in name:
-            #         tmp = block(silu(tmp))
+            #         tmp = block(F.silu(tmp))
             #         aux = tmp if aux is None else tmp + aux
             #     elif "aux_norm" in name:
             #         tmp = block(x)
         for name, block in self.dec_aux_norm.items():
             tmp = block(x)
         for name, block in self.dec_aux_conv.items():
-            tmp = block(silu(tmp))
+            tmp = block(F.silu(tmp))
             aux = tmp if aux is None else tmp + aux
         # here x should be (batch, output_channels, seq_resolution)
         # remember that self.input_padding = (seq_resolution-n_model_levels,0)
         x = aux
+        if self.scale_output:
+            x = self.scale_output(x)
         if self.diffusion_mode:
             return x
         # print('7:', x.shape)
@@ -1108,3 +937,234 @@ class ClimsimUnet(modulus.Module):
             y[:, 300:300+self.strato_lev] = y[:, 300:300+self.strato_lev].clone().zero_()
 
         return y
+
+
+@dataclasses.dataclass
+class UNet1DOutput(diffusers.utils.BaseOutput):
+    sample: torch.Tensor
+
+
+class DiffusersUNet1D(diffusers.models.ModelMixin, diffusers.configuration_utils.ConfigMixin):
+    r"""
+    A 1D UNet model that takes a noisy sample and a timestep and returns a sample shaped output.
+    Inspired by https://github.com/leap-stc/ClimSim/blob/main/online_testing/baseline_models/Unet_v5/training/climsim_unet.py
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
+    for all models (such as downloading or saving).
+
+    Parameters:
+        in_channels (`int`, *optional*, defaults to 2): Number of channels in the input sample.
+        out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
+        extra_in_channels (`int`, *optional*, defaults to 0):
+            Number of additional channels to be added to the input of the first down block. Useful for cases where the
+            input data has more channels than what the model was initially designed for.
+        time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
+        freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for Fourier time embedding.
+        flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
+            Whether to flip sin to cos for Fourier time embedding.
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownBlock1DNoSkip", "DownBlock1D", "AttnDownBlock1D")`):
+            Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("AttnUpBlock1D", "UpBlock1D", "UpBlock1DNoSkip")`):
+            Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to `(32, 32, 64)`):
+            Tuple of block output channels.
+        mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock1D"`): Block type for middle of UNet.
+        out_block_type (`str`, *optional*, defaults to `None`): Optional output processing block of UNet.
+        act_fn (`str`, *optional*, defaults to `None`): Optional activation function in UNet blocks.
+        norm_num_groups (`int`, *optional*, defaults to 8): The number of groups for normalization.
+        layers_per_block (`int`, *optional*, defaults to 1): The number of layers per block.
+        downsample_each_block (`int`, *optional*, defaults to `False`):
+            Experimental feature for using a UNet without upsampling.
+    """
+
+    _skip_layerwise_casting_patterns = ["norm"]
+
+    @diffusers.configuration_utils.register_to_config
+    def __init__(
+        self,
+        in_channels: int = 2,
+        out_channels: int = 2,
+        extra_in_channels: int = 0,
+        time_embedding_type: str = "fourier",
+        time_embedding_dim: int = 0,
+        flip_sin_to_cos: bool = True,
+        use_timestep_embedding: bool = False,
+        freq_shift: float = 0.0,
+        down_block_types: Tuple[str] = ("DownBlock1DNoSkip", "DownBlock1D", "AttnDownBlock1D"),
+        up_block_types: Tuple[str] = ("AttnUpBlock1D", "UpBlock1D", "UpBlock1DNoSkip"),
+        mid_block_type: Tuple[str] = "UNetMidBlock1D",
+        out_block_type: str = None,
+        block_out_channels: Tuple[int] = (32, 32, 64),
+        act_fn: str = None,
+        norm_num_groups: int = 8,
+        layers_per_block: int = 1,
+        downsample_each_block: bool = False,
+        output_scale_type: str = "scale-only",
+    ):
+        super().__init__()
+
+        # time
+        if time_embedding_type == "fourier":
+            time_embed_dim = time_embedding_dim or block_out_channels[0] * 2
+            if time_embed_dim % 2 != 0:
+                raise ValueError(f"`time_embed_dim` should be divisible by 2, but is {time_embed_dim}.")
+            self.time_proj = diffusers.models.embeddings.GaussianFourierProjection(
+                embedding_size=time_embed_dim // 2, set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
+            )
+            timestep_input_dim = time_embed_dim
+        elif time_embedding_type == "positional":
+            time_embed_dim = time_embedding_dim or block_out_channels[0]
+            self.time_proj = diffusers.models.embeddings.Timesteps(
+                time_embed_dim, flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift
+            )
+            timestep_input_dim = time_embed_dim
+        else:
+            raise ValueError(
+                f"{time_embedding_type} does not exist. Please make sure to use one of `fourier` or `positional`."
+            )
+
+        if use_timestep_embedding:
+            time_embed_dim = block_out_channels[0] * 4
+            self.time_mlp = diffusers.models.embeddings.TimestepEmbedding(
+                in_channels=timestep_input_dim,
+                time_embed_dim=time_embed_dim,
+                act_fn=act_fn,
+                out_dim=block_out_channels[0],
+            )
+
+        self.down_blocks = nn.ModuleList([])
+        self.mid_block = None
+        self.up_blocks = nn.ModuleList([])
+        self.out_block = None
+
+        # down
+        output_channel = in_channels
+        for i, down_block_type in enumerate(down_block_types):
+            input_channel = output_channel
+            output_channel = block_out_channels[i]
+
+            if i == 0:
+                input_channel += extra_in_channels
+
+            is_final_block = i == len(block_out_channels) - 1
+
+            down_block = get_down_block(
+                down_block_type,
+                num_layers=layers_per_block,
+                in_channels=input_channel,
+                out_channels=output_channel,
+                temb_channels=timestep_input_dim,
+                add_downsample=not is_final_block or downsample_each_block,
+            )
+            self.down_blocks.append(down_block)
+
+        # mid
+        self.mid_block = get_mid_block(
+            mid_block_type,
+            in_channels=block_out_channels[-1],
+            mid_channels=block_out_channels[-1],
+            out_channels=block_out_channels[-1],
+            temb_channels=timestep_input_dim,
+            num_layers=layers_per_block,
+            add_downsample=downsample_each_block,
+        )
+
+        # up
+        reversed_block_out_channels = list(reversed(block_out_channels))
+        output_channel = reversed_block_out_channels[0]
+        if out_block_type is None:
+            final_upsample_channels = out_channels
+        else:
+            final_upsample_channels = block_out_channels[0]
+
+        for i, up_block_type in enumerate(up_block_types):
+            prev_output_channel = output_channel
+            output_channel = (
+                reversed_block_out_channels[i + 1] if i < len(up_block_types) - 1 else final_upsample_channels
+            )
+
+            is_final_block = i == len(block_out_channels) - 1
+
+            up_block = get_up_block(
+                up_block_type,
+                num_layers=layers_per_block,
+                in_channels=prev_output_channel,
+                out_channels=output_channel,
+                temb_channels=timestep_input_dim,
+                add_upsample=not is_final_block,
+            )
+            self.up_blocks.append(up_block)
+            prev_output_channel = output_channel
+
+        # out
+        num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
+        self.out_block = get_out_block(
+            out_block_type=out_block_type,
+            num_groups_out=num_groups_out,
+            embed_dim=block_out_channels[0],
+            out_channels=out_channels,
+            act_fn=act_fn,
+            fc_dim=block_out_channels[-1] // 4,
+        )
+        if output_scale_type == 'affine' or "bias" in output_scale_type:
+            self.scale_output = ChannelAffine(out_channels, cross_channel=False, bias=True)
+        elif output_scale_type == 'scale-only' or output_scale_type == 'linear':
+            self.scale_output = ChannelAffine(out_channels, cross_channel=False, bias=False)
+        elif 'cross' in output_scale_type or 'mixed' in output_scale_type:
+            self.scale_output = ChannelAffine(out_channels, cross_channel=True, bias=False)
+        else:
+            self.scale_output = None   
+
+    def forward(
+        self,
+        sample: torch.Tensor,
+        timestep: Union[torch.Tensor, float, int],
+        return_dict: bool = True,
+        debug=False,
+    ) -> Union[UNet1DOutput, Tuple, torch.Tensor]:
+        r"""
+        The [`UNet1DModel`] forward method.
+
+        Args:
+            sample (`torch.Tensor`):
+                The noisy input tensor with the following shape `(batch_size, num_channels, sample_size)`.
+            timestep (`torch.Tensor` or `float` or `int`): The number of timesteps to denoise an input.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unets.unet_1d.UNet1DOutput`] instead of a plain tuple.
+        """
+
+        # 1. time
+        timesteps = timestep
+        if not torch.is_tensor(timesteps):
+            timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
+
+        timestep_embed = self.time_proj(timesteps)
+        if self.config.use_timestep_embedding:
+            timestep_embed = self.time_mlp(timestep_embed.to(sample.dtype))
+        timestep_embed = timestep_embed.broadcast_to((sample.shape[:1] + timestep_embed.shape[1:]))
+        if debug:
+            print(sample.shape, timestep_embed.shape)
+        # 2. down
+        down_block_res_samples = ()
+        for downsample_block in self.down_blocks:
+            sample, res_samples = downsample_block(hidden_states=sample, temb=timestep_embed)
+            down_block_res_samples += res_samples
+
+        # 3. mid
+        if self.mid_block:
+            sample = self.mid_block(sample, timestep_embed)
+
+        # 4. up
+        for i, upsample_block in enumerate(self.up_blocks):
+            res_samples = down_block_res_samples[-1:]
+            down_block_res_samples = down_block_res_samples[:-1]
+            sample = upsample_block(sample, res_hidden_states_tuple=res_samples, temb=timestep_embed)
+
+        # 5. post-process
+        if self.out_block:
+            sample = self.out_block(sample, timestep_embed)
+        
+        if self.scale_output:
+            sample = self.scale_output(sample)
+        return sample

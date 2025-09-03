@@ -34,6 +34,7 @@ def setup_diffusion_run(
         (16, 32, 64),
         (32, 48, 64),
     ]
+    
 
     lettering = 'abcdefghijklmnopqrstuvwxyz'
     for i in range(num_models):

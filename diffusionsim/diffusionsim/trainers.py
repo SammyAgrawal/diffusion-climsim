@@ -11,6 +11,7 @@ import diffusionsim.training_utils as tru
 from sklearn.mixture import GaussianMixture
 from collections import defaultdict
 import dataclasses
+import copy
 import random
 WANDB_AVAILABLE = True
 try:
@@ -29,7 +30,7 @@ class AbstractTrainer(ABC):
         self.phases = self.dconfig.phases
         self.indices = indices
         self.dataloaders = {self.phases[i] : dataloaders[i] for i in range(len(dataloaders))}
-
+        self.current_phase = None
         self.loss_fn = torch.nn.MSELoss()
         self.base_run_id = base_run_id
         self.run_ids = [tconfig.run_id for tconfig in tconfigs]
@@ -41,7 +42,7 @@ class AbstractTrainer(ABC):
             self.optimizers[run_id] = tru.create_optimizer(self.models[run_id], self.training_configs[run_id])
             self.lr_schedulers[run_id] = tru.load_lr_scheduler(self.training_configs[run_id], self.optimizers[run_id], dataloaders[0], num_epochs=self.dconfig.num_epochs)
 
-        brid = self.base_run_id[:-1] if self.base_run_id[-1].isdigit() else self.base_run_id
+        brid = self.base_run_id[:-1] if (self.base_run_id[-1].isdigit() and self.base_run_id[-1] != 'v') else self.base_run_id
         self.dirs = dict(
             log_dir = base_dir,
             ckpt_dir = os.path.join(base_dir, "checkpoints", brid),
@@ -53,6 +54,7 @@ class AbstractTrainer(ABC):
         self.ckpt_interval = self.dconfig.batch_checkpoint_interval
         self.losses, self.gradients, self.best_losses, self.nan_incidents = {}, {}, {}, {}
         self.batches_per_epoch = {phase : len(self.dataloaders[phase]) for phase in self.phases}
+        self.log = None
     
     def setup_training(self, num_epochs, log=True, save_indices=False):
         print(f"Getting ready to train {len(self.run_ids)} model(s) for {num_epochs} epochs on device {self.device}; configs at {self.log_file_path}", flush=True)
@@ -74,10 +76,9 @@ class AbstractTrainer(ABC):
                     model_config=dataclasses.asdict(self.mconfigs[run_id]),
                     losses = {}
             )
-        
+        for dirname in self.dirs.values():
+            Path(dirname).mkdir(parents=True, exist_ok=True)
         if log:
-            for dirname in self.dirs.values():
-                Path(dirname).mkdir(parents=True, exist_ok=True)
             if WANDB_AVAILABLE:
                 self.run = wandb.init(
                     entity="samart-agr-columbia-university", 
@@ -123,15 +124,35 @@ class AbstractTrainer(ABC):
         self.train(num_epochs, log, setup=False, run_eval_epoch=run_eval_epoch)
     
     @abstractmethod
-    def _run_batch(self, batch, phase):
+    def _run_batch(self, batch, step):
         pass
 
-    @abstractmethod
     def _run_epoch(self, phase):
-        pass
+        self.current_phase = phase
+        if self.log:
+            e0 = tru.log_event(f"{phase} epoch-{self.current_epoch} start")
+        for run_id in self.run_ids:
+            self.models[run_id].train(phase=='train')
+        with torch.set_grad_enabled(phase=='train'):
+            dl = self.dataloaders[phase]
+            if(self.distributed):
+                dl.sampler.set_epoch(self.current_epoch)
+            for step, batch in enumerate(dl):
+                if step % max(1, len(dl) // 4) == 0:
+                    print(f"\nCurrently at {phase} epoch {self.current_epoch}, step {step}/{len(dl)}", flush=True)
+                    print("________________________________________________", flush=True)
+                batch_losses = self._run_batch(batch, step)
+                assert batch_losses is not None, f"Batch {step} is bad; stopping"
+                self.log_step(batch_losses, step)
+                del batch_losses
+        print(f"\nFinished {phase} epoch {self.current_epoch}")
+        if self.log:
+            tru.log_event(f"{phase} epoch-{self.current_epoch} end", duration=time.time() - e0)
+
+
 
     @abstractmethod
-    def _log_epoch_info(self, phase):
+    def _log_epoch_info(self):
         pass
 
     def train(self, num_epochs, log=True, setup=True, run_eval_epoch=False):
@@ -143,10 +164,10 @@ class AbstractTrainer(ABC):
                 print(f"Epoch {epoch}/{num_epochs-1}", flush=True)
                 print("_" * 10, flush=True)
                 self._run_epoch("train")
-                self._log_epoch_info("train")
+                self._log_epoch_info()
                 if run_eval_epoch and len(self.phases) > 1:
                     self._run_epoch(self.phases[1])
-                    self._log_epoch_info(self.phases[1])
+                    self._log_epoch_info()
             self.finish_training(num_epochs)
         
         except Exception as e:
@@ -158,21 +179,25 @@ class AbstractTrainer(ABC):
         print(f"Finished training {len(self.run_ids)} model(s) for {num_epochs} epochs.", flush=True)
         for run_id in self.run_ids:
             self._save_checkpoint(run_id)
-        self.update_log_file(**kwargs)
+        if self.log:
+            self.update_log_file(**kwargs)
         return 0
     
     def update_log_file(self, **kwargs):
-        with open(self.log_file_path, "r") as f:
-            master_dict = json.load(f)
+        if os.path.exists(self.log_file_path):
+            with open(self.log_file_path, "r") as f:
+                master_dict = json.load(f)
+        else:
+            master_dict = {}
         for run_id in self.run_ids:
-            d = master_dict[run_id]
+            d = master_dict.setdefault(run_id, {})
             d['losses'] = self.losses.get(run_id)
             d['nan_incidents'] = self.nan_incidents.get(run_id) # should be list
             if self.dconfig.log_gradients:
                 d['gradients'] = self.gradients.get(run_id)
             
             if hasattr(self, 'track_loss_weights') and self.track_loss_weights:
-                d['L0'] = self.L0[run_id]
+                d['L0'] = copy.deepcopy(self.L0[run_id])
                 for k, v in d['L0'].items():
                     if isinstance(v, torch.Tensor):
                         d['L0'][k] = v.cpu().tolist()
@@ -184,6 +209,7 @@ class AbstractTrainer(ABC):
         with open(self.log_file_path, "w") as f:
             json.dump(master_dict, f)
                
+
 class ClimsimTrainer(AbstractTrainer):
     def __init__(self, dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id, **kwargs):
         super().__init__(dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id)
@@ -216,7 +242,6 @@ class ClimsimTrainer(AbstractTrainer):
 
     def setup_training(self, num_epochs, log=True, save_indices=False):
         super().setup_training(num_epochs, log, save_indices)
-        
         self.loss_weights, self.lw_optimizers, self.lw_history, self.L0 = {}, {}, defaultdict(list), defaultdict(dict)
         for run_id in self.run_ids:
             params = self.training_configs[run_id].loss_weight_params
@@ -240,8 +265,9 @@ class ClimsimTrainer(AbstractTrainer):
                 loss_weight[i] = 0
         return(loss_weight)
             
-    def apply_loss(self, y_hat, x, y, batch_losses, run_id, step):
+    def apply_loss(self, y_hat, batch, batch_losses, run_id, step):
         #model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
+        x, y = batch[0].to(self.device), batch[1].to(self.device)
         self.models[run_id].zero_grad()
         VAR_IND = None
         for loss_type in self.tracked_losses:
@@ -254,8 +280,8 @@ class ClimsimTrainer(AbstractTrainer):
                 loss = diffusion_loss(self, y_hat, run_id)
             else:
                 raise ValueError(f"Invalid loss type: {loss_type}")
-            if(self._gradients_ops(run_id, loss_type, loss, step)):
-                self.nan_incidents[run_id][-1]['inputs'] = (x, y)
+            if(self.current_phase == 'train' and self._gradients_ops(run_id, loss_type, loss, step)):
+                self.nan_incidents[run_id][-1]['inputs'] = batch
                 loss = torch.tensor(0)
             batch_losses[run_id][loss_type] = loss
         losses = torch.stack([batch_losses[run_id][l] for l in self.tracked_losses]).float()
@@ -290,18 +316,20 @@ class ClimsimTrainer(AbstractTrainer):
                 W = torch.clamp(torch.exp(W), min=1e-3)
             self.loss_weights[run_id] = (params['T'] * W/W.sum()).detach().requires_grad_(True)
 
-    def _run_batch(self, x, y, phase, step):
+    def _run_batch(self, batch, step):
+        x, y = batch[0].to(self.device), batch[1].to(self.device)
         batch_losses = {}
         for run_id in self.run_ids:
             lw_params = self.training_configs[run_id].loss_weight_params
             batch_losses[run_id] = {}
             y_hat = self.models[run_id](x) 
-            losses = self.apply_loss(y_hat, x, y, batch_losses, run_id, step)
-            if phase == 'train':
+            losses = self.apply_loss(y_hat, batch, batch_losses, run_id, step)
+            if self.current_phase == 'train':
                 loss_weights = self._return_loss_weights(run_id, batch_losses[run_id])
                 if(lw_params['strategy'] == "gradnorm" and step % lw_params['update_interval'] == 0):
-                    self.lw_history[run_id].append(loss_weights.detach().cpu().numpy().tolist())
-                    self._update_gradnorm_weights(run_id, batch_losses[run_id])
+                    if (loss_weights > 0).sum().item() > 1:
+                        self.lw_history[run_id].append(loss_weights.detach().cpu().numpy().tolist())
+                        self._update_gradnorm_weights(run_id, batch_losses[run_id])
                 total_loss = loss_weights @ losses
                 self.optimizers[run_id].zero_grad()
                 total_loss.backward(retain_graph=True)
@@ -330,78 +358,60 @@ class ClimsimTrainer(AbstractTrainer):
         optimizer.zero_grad(set_to_none=True)
         return 0
 
-    def _run_epoch(self, phase):
-        for run_id in self.run_ids:
-            self.models[run_id].train(phase=='train')
-        if self.log:
-            e0 = tru.log_event(f"{phase} epoch-{self.current_epoch} start")
-        with torch.set_grad_enabled(phase=='train'):
-            if(self.distributed):
-                self.dataloaders[phase].sampler.set_epoch(self.current_epoch)
-            num_steps = self.batches_per_epoch[phase]
-            for step, (X, Y) in enumerate(self.dataloaders[phase]):
-                if(step % max(1, num_steps // 4) == 0):
-                    print("________________________________________________")
-                    print(f"Currently at {phase} epoch {self.current_epoch}, step {step}/{num_steps}\n________________________________________________", flush=True)                
-                batch_losses = self._run_batch(X.to(self.device), Y.to(self.device), phase, step)
-                if(batch_losses is None):
-                    print(f"Batch {step} is bad; stopping", flush=True)
-                    break
-                self.log_step(batch_losses, step, phase)
-                del batch_losses
-        if self.log:
-            tru.log_event(f"epoch-{self.current_epoch} end", duration=time.time() - e0)
-
-    def log_step(self, batch_losses, step, phase):
+    def log_step(self, batch_losses, step):
         if(self.log):
             wandb_metrics = {"epoch" : self.current_epoch}
             for run_id in self.run_ids:
                 if('distribution' in self.tracked_losses):
-                    wandb_metrics[f"{phase}/{run_id}/distloss_var"] = batch_losses[run_id]['VAR_IND']
+                    wandb_metrics[f"{self.current_phase}/{run_id}/distloss_var"] = batch_losses[run_id]['VAR_IND']
                 for loss_type in self.tracked_losses:
-                    wandb_metrics[f"{phase}/{run_id}/{loss_type}"] = batch_losses[run_id][loss_type]
+                    wandb_metrics[f"{self.current_phase}/{run_id}/{loss_type}"] = batch_losses[run_id][loss_type]
             #global_step = self.current_epoch * len(self.dataloaders[phase]) + step
             self.run.log(wandb_metrics)
         
-        if (step % self.bli == 0 or step + 1 == len(self.dataloaders[phase])):
+        if (step % self.bli == 0 or step + 1 == len(self.dataloaders[self.current_phase])):
             for run_id in self.run_ids:
-                ldict = self.losses.setdefault(run_id, {}).setdefault(phase, {})
+                ldict = self.losses.setdefault(run_id, {}).setdefault(self.current_phase, {})
                 for loss_type in self.tracked_losses:
                     ldict.setdefault(loss_type, []).append(batch_losses[run_id][loss_type].item())
                     if loss_type == 'distribution':
                         ldict.setdefault('distloss_var', []).append(batch_losses[run_id]['VAR_IND'])
         
-        if ( (step + 1) % self.ckpt_interval == 0 and phase == 'train'): 
+        if ( (step + 1) % self.ckpt_interval == 0 and self.current_phase == 'train'): 
             for run_id in self.run_ids:
                 self._save_checkpoint(run_id)
         
-    def _log_epoch_info(self, phase='train'):
+    def _log_epoch_info(self):
         for run_id in self.run_ids:
             total_loss = 0.0
             tconfig = self.training_configs[run_id]
             for loss_type in self.tracked_losses:
-                ind = self.batches_per_epoch[phase] // self.bli + 1
-                epoch_loss = self.losses[run_id][phase][loss_type][-ind:]
+                ind = self.batches_per_epoch[self.current_phase] // self.bli + 1
+                epoch_loss = self.losses[run_id][self.current_phase][loss_type][-ind:]
                 avg_loss = sum(epoch_loss) / len(epoch_loss)
-                print(f"avg {loss_type} loss for epoch {self.current_epoch}, {run_id=}: {avg_loss}", flush=True)
+                print(f"avg {loss_type} loss for {self.current_phase} epoch {self.current_epoch}, {run_id=}: {avg_loss}", flush=True)
                 total_loss += tconfig.loss_weight_params['loss_weights'][loss_type] * avg_loss
             
-            if(phase == 'train'): 
+            if(self.current_phase == 'train'): 
                 if total_loss < self.best_losses.setdefault(run_id, float('inf')):
                     self._save_checkpoint(run_id, cid='best-')
                     print(f"new best! saving new checkpoint at epoch {self.current_epoch}", flush=True)
                     self.best_losses[run_id] = total_loss
-                elif tconfig.checkpoint_every_epoch: # no need to save twice
+                elif self.dconfig.checkpoint_every_epoch: # no need to save twice
                     self._save_checkpoint(run_id, f"epoch-{self.current_epoch}")
-        self.update_log_file()
-    
+        print(f"LO before update log file {self.L0}")
+        if self.log:
+            self.update_log_file()
+        print(f"LO after update log file {self.L0}")
+
+
 
 class DiffusionTrainer(AbstractTrainer):
     def __init__(self, dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id, **kwargs):
         super().__init__(dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id)
         self.scheduler = tru.load_scheduler(mconfigs[0])
     
-    def _run_batch(self, images, phase='train'):
+    def _run_batch(self, images, step):
         if(self.log):
             t0 = tru.log_event("run-batch start")
         batch_losses = {}
@@ -414,7 +424,7 @@ class DiffusionTrainer(AbstractTrainer):
             images = self.scheduler.add_noise(images, noises, timesteps)
             noise_pred = model(images, timesteps.flatten()).sample
             loss = self.loss_fn(noise_pred, noises)
-            if(phase == 'train'):
+            if(self.current_phase == 'train'):
                 optimizer.zero_grad()
                 loss.backward()
                 if(tconfig.clip_gradients):
@@ -427,52 +437,32 @@ class DiffusionTrainer(AbstractTrainer):
             tru.log_event("run-batch end", duration=time.time() - t0, **batch_losses)
         return(batch_losses)
 
-    def _run_epoch(self, phase='train'):
-        for run_id in self.run_ids:
-            self.models[run_id].train(phase=='train')
-        if self.log:
-            e0 = tru.log_event(f"epoch-{self.current_epoch} start")
-        with torch.set_grad_enabled(phase=='train'):
-            if(self.distributed):
-                self.dataloaders[phase].sampler.set_epoch(self.current_epoch)
-            num_steps = max(len(self.dataloaders[phase]), 4)
-            for step, images in enumerate(self.dataloaders[phase]):
-                if(step % (num_steps // 4) == 0):
-                    print("________________________________________________")
-                    print(f"Currently at epoch {self.current_epoch}, step {step}/{num_steps}\n________________________________________________", flush=True) 
-                # Given a batch from a dataloader on the dataset, return a noised sample
-                batch_losses = self._run_batch(images.to(self.device), phase)
-                self.log_step(batch_losses, step, phase)
-                del batch_losses
-        if self.log:
-            tru.log_event(f"epoch-{self.current_epoch} end", duration=time.time() - e0)
-
-    def log_step(self, batch_losses, step, phase):
+    def log_step(self, batch_losses, step):
         if self.log and hasattr(self, "run"):
             wandb_metrics = {"epoch" : self.current_epoch}
             for run_id in self.run_ids:
-                wandb_metrics[f"{phase}/{run_id}/loss"] = batch_losses[run_id]
+                wandb_metrics[f"{self.current_phase}/{run_id}/loss"] = batch_losses[run_id]
             self.run.log(wandb_metrics)
         
-        if(step % self.bli == 0 or step+1 == len(self.dataloaders[phase])):
+        if(step % self.bli == 0 or step+1 == len(self.dataloaders[self.current_phase])):
             for run_id in self.run_ids:
-                self.losses.setdefault(run_id, defaultdict(list))[phase].append(batch_losses[run_id])
+                self.losses.setdefault(run_id, defaultdict(list))[self.current_phase].append(batch_losses[run_id])
 
-        if ((step+1) % self.ckpt_interval == 0 and phase == 'train'): 
+        if ((step+1) % self.ckpt_interval == 0 and self.current_phase == 'train'): 
             for run_id in self.run_ids:
                 self._save_checkpoint(run_id)
     
-    def _log_epoch_info(self, phase='train'):
+    def _log_epoch_info(self):
         for run_id in self.run_ids:
-            ind = self.batches_per_epoch[phase] // self.bli + 1
-            epoch_losses = self.losses[run_id][phase][-ind:]
+            ind = self.batches_per_epoch[self.current_phase] // self.bli + 1
+            epoch_losses = self.losses[run_id][self.current_phase][-ind:]
             avg_loss = sum(epoch_losses) / max(len(epoch_losses), 1)
             print(f"avg loss for epoch {self.current_epoch}, {run_id=}: {avg_loss}", flush=True)
-            if(avg_loss < self.best_losses.setdefault(run_id, float('inf')) and phase=="train"):
+            if(avg_loss < self.best_losses.setdefault(run_id, float('inf')) and self.current_phase=="train"):
                 self.best_losses[run_id] = avg_loss
                 self._save_checkpoint(run_id, cid='best-')
                 print(f"new best! saving new checkpoint at epoch {self.current_epoch}", flush=True)
-            elif self.training_configs[run_id].checkpoint_every_epoch and phase=="train": # no need to save twice
+            elif self.dconfig.checkpoint_every_epoch and self.current_phase=="train": # no need to save twice
                 self._save_checkpoint(run_id, f"epoch-{self.current_epoch}")
 
 
@@ -596,14 +586,14 @@ class VAETrainer(AbstractTrainer):
             if(self.dconfig.log_gradients):
                 self.log_gradients = True
 
-    def _run_batch(self, batch, phase):
+    def _run_batch(self, batch, step):
         batch_info = {}
         for run_id in self.run_ids:
             model, optimizer, tconfig = self.models[run_id], self.optimizers[run_id], self.training_configs[run_id]
             x_hat = model(batch)
             kl_div = model.encoder.kl
             mse = self.loss_fn(batch, x_hat)# + self.training_configs[run_id].beta * kl_div
-            if(phase == 'train'):
+            if(self.current_phase == 'train'):
                 optimizer.zero_grad()
                 if(self.dconfig.log_gradients):
                     gdict = self.gradients.setdefault(run_id, {})
@@ -631,54 +621,27 @@ class VAETrainer(AbstractTrainer):
 
         return(batch_info)
 
-    def _run_train_epoch(self, epoch, phase='train'):
-        epoch_info = {run_id : dict(mse=0.0, kl=0.0) for run_id in self.run_ids}
-        self.model.train(True)
-        dataloader = self.dataloaders[phase]
-        with torch.set_grad_enabled(True):
-            if(self.distributed):
-                dataloader.sampler.set_epoch(epoch)
-            for step, batch in enumerate(dataloader):
-                batch_info = self._run_batch(batch, 'train')
-                epoch_info = self._log_step(epoch_info, batch_info, step)
-            remainder_steps = self.batches_per_epoch % self.bli
-            self._log_step('train', mse_loss/remainder_steps, kl_div/remainder_steps, self.batches_per_epoch)
-        return(0)
-
-    def _run_eval_epoch(self, epoch):
-        phase = 'eval'
-        mse_loss, kl_div = 0.0, 0.0
-        self.model.train(False)
-        with torch.set_grad_enabled(False):
-            num_batches = len(self.dataloaders[phase])
-            for step, batch in enumerate(self.eval_dataloader):
-                x_hat, mse, kl = self._run_batch(batch, phase)
-                mse_loss += mse.item()
-                kl_div += kl.item()
-        self.eval_losses['mse'].append( mse_loss / num_batches )
-        self.eval_losses['kl'].append( kl_div / num_batches )
-        return(0)
  
-    def _log_epoch_info(self, epoch_num, epoch_stats, phase='train'):
+    def _log_epoch_info(self, epoch_num, epoch_stats, ):
         logs_per_epoch = self.batches_per_epoch // self.bli + 1
-        for phase, loss_dict in self.losses.items():
+        for self.current_phase, loss_dict in self.losses.items():
             epoch_mse = sum(loss_dict['mse'][-logs_per_epoch:]) / logs_per_epoch
             epoch_kl = sum(loss_dict['kl'][-logs_per_epoch:]) / logs_per_epoch
-            print(f"{phase} stats [mse : {epoch_mse}; kl : {epoch_kl}]", flush=True)
+            print(f"{self.current_phase} stats [mse : {epoch_mse}; kl : {epoch_kl}]", flush=True)
             is_best_loss = (epoch_mse+epoch_kl)<self.best_loss
-            if(is_best_loss and self.rank == 0 and phase == 'train'):
+            if(is_best_loss and self.rank == 0 and self.current_phase == 'train'):
                 print(f"saving new checkpoint at epoch {epoch_num}", flush=True)
                 self.best_loss = epoch_mse + epoch_kl
                 self._save_checkpoint(epoch_num, cid='best-') # TODO: I dont think this is running
 
-    def _log_step(self, epoch_info, batch_info, step, phase='train'):
+    def _log_step(self, epoch_info, batch_info, step, ):
         for run_id in self.run_ids:
             batch_mse, batch_kl = batch_info[run_id][1], batch_info[run_id][2]
             epoch_info[run_id]['mse'] += batch_mse
             epoch_info[run_id]['kl'] += batch_kl
             if((step+1) % self.bli == 0):
-                self.losses[run_id][phase]['mse'].append( epoch_info[run_id]['mse'] / self.bli )
-                self.losses[run_id][phase]['kl'].append( epoch_info[run_id]['kl'] / self.bli )
+                self.losses[run_id][self.current_phase]['mse'].append( epoch_info[run_id]['mse'] / self.bli )
+                self.losses[run_id][self.current_phase]['kl'].append( epoch_info[run_id]['kl'] / self.bli )
                 epoch_info[run_id] = dict(mse=0.0, kl=0.0)
                 print(f"Batch {step}/{self.batches_per_epoch} [mse: {mse}  kl: {kl}]", flush=True)
                 if(self.dconfig.log_gradients):
@@ -686,12 +649,6 @@ class VAETrainer(AbstractTrainer):
                         gnorm = torch.linalg.norm(p.grad)
                         self.gradients[name].append(gnorm.detach().item())
 
-    def _run_epoch(self, epoch, phase='train'):
-        if(phase == 'train'):
-            self._run_train_epoch(epoch)
-        else:
-            self._run_eval_epoch(epoch)
-        print(f"Eval Loss on epoch {epoch}: [mse : {self.eval_losses['mse'][-1]}, kl {self.eval_losses['kl'][-1]}]", flush=True)
 
 def register_incident(trainer, msg, step, run_id, loss_type, **kwargs):
     print(f"[NaN-Detect] at {step=} for {run_id} with {loss_type=} >>> {msg}", flush=True)
