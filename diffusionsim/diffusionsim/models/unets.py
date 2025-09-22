@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import diffusers
-from diffusers import UNet2DModel
 import physicsnemo as modulus
 import dataclasses
 from collections import OrderedDict
@@ -200,22 +199,23 @@ class UNetBlock(torch.nn.Module):
         x = x.add_(skip_res)
         x = x * self.skip_scale
 
-        if self.num_heads:
-            q, k, v = (
-                self.qkv(self.norm2(x))
-                .reshape(
-                    x.shape[0] * self.num_heads, x.shape[1] // self.num_heads, 3, -1
+        if self.num_heads:  # if using attention
+            def attention_forward(x_in):
+                q, k, v = (
+                    self.qkv(self.norm2(x_in))
+                    .reshape(
+                        x_in.shape[0] * self.num_heads, x_in.shape[1] // self.num_heads, 3, -1
+                    )
+                    .unbind(2)
                 )
-                .unbind(2)
-            )
-            if self.attentionop is not None:
-                w = self.attentionop(q, k)
-            else:
-                w = AttentionOp.apply(q, k)
-            a = torch.einsum("nqk,nck->ncq", w, v)
-            x = self.proj(a.reshape(*x.shape)).add_(x)
-            # batch_size, channels, length = x.size()
-            # x = self.proj(a.reshape(batch_size, channels, length)).add_(x)
+                if self.attentionop is not None:
+                    w = self.attentionop(q, k)
+                else:
+                    w = AttentionOp.apply(q, k)
+                a = torch.einsum("nqk,nck->ncq", w, v)
+                return self.proj(a.reshape(*x_in.shape)).add_(x_in)
+            # wrap attention in checkpoint
+            x = torch.utils.checkpoint.checkpoint(attention_forward, x)
             x = x * self.skip_scale
         return x
 
@@ -316,13 +316,11 @@ class DownBlock1D(nn.Module):
     def forward(
             self, 
             hidden_states: torch.Tensor, 
-            res_hidden_states_tuple: Tuple[torch.Tensor, ...],
-            temb: Optional[torch.Tensor] = None
+            temb: torch.Tensor
         ) -> torch.Tensor:
         
         hidden_states = self.down(hidden_states) if self.down is not None else hidden_states
-        hidden_states = self.time_embedding(hidden_states, temb) if self.time_embedding is not None else hidden_states
-        hidden_states = torch.cat([hidden_states, res_hidden_states_tuple[-1]], dim=1) if self.attentions is not None else hidden_states
+        hidden_states = self.time_embedding(hidden_states, temb) if self.time_embedding is not None and temb is not None else hidden_states
 
         for i, resnet in enumerate(self.resnets):
             hidden_states = resnet(hidden_states)
@@ -506,6 +504,7 @@ def get_down_block(
     out_channels: int,
     temb_channels: int,
     add_downsample: bool,
+    concat_temb: bool = True,
 ) -> Union[DownResnetBlock1D, DownBlock1D, UNetBlock]:
     if down_block_type == "DownResnetBlock1D":
         return DownResnetBlock1D(
@@ -516,11 +515,9 @@ def get_down_block(
             add_downsample=add_downsample,
         )
     elif down_block_type == "DownBlock1D":
-        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, use_down=True, use_up=False, concat_temb=False, attention=False)
+        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, use_down=True, use_up=False, concat_temb=concat_temb, attention=False)
     elif down_block_type == "AttnDownBlock1D":
-        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, use_down=False, use_up=True, concat_temb=False, attention=True)
-    elif down_block_type == "DownBlock1DNoSkip":
-        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, use_down=False, use_up=False, concat_temb=True, attention=False)
+        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, use_down=False, use_up=True, concat_temb=concat_temb, attention=True)
     raise ValueError(f"{down_block_type} does not exist.")
 
 
@@ -535,13 +532,14 @@ def get_up_block(
             temb_channels=temb_channels,
             add_upsample=add_upsample,
         )
-    elif up_block_type == "UpBlock1D":
-        return UpBlock1D(in_channels=in_channels, out_channels=out_channels, use_up=True, attention=False)
-    elif up_block_type == "AttnUpBlock1D":
-        return UpBlock1D(in_channels=in_channels, out_channels=out_channels, use_up=True, attention=True)
-    elif up_block_type == "UpBlock1DNoSkip":
-        return UpBlock1D(in_channels=in_channels, out_channels=out_channels, use_up=False, attention=False)
-    raise ValueError(f"{up_block_type} does not exist.")
+    elif up_block_type == "UNetBlock":
+        raise NotImplementedError("UNetBlock for NV is not implemented")
+    assert up_block_type in ["UpBlock1D", "AttnUpBlock1D"], f"{up_block_type} does not exist."
+    attn = bool("attn" in up_block_type.lower())
+    return UpBlock1D(
+        in_channels=in_channels, out_channels=out_channels, 
+        use_up=attn, attention=attn
+    )
 
 
 @dataclasses.dataclass
@@ -552,6 +550,13 @@ class ClimsimUnetMetaData(modulus.ModelMetaData):
     cuda_graphs: bool = True
     amp_cpu: bool = True
     amp_gpu: bool = True
+
+
+@dataclasses.dataclass
+class UNet1DOutput(diffusers.utils.BaseOutput):
+    sample: torch.Tensor
+
+
 
 class ClimsimUnet(modulus.Module):
     def __init__(
@@ -705,10 +710,9 @@ class ClimsimUnet(modulus.Module):
             for idx in range(num_blocks):
                 cin = cout
                 cout = model_channels * mult
-                attn = res in attn_resolutions # attn_resolutions specifies the block levels at which attention is used
                 block_select = {True : UNetBlock_atten, False : UNetBlock_noatten}
                 embedding_blocks = self.return_embedding_blocks(res, cout) if self.diffusion_mode else None
-                self.enc[f"{res}_block{idx}"] = block_select[attn](
+                self.enc[f"{res}_block{idx}"] = block_select[res in attn_resolutions]( # attn_resolutions specifies the block levels at which attention is used
                     in_channels=cin, 
                     out_channels=cout, 
                     up=False,
@@ -908,7 +912,7 @@ class ClimsimUnet(modulus.Module):
         if self.scale_output:
             x = self.scale_output(x)
         if self.diffusion_mode:
-            return x
+            return UNet1DOutput(sample=x)
         # print('7:', x.shape)
         if self.input_padding[1]==0:
             y_profile = x[:,:self.num_vars_profile_out,self.input_padding[0]:]
@@ -938,12 +942,6 @@ class ClimsimUnet(modulus.Module):
 
         return y
 
-
-@dataclasses.dataclass
-class UNet1DOutput(diffusers.utils.BaseOutput):
-    sample: torch.Tensor
-
-
 class DiffusersUNet1D(diffusers.models.ModelMixin, diffusers.configuration_utils.ConfigMixin):
     r"""
     A 1D UNet model that takes a noisy sample and a timestep and returns a sample shaped output.
@@ -971,7 +969,7 @@ class DiffusersUNet1D(diffusers.models.ModelMixin, diffusers.configuration_utils
         out_block_type (`str`, *optional*, defaults to `None`): Optional output processing block of UNet.
         act_fn (`str`, *optional*, defaults to `None`): Optional activation function in UNet blocks.
         norm_num_groups (`int`, *optional*, defaults to 8): The number of groups for normalization.
-        layers_per_block (`int`, *optional*, defaults to 1): The number of layers per block.
+        layers_per_block (`int`, *optional*, defaults to 1): The number of conv blocks per resolution.
         downsample_each_block (`int`, *optional*, defaults to `False`):
             Experimental feature for using a UNet without upsampling.
     """
@@ -1097,7 +1095,7 @@ class DiffusersUNet1D(diffusers.models.ModelMixin, diffusers.configuration_utils
 
         # out
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
-        self.out_block = get_out_block(
+        self.out_block = get_out_block( # defined in conv_blocks.py
             out_block_type=out_block_type,
             num_groups_out=num_groups_out,
             embed_dim=block_out_channels[0],
@@ -1167,4 +1165,4 @@ class DiffusersUNet1D(diffusers.models.ModelMixin, diffusers.configuration_utils
         
         if self.scale_output:
             sample = self.scale_output(sample)
-        return sample
+        return UNet1DOutput(sample=sample)

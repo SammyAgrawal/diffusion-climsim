@@ -14,6 +14,54 @@ def pass_config(func, data_class):
     filtered_kwargs = {k: v for k, v in data_class.items() if k in accepted_params}
     return func(**filtered_kwargs)
 
+class ModelLens:
+    def __init__(self, model: torch.nn.Module):
+        self.model = model
+        self.params = dict(model.named_parameters())
+        self.param_names = [p for p in self.params]
+    
+    def get_param(self, getter):
+        if isinstance(getter, str):
+            return self.params[getter]
+        elif isinstance(getter, int):
+            return self.params[self.param_names[getter]]
+        raise ValueError(f"Invalid getter: {getter}")
+    
+    def log_gradients(self, gdict):
+        for n, p in self.params.items():
+            if p.grad is not None and torch.isfinite(p.grad).all():
+                gdict.setdefault(n, []).append((p.grad.mean().item(), p.grad.std().item()))
+            else:
+                return( dict(param_name=n, grad=p.grad, state_dict={k: v.clone().cpu() for k, v in self.params.items()}) )
+        return(0)
+    
+    def __getattr__(self, name):
+        return getattr(self.model, name)
+    def __call__(self, *args):
+        return self.model(*args)
+
+    def __repr__(self):
+        return repr(self.model)
+    def __str__(self):
+        return str(self.model)
+    
+    def num_parameters(self, return_not_trainable=False):
+        total = 0
+        nt = []
+        for name, p in self.params.items():
+            if p.requires_grad:
+                total += p.numel()
+            else:
+                nt.append((name, p))
+        if return_not_trainable:
+            return total, nt
+        return total
+    def nbytes(self):
+        size = 0
+        for n, p in self.params.items():
+            size += p.element_size() * p.nelement()
+        return size
+
 def get_activation(act_fn: str) -> nn.Module:
     ACT2CLS = {
         "swish": nn.SiLU,
@@ -123,39 +171,7 @@ class Linear(torch.nn.Module):
         x = x @ self.weight.to(dtype=x.dtype, device=x.device).t()
         if self.bias is not None:
             x = x.add_(self.bias.to(dtype=x.dtype, device=x.device))
-        return x
-
-class ModelLens:
-    def __init__(self, model: torch.nn.Module):
-        self.model = model
-        self.params = dict(model.named_parameters())
-        self.param_names = [p for p in self.params]
-    
-    def get_param(self, getter):
-        if isinstance(getter, str):
-            return self.params[getter]
-        elif isinstance(getter, int):
-            return self.params[self.param_names[getter]]
-        raise ValueError(f"Invalid getter: {getter}")
-    
-    def log_gradients(self, gdict):
-        for n, p in self.params.items():
-            if p.grad is not None and torch.isfinite(p.grad).all():
-                gdict.setdefault(n, []).append((p.grad.mean().item(), p.grad.std().item()))
-            else:
-                return( dict(param_name=n, grad=p.grad, state_dict={k: v.clone().cpu() for k, v in self.params.items()}) )
-        return(0)
-    
-    def __getattr__(self, name):
-        return getattr(self.model, name)
-    def __call__(self, *args):
-        return self.model(*args)
-
-    def __repr__(self):
-        return repr(self.model)
-    def __str__(self):
-        return str(self.model)
-    
+        return x    
 
 def build_baseline_model(config, **kwargs):
     if(config.bl_load_model_name and "unet" in config.bl_load_model_name):

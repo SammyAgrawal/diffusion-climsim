@@ -1,11 +1,10 @@
 import time
 import os
-import sys
-import math
+import diffusers
+import diffusionsim.models as models
 import json
 from abc import ABC, abstractmethod
 from pathlib import Path
-import traceback
 import torch
 import diffusionsim.training_utils as tru
 from sklearn.mixture import GaussianMixture
@@ -19,6 +18,13 @@ try:
 except:
     WANDB_AVAILABLE = False
     print("WANDB NOT AVAILABLE")
+
+
+def move_optimizer(optimizer, device):
+    for s in optimizer.state.values():
+        for k, v in s.items():
+            if torch.is_tensor(v):
+                s[k] = v.to(device)
 
 
 class AbstractTrainer(ABC):
@@ -38,7 +44,7 @@ class AbstractTrainer(ABC):
         self.distributed = self.dconfig.distributed_training
         for i, run_id in enumerate(self.run_ids):
             self.mconfigs[run_id], self.training_configs[run_id] = mconfigs[i], tconfigs[i]
-            self.models[run_id] = tru.ModelLens(tru.load_model(mconfigs[i], device=self.device, distributed=self.distributed))
+            self.models[run_id] = models.load_model(mconfigs[i], apply_lens = True, distributed=self.distributed)
             self.optimizers[run_id] = tru.create_optimizer(self.models[run_id], self.training_configs[run_id])
             self.lr_schedulers[run_id] = tru.load_lr_scheduler(self.training_configs[run_id], self.optimizers[run_id], dataloaders[0], num_epochs=self.dconfig.num_epochs)
 
@@ -209,7 +215,6 @@ class AbstractTrainer(ABC):
         with open(self.log_file_path, "w") as f:
             json.dump(master_dict, f)
                
-
 class ClimsimTrainer(AbstractTrainer):
     def __init__(self, dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id, **kwargs):
         super().__init__(dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id)
@@ -404,35 +409,52 @@ class ClimsimTrainer(AbstractTrainer):
             self.update_log_file()
         print(f"LO after update log file {self.L0}")
 
-
-
 class DiffusionTrainer(AbstractTrainer):
-    def __init__(self, dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id, **kwargs):
+    def __init__(self, dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id, scheduler):
         super().__init__(dataloaders, indices, mconfigs, tconfigs, base_dir, base_run_id)
-        self.scheduler = tru.load_scheduler(mconfigs[0])
+        self.scheduler = scheduler if isinstance(scheduler, diffusers.SchedulerMixin) else models.load_model(scheduler, apply_lens=False)
     
-    def _run_batch(self, images, step):
+    def _run_batch(self, batch, step):
+        images = batch.to(self.device)
         if(self.log):
             t0 = tru.log_event("run-batch start")
         batch_losses = {}
         for run_id in self.run_ids:
-            model, optimizer = self.models[run_id], self.optimizers[run_id]
+            print(run_id)
+            print(f"Allocated: {torch.cuda.memory_allocated() / 1024**2:.2f} MB")
+            print(f"Reserved:  {torch.cuda.memory_reserved() / 1024**2:.2f} MB")
+            model, optimizer = self.models[run_id].to(self.device), self.optimizers[run_id]
+            move_optimizer(optimizer, "cuda")
             tconfig, lr_scheduler = self.training_configs[run_id], self.lr_schedulers[run_id]
             noises = torch.randn(images.shape, device=self.device)
-            timesteps = torch.randint(0, tconfig.max_T_sample, 
-                                      size=(images.shape[0],), device=self.device, dtype=torch.int64)
-            images = self.scheduler.add_noise(images, noises, timesteps)
-            noise_pred = model(images, timesteps.flatten()).sample
-            loss = self.loss_fn(noise_pred, noises)
+            timesteps = torch.randint(0, tconfig.max_T_sample, size=(images.shape[0],), device=self.device, dtype=torch.int64)
+            xt = self.scheduler.add_noise(images, noises, timesteps)
+            if self.scheduler.config.prediction_type == 'v_prediction':
+                target = self.scheduler.get_velocity(images, noises, timesteps)
+            else:
+                target = noises
+            scaler = torch.amp.GradScaler('cuda')
+            with torch.amp.autocast('cuda'):
+                pred = model(xt, timesteps.flatten()).sample
+                loss = self.loss_fn(pred, target)
             if(self.current_phase == 'train'):
                 optimizer.zero_grad()
-                loss.backward()
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
                 if(tconfig.clip_gradients):
                     total_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
                 if(lr_scheduler is not None):
                     lr_scheduler.step()
             batch_losses[run_id] = loss.item()
+
+            model.to("cpu")
+            move_optimizer(optimizer, "cpu")
+            del pred, loss, xt, target, noises, timesteps
+            torch.cuda.empty_cache()
+            print(f"Allocated: {torch.cuda.memory_allocated() / 1024**2:.2f} MB")
+            print(f"Reserved:  {torch.cuda.memory_reserved() / 1024**2:.2f} MB")
         if(self.log):
             tru.log_event("run-batch end", duration=time.time() - t0, **batch_losses)
         return(batch_losses)

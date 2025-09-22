@@ -4,13 +4,14 @@ import pandas as pd
 import numpy as np
 import os
 import diffusers
-import gcsfs
 import json
 import torch
-from .models import MODEL_REGISTRY
+from .models import load_model, model_table, MODEL_REGISTRY
 from .mydatasets import load_dataset, load_dataloaders, load_scheduler, log_event
 from .climsim_utils import imagify
-from .configs import DataConfig, DataLoaderParams, TrainingConfig, ModelConfig, load_config
+from dataclasses import dataclass, field
+from typing import List, Dict, Tuple
+import copy
 
 
 @dataclass
@@ -26,7 +27,7 @@ class DataLoaderParams:
 
 @dataclass
 class DataConfig:
-    dataset_type: str = "XBatchDataset"
+    dataset_type: str = "climsim"
     climsim_type: str = "low-res-expanded" 
     source: str = "local-vzarr"
     data_dir: str = "/mnt/home/ssa2206/Climsim/diffusion-climsim/data/local_manifests"
@@ -58,10 +59,11 @@ class TrainingConfig:
     exp_id: str
     run_id: str
     # learning parameters
-    optimizer: str = 'adam'
+    optimizer: str = 'adam-groups'
+    param_groups: List = field(default_factory=lambda: [])
     learning_rate_params: Dict = field(default_factory=lambda: {
-        "learning_rate" : 1e-4, "lr_scheduler" : None, "patience" : 5, "betas" : (0.9, 0.999),
-        "lr_warmup_steps" : 20, "step_size" : 100, "gamma" : 0.9, "min_lr" : 1e-6,
+        "learning_rate" : 1e-3, "lr_scheduler" : None, "patience" : 5, "betas" : (0.9, 0.999),
+        "lr_warmup_steps" : 20, "step_size" : 100, "gamma" : 0.9, "min_lr" : 1e-6, 
     })
     loss_weight_params: Dict = field(default_factory=lambda: {
                     "strategy": "gradnorm", "lr": 1.0, "alpha": 0.5, "gradnorm_layer" : -2, "T" : 3.0, "update_interval": 5,
@@ -109,45 +111,57 @@ def my_dconfig(source="local-vzarr", data_vars='v1', in_notebook=True, shuffle_i
     dconfig.dataloader_params = dl_params
     return(dconfig)
 
+def my_unet(block_channels, utype='nv', data_vars='v1', image_dim=1, kernel_size=3, num_blocks=3):
+    if "unet" not in utype:
+        utype = f"unet{image_dim}d-{utype}"
+    unet_class = MODEL_REGISTRY[utype][0]
+    if data_vars == 'v1':
+        nvars_lev, nvars_scalar, nvars_lev_out, nvars_scalar_out = 2, 4, 2, 8
+    elif data_vars == 'v2':
+        nvars_lev, nvars_scalar, nvars_lev_out, nvars_scalar_out = 9, 17, 6, 8
+    if "nv" in utype:
+        model_channels = block_channels[0]
+        mult = [int(bc / model_channels) for bc in block_channels]
+        return unet_class(
+            num_vars_profile=nvars_lev,
+            num_vars_scalar=nvars_scalar,
+            num_vars_profile_out=nvars_lev_out,
+            num_vars_scalar_out=nvars_scalar_out,
+            model_channels=model_channels,
+            channel_mult=mult,
+            kernel_size=kernel_size,
+            num_blocks=num_blocks,
+            attn_resolutions=[16],
+            conditioning_resolutions={64:["timesteps"], 32:["timesteps"], 16 : ["timesteps"], 8 : ["timesteps"]},
+            dropout=0.05,
+        )
+    elif "hf" in utype and image_dim == 1:
+        return unet_class(
+            in_channels = nvars_lev_out + nvars_scalar_out,
+            out_channels = nvars_lev_out + nvars_scalar_out,
+            block_out_channels = block_channels,
+            down_block_types = ("DownResnetBlock1D",) * len(block_channels)-2 + ("AttnDownBlock1D", "DownBlock1D"),
+            up_block_types = ("UpResnetBlock1D",) * len(block_channels)-2 + ("AttnUpBlock1D", "UpBlock1D"),
+            norm_num_groups = 4,
+            layers_per_block = num_blocks,
+        )
+    elif "hf" in utype and image_dim == 2:
+        return unet_class(
+            block_out_channels = (128, 256, 512) if data_vars == "v1" else (256, 512, 1024),
+            down_block_types = ("DownBlock2D", "DownBlock2D", "DownBlock2D"),
+            up_block_types = ("UpBlock2D", "UpBlock2D", "UpBlock2D"),
+            in_channels = 128 if data_vars == "v1" else 368,
+            out_channels = 128 if data_vars == "v1" else 368,
+            layers_per_block = num_blocks,
+            norm_num_groups = 4,
+        )
 
-def load_config(fname, expid, base_dir="experiments/"):
-    if 'json' not in fname:
-        fname += ".json"
-    with open(os.path.join(base_dir, expid, fname), 'r') as f:
-        cdict = json.load(f)
-    try:
-        tconfig = TrainingConfig(**cdict['training_config'])
-    except:
-        print("mismatch between tconfig and class")
-        tconfig = cdict['training_config']
-    try:
-        mconfig = ModelConfig(**cdict['model_config'])
-    except:
-        print("mismatch between mconfig and class")
-        mconfig = cdict['model_config']
-    try:
-        dconfig = DataConfig(**cdict['data_config'])
-    except:
-        print("mismatch between dconfig and class")
-        dconfig = cdict['data_config']
-
-    return(tconfig, mconfig, dconfig)
-
-def load_model_from_ckpt(ckpt_path, mconfig, baseline=False):
-    if(isinstance(mconfig, dict)):
-        mconfig = ModelConfig(**mconfig)
-    mconfig.model_type = "baseline" if baseline else mconfig.model_type
+def load_model_from_ckpt(ckpt_path, mconfig):
     model = load_model(mconfig)
     model.load_state_dict(torch.load(ckpt_path, map_location=torch.device('cpu'), weights_only=True))
     return(model)
 
 leap_base_dir = '/home/jovyan/Samarth/ClimsimProjectWork/diffusion-climsim/experiments'
-model_table = {
-    'best_diffusion_2d' : ('diffusion_hp_search', 'lr-explore', 'lr-explorea', "best"),
-    'vintage_diffusion_2d' : ( "full_dataset_testrun" , 'trial_1b', 'trial_1b', ""),
-    'diff_1d_v2' : ('diffusion_hp_search', 'diff_1d', 'diff_1da', ""),
-    'diff_1d_v1' : ('diffusion_hp_search', 'diff_1d_v1', 'diff_1d_v1a', "best-"),
-}
 
 def load_diffusion_model(model_id='best_diffusion_2d', base_dir="/mnt/home/ssa2206/Climsim/experiments"):
     exp_id, log_id, run_id, cid = model_table[model_id]
@@ -217,14 +231,26 @@ def load_lr_scheduler(tconfig, optim, dataloader, num_epochs=10):
 
  
 def create_optimizer(model, tconfig):
-    match tconfig.optimizer.lower():
-        case "adam":
-            my_betas = tconfig.learning_rate_params.get("betas", (0.9, 0.999))
-            optim = torch.optim.Adam(model.parameters(), lr=tconfig.learning_rate_params.get("learning_rate"), betas=my_betas)
-
-        case _: # defaults to SGD
-            optim = torch.optim.SGD(model.parameters(), lr=tconfig.learning_rate_params.get("learning_rate"))
-    return(optim)
+    kwargs = {'lr' : tconfig.learning_rate_params.get("learning_rate")}
+    opt = tconfig.optimizer.lower()
+    if "adam" in opt:
+        ocls = torch.optim.Adam
+        kwargs['betas'] = tconfig.learning_rate_params.get("betas", (0.9, 0.999))
+    else: # defaults to SGD
+        ocls = torch.optim.SGD
+    if "groups" in opt and tconfig.param_groups:
+        param_groups = []
+        for group_cfg in tconfig.param_groups:
+            group_args = {**kwargs, **{k:v for k, v in group_cfg.items() if k not in ['select_method', 'keyword']}}
+            if "exclude" in group_cfg['select_method']:
+                group_args['params'] = [p for n, p in model.named_parameters() if group_cfg['keyword'] not in n]
+            elif "include" in group_cfg['select_method']:
+                group_args['params'] = [p for n, p in model.named_parameters() if group_cfg['keyword'] in n]
+            else:
+                raise ValueError(f"Invalid select_method: {group_cfg['select_method']}")
+            param_groups.append(group_args)
+        return ocls(param_groups)
+    return ocls(model.parameters(), **kwargs)
 
 def unnormalize_npy(X_norm, Y_norm, data_vars='v1'):
     inputs, outputs = load_vars(data_vars)

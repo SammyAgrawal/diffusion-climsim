@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
 
 
+
 @dataclass
 class VAEParams:
     model_type: str = "vae"
@@ -32,12 +33,13 @@ class UNetParamsHF:
     block_out_channels: Tuple = field(default_factory=lambda: (32, 64, 64, 128))  # num output channel for each UNet block
     down_block_types: Tuple = field(default_factory=lambda: ("DownResnetBlock1D", "AttnDownBlock1D", "DownBlock1D"))
     up_block_types: Tuple = field(default_factory=lambda: ("UpResnetBlock1D", "AttnUpBlock1D", "UpBlock1D"))
-    layers_per_block: int = 1
-    norm_num_groups: int = 2
+    layers_per_block: int = 2
+    norm_num_groups: int = 4
     act_fn: str = "silu" # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/activations.py#L27
     freq_shift: float = 0.0 # fourier freq shift
     use_timestep_embedding: bool = True
     time_embedding_dim: int = 32
+    act_fn: str = None
 
 @dataclass
 class UNetParamsNV:
@@ -66,7 +68,7 @@ class UNetParamsNV:
 # scheduler params
 @dataclass
 class SchedulerParams:
-    scheduler_type: str = 'ddpm'
+    model_type: str = 'ddpm-scheduler'
     num_train_timesteps: int = 100
     beta_schedule: str = 'linear'
     clip_sample: bool = False

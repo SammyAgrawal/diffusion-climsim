@@ -18,6 +18,7 @@ Credit for most of this boilerplate belongs to the HuggingFace Diffusers library
 Others have been modified to fit specific needs of this project or are because of bugs in the Diffusers Library.
 
 """
+
 import math
 from typing import Optional, Tuple, Union, List
 import torch
@@ -151,7 +152,7 @@ class Conv1d(torch.nn.Module):
         f = torch.tensor(resample_filter, dtype=torch.float32).unsqueeze(0).unsqueeze(1) / sum(resample_filter)
         self.register_buffer("resample_filter", f if up or down else None)
 
-    def forward(self, x):
+    def forward(self, x, **kwargs):
         assert x.shape[1] == self.in_channels
         w = self.weight.to(dtype=x.dtype, device=x.device) if self.weight is not None else None
         f = self.resample_filter
@@ -203,7 +204,7 @@ class Conv1dBlock(nn.Module):
         self.group_norm = GroupNorm(out_channels, n_groups)
         self.act_fn = get_activation(activation)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         intermediate_repr = self.conv1d(inputs)
         intermediate_repr = self.group_norm(rearrange_dims(intermediate_repr))
         output = self.act_fn(rearrange_dims(intermediate_repr))
@@ -281,8 +282,7 @@ class ResidualTemporalBlock1D(nn.Module):
         returns:
             out : [ batch_size x out_channels x horizon ]
         """
-        t = self.time_emb_act(t) # activation function
-        t = self.time_emb(t) # Linear projection from embed_dim to channels
+        t = self.time_emb(self.time_emb_act(t)) # Linear projection from embed_dim to channels
         out = self.conv_in(inputs) + rearrange_dims(t)
         out = self.conv_out(out)
         return out + self.residual_conv(inputs)
@@ -517,6 +517,7 @@ class ResConvBlock(nn.Module):
 
         if not self.is_last:
             self.group_norm_2 = GroupNorm(out_channels, 1, min_channels_per_group=1)
+            self.gelu_2 = nn.GELU()
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         residual = self.conv_skip(hidden_states) if self.has_conv_skip else hidden_states
